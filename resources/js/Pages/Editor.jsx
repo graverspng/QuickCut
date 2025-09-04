@@ -6,8 +6,9 @@ export default function Editor({ project }) {
     const [mediaFiles, setMediaFiles] = useState(project.media_files || []);
     const [clips, setClips] = useState(project.clips || []);
     const [activeClipIndex, setActiveClipIndex] = useState(0);
+    const [selectedClipIndex, setSelectedClipIndex] = useState(null);
     const [currentTime, setCurrentTime] = useState(0);
-    const [globalDuration, setGlobalDuration] = useState(60); // default 1min timeline
+    const [globalDuration, setGlobalDuration] = useState(60); // fallback timeline length
     const videoRef = useRef(null);
 
     const togglePlay = () => {
@@ -133,17 +134,23 @@ export default function Editor({ project }) {
         }
     };
 
-    // Spacebar toggle
+    // Keyboard shortcuts
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.code === 'Space') {
                 e.preventDefault();
                 togglePlay();
             }
+            if (e.code === 'Backspace' || e.code === 'Delete') {
+                if (selectedClipIndex !== null) {
+                    setClips((prev) => prev.filter((_, i) => i !== selectedClipIndex));
+                    setSelectedClipIndex(null);
+                }
+            }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, []);
+    }, [selectedClipIndex]);
 
     return (
         <AuthenticatedLayout hideNavbar={true}>
@@ -212,10 +219,17 @@ export default function Editor({ project }) {
                             <div className="flex items-center" style={{ width: '1200px' }}>
                                 {clips.map((clip, index) => {
                                     const width = (clip.duration / totalDuration) * 1200;
+                                    const isSelected = selectedClipIndex === index;
                                     return (
                                         <div
                                             key={index}
-                                            className="bg-blue-500 h-full rounded flex items-center justify-center text-white"
+                                            onClick={(e) => {
+                                                e.stopPropagation(); // prevent seek
+                                                setSelectedClipIndex(index);
+                                            }}
+                                            className={`h-full rounded flex items-center justify-center text-white cursor-pointer ${
+                                                isSelected ? 'bg-red-500' : 'bg-blue-500'
+                                            }`}
                                             style={{ width: `${width}px` }}
                                         >
                                             {clip.name}
@@ -225,7 +239,7 @@ export default function Editor({ project }) {
 
                                 {/* Playhead */}
                                 <div
-                                    className="absolute top-0 bottom-0 w-1 bg-red-500"
+                                    className="absolute top-0 bottom-0 w-1 bg-red-700"
                                     style={{
                                         left: `${(currentTime / totalDuration) * 1200}px`,
                                     }}
