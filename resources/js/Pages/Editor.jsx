@@ -28,9 +28,11 @@ export default function Editor({ project }) {
             const fileObj = {
                 name: file.name,
                 source: URL.createObjectURL(file),
-                duration: 0,
+                duration: 0,             // segment duration (for clips) or full duration (for audio)
+                sourceDuration: 0,       // for video sources; filled on metadata load
                 type: isAudio ? 'audio' : 'video',
-                startTime: 0,
+                startOffset: 0,          // for video segments: where this segment starts within the source
+                startTime: 0,            // for audio tracks on the timeline
             };
             return fileObj;
         });
@@ -53,7 +55,8 @@ export default function Editor({ project }) {
         if (!file) return;
 
         if (file.type === 'video') {
-            setClips((prev) => [...prev, { ...file }]);
+            // add a new segment that initially covers the whole source once metadata loads
+            setClips((prev) => [...prev, { ...file, startOffset: 0 }]);
         } else if (file.type === 'audio') {
             setMusicTracks((prev) => [...prev, { ...file, startTime: currentTime }]);
         }
@@ -70,35 +73,43 @@ export default function Editor({ project }) {
 
     // ✂️ CUT TOOL FUNCTION
     const handleCut = () => {
+        // figure out which clip the playhead is in and the time within that clip (segment-relative)
         let acc = 0;
         let targetIndex = null;
-        let relativeTime = 0;
+        let relativeTimeInSegment = 0;
 
         for (let i = 0; i < clips.length; i++) {
-            if (currentTime < acc + clips[i].duration) {
+            const segDur = clips[i].duration || 0;
+            if (currentTime < acc + segDur) {
                 targetIndex = i;
-                relativeTime = currentTime - acc;
+                relativeTimeInSegment = currentTime - acc; // seconds into this segment
                 break;
             }
-            acc += clips[i].duration;
+            acc += segDur;
         }
 
         if (targetIndex === null) return;
 
         const clip = clips[targetIndex];
+        const segDuration = clip.duration || 0;
 
-        // only cut if inside the clip, not at start or end
-        if (relativeTime <= 0 || relativeTime >= clip.duration) return;
+        // only cut if inside the segment, not at boundaries
+        if (relativeTimeInSegment <= 0 || relativeTimeInSegment >= segDuration) return;
 
         const before = {
             ...clip,
             name: clip.name + ' (Part 1)',
-            duration: relativeTime,
+            // keep same source but limit to the first portion
+            startOffset: (clip.startOffset || 0),
+            duration: relativeTimeInSegment,
         };
+
         const after = {
             ...clip,
             name: clip.name + ' (Part 2)',
-            duration: clip.duration - relativeTime,
+            // start later in the source by the split amount
+            startOffset: (clip.startOffset || 0) + relativeTimeInSegment,
+            duration: segDuration - relativeTimeInSegment,
         };
 
         const newClips = [
@@ -109,85 +120,155 @@ export default function Editor({ project }) {
         ];
 
         setClips(newClips);
+
+        // select the "after" part to make follow-up deletes easy (optional UX)
+        setSelectedClipIndex(targetIndex + 1);
     };
 
-    // load durations
+    // Load durations (and populate sourceDuration for video)
     useEffect(() => {
         clips.forEach((clip, i) => {
-            if (!clip.duration) {
+            if (!clip.source) return;
+            const needsSourceDur = !clip.sourceDuration;
+            const needsSegDur = !clip.duration;
+
+            if (needsSourceDur || needsSegDur) {
                 const vid = document.createElement('video');
                 vid.src = clip.source;
                 vid.onloadedmetadata = () => {
                     setClips((prev) => {
-                        const newClips = [...prev];
-                        newClips[i].duration = vid.duration;
-                        return newClips;
+                        const list = [...prev];
+                        const c = { ...list[i] };
+                        const srcDur = vid.duration || 0;
+
+                        // set sourceDuration
+                        c.sourceDuration = srcDur;
+
+                        // if duration isn't set yet (newly dropped), default to full source minus startOffset
+                        const startOffset = c.startOffset || 0;
+                        if (!c.duration || c.duration <= 0) {
+                            c.duration = Math.max(0, srcDur - startOffset);
+                        }
+
+                        list[i] = c;
+                        return list;
                     });
                 };
             }
         });
 
         musicTracks.forEach((track, i) => {
-            if (!track.duration) {
-                const audio = document.createElement('audio');
-                audio.src = track.source;
-                audio.onloadedmetadata = () => {
-                    setMusicTracks((prev) => {
-                        const updated = [...prev];
-                        updated[i].duration = audio.duration;
-                        return updated;
-                    });
-                };
-            }
+            if (!track.source || track.duration) return;
+            const audio = document.createElement('audio');
+            audio.src = track.source;
+            audio.onloadedmetadata = () => {
+                setMusicTracks((prev) => {
+                    const updated = [...prev];
+                    updated[i] = { ...updated[i], duration: audio.duration || 0 };
+                    return updated;
+                });
+            };
         });
     }, [clips, musicTracks]);
 
     const totalDuration = useMemo(() => {
-        return clips.reduce((sum, c) => sum + (c.duration || 0), 0) || globalDuration;
+        const sum = clips.reduce((acc, c) => acc + (c.duration || 0), 0);
+        return sum || globalDuration;
     }, [clips, globalDuration]);
 
-    // clip switching
+    // Clip switching: always start at the segment's startOffset
     useEffect(() => {
-        if (videoRef.current && clips[activeClipIndex]) {
-            videoRef.current.src = clips[activeClipIndex].source;
-            videoRef.current.currentTime = 0;
-            videoRef.current.play().catch(() => {});
+        const video = videoRef.current;
+        const seg = clips[activeClipIndex];
+        if (video && seg) {
+            video.src = seg.source;
+            const startOffset = seg.startOffset || 0;
+            // Seek to the correct point within the source for this segment
+            const seek = () => {
+                video.currentTime = startOffset;
+                video.play().catch(() => {});
+                video.removeEventListener('loadedmetadata', seek);
+            };
+            if (isFinite(video.duration) && video.duration > 0) {
+                // metadata probably already loaded (same src)
+                video.currentTime = startOffset;
+                video.play().catch(() => {});
+            } else {
+                // wait for metadata before seeking
+                video.addEventListener('loadedmetadata', seek);
+            }
         }
     }, [activeClipIndex, clips]);
 
-    // sync video + music
+    // Sync video + music + enforce segment ends
     useEffect(() => {
         const video = videoRef.current;
         if (!video) return;
 
         const onTimeUpdate = () => {
+            const seg = clips[activeClipIndex];
+            if (!seg) return;
+
+            const segStartOffset = seg.startOffset || 0;
+            const segEnd = segStartOffset + (seg.duration || 0);
+
+            // segment-relative time (0..segment.duration)
+            const segRelative = Math.max(0, (video.currentTime || 0) - segStartOffset);
+
+            // compute global time: sum(prev segment durations) + relative in this segment
             const elapsedBefore = clips
                 .slice(0, activeClipIndex)
                 .reduce((sum, c) => sum + (c.duration || 0), 0);
-            const globalTime = elapsedBefore + video.currentTime;
+
+            const globalTime = elapsedBefore + segRelative;
             setCurrentTime(globalTime);
 
+            // If we've reached beyond the end of this segment, advance
+            if ((video.currentTime || 0) >= segEnd - 0.03) {
+                // move to next clip if exists, else stop
+                if (activeClipIndex < clips.length - 1) {
+                    setActiveClipIndex((prev) => prev + 1);
+                } else {
+                    video.pause();
+                    setActiveClipIndex(0);
+                    setCurrentTime(0);
+                    // reset audios
+                    audioRefs.current.forEach((a) => {
+                        if (a) {
+                            a.pause();
+                            a.currentTime = 0;
+                        }
+                    });
+                }
+                return;
+            }
+
+            // --- MUSIC SYNC (keep your previous behavior) ---
             musicTracks.forEach((track, i) => {
                 const audio = audioRefs.current[i];
                 if (!audio) return;
-                if (globalTime >= track.startTime && globalTime <= track.startTime + track.duration) {
+
+                if (globalTime >= track.startTime && globalTime <= track.startTime + (track.duration || 0)) {
                     const relativeTime = globalTime - track.startTime;
-                    if (Math.abs(audio.currentTime - relativeTime) > 0.2) {
+                    if (Math.abs((audio.currentTime || 0) - relativeTime) > 0.2) {
                         audio.currentTime = relativeTime;
                     }
-                    if (video.paused) {
-                        audio.pause();
-                    } else {
+                    if (!video.paused && audio.paused) {
                         audio.play().catch(() => {});
                     }
-                } else {
+                    if (video.paused && !audio.paused) {
+                        audio.pause();
+                    }
+                } else if (globalTime < track.startTime) {
                     audio.pause();
                     audio.currentTime = 0;
                 }
+                // if past the track’s end, let it finish naturally
             });
         };
 
         const onEnded = () => {
+            // We largely enforce segment end in timeupdate; ended is a safety for true file end
             if (activeClipIndex < clips.length - 1) {
                 setActiveClipIndex((prev) => prev + 1);
             } else {
@@ -218,37 +299,56 @@ export default function Editor({ project }) {
         const timelineWidth = rect.width;
         const newGlobalTime = (clickX / timelineWidth) * totalDuration;
 
+        // find which segment and the time within that segment
         let acc = 0;
         let newIndex = 0;
         for (let i = 0; i < clips.length; i++) {
-            if (newGlobalTime < acc + clips[i].duration) {
+            const segDur = clips[i].duration || 0;
+            if (newGlobalTime < acc + segDur) {
                 newIndex = i;
                 break;
             }
-            acc += clips[i].duration;
+            acc += segDur;
         }
+
+        const seg = clips[newIndex];
+        const segRelative = Math.max(0, newGlobalTime - acc); // seconds into the segment
+        const seekTimeInSource = (seg?.startOffset || 0) + segRelative;
 
         setActiveClipIndex(newIndex);
-        if (videoRef.current) {
-            videoRef.current.src = clips[newIndex].source;
-            videoRef.current.currentTime = newGlobalTime - acc;
-            videoRef.current.play().catch(() => {});
+
+        if (videoRef.current && seg) {
+            videoRef.current.src = seg.source;
+            const doSeek = () => {
+                videoRef.current.currentTime = seekTimeInSource;
+                videoRef.current.play().catch(() => {});
+                videoRef.current.removeEventListener('loadedmetadata', doSeek);
+            };
+            if (isFinite(videoRef.current.duration) && videoRef.current.duration > 0) {
+                videoRef.current.currentTime = seekTimeInSource;
+                videoRef.current.play().catch(() => {});
+            } else {
+                videoRef.current.addEventListener('loadedmetadata', doSeek);
+            }
         }
 
+        // sync music to the new global time
         musicTracks.forEach((track, i) => {
             const audio = audioRefs.current[i];
             if (!audio) return;
-            if (newGlobalTime >= track.startTime && newGlobalTime <= track.startTime + track.duration) {
+
+            if (newGlobalTime >= track.startTime && newGlobalTime <= track.startTime + (track.duration || 0)) {
                 audio.currentTime = newGlobalTime - track.startTime;
                 if (!videoRef.current.paused) audio.play().catch(() => {});
-            } else {
+            } else if (newGlobalTime < track.startTime) {
                 audio.pause();
                 audio.currentTime = 0;
             }
+            // if past end → let it stop naturally
         });
     };
 
-    // hotkeys
+    // Hotkeys (delete still removes items; gaps/black screen behavior can be added if desired)
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.code === 'Space') {
@@ -347,9 +447,7 @@ export default function Editor({ project }) {
                                             key={index}
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                setSelectedClipIndex(
-                                                    isSelected ? null : index
-                                                );
+                                                setSelectedClipIndex(isSelected ? null : index);
                                             }}
                                             className={`h-full rounded flex items-center justify-center text-white cursor-pointer ${
                                                 isSelected ? 'bg-red-500' : 'bg-blue-500'
@@ -388,9 +486,7 @@ export default function Editor({ project }) {
                                             key={index}
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                setSelectedMusicIndex(
-                                                    isSelected ? null : index
-                                                );
+                                                setSelectedMusicIndex(isSelected ? null : index);
                                             }}
                                             className={`h-full rounded flex items-center justify-center text-black cursor-pointer ${
                                                 isSelected ? 'bg-purple-500' : 'bg-purple-300'
