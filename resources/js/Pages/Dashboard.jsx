@@ -19,13 +19,21 @@ export default function Dashboard({ projects = [] }) {
     };
 
     return (
-        <AuthenticatedLayout
-            header={<h2 className="text-xl font-semibold text-gray-800">Projects</h2>}
-        >
+        <AuthenticatedLayout>
             <Head title="Projects" />
 
             <div className="py-12">
                 <div className="mx-auto max-w-7xl sm:px-6 lg:px-8">
+                    {/* Intro Text */}
+                    <div className="mb-6 text-center">
+                        <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                            Welcome to your Projects
+                        </h2>
+                        <p className="text-gray-600">
+                            Here you can create new projects or continue editing your existing ones.
+                        </p>
+                    </div>
+
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                         {/* Create New Project Block */}
                         <div
@@ -37,17 +45,16 @@ export default function Dashboard({ projects = [] }) {
 
                         {/* Render Existing Projects */}
                         {projects.map((project) => (
-    <div
-        key={project.id}
-        className="h-40 bg-white rounded-lg shadow-md p-4 flex flex-col justify-between hover:shadow-lg transition cursor-pointer"
-        onClick={() => router.get(route('editor', project.id))}
-    >
-        <h3 className="text-lg font-semibold text-gray-800 truncate">
-            {project.name}
-        </h3>
-    </div>
-))}
-
+                            <div
+                                key={project.id}
+                                className="h-40 bg-white rounded-lg shadow-md p-4 flex flex-col justify-between hover:shadow-lg transition cursor-pointer"
+                                onClick={() => router.get(route('editor', project.id))}
+                            >
+                                <h3 className="text-lg font-semibold text-gray-800 truncate">
+                                    {project.name}
+                                </h3>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>

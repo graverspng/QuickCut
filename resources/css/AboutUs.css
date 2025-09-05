@@ -1,0 +1,113 @@
+:root {
+    --dark: #040F0F;
+    --muted: #2D3A3A;
+    --light: #FCFFFC;
+    --green-1: #248232;
+    --green-2: #2BA84A;
+}
+
+/* Full-page background */
+.about-us-background {
+    min-height: 100vh;
+    background-color: var(--dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Floating QuickCut background */
+.quickcut-float {
+    position: absolute;
+    top: -50px;
+    left: -50px;
+    width: 800px;
+    height: 800px;
+    opacity: 0.15;
+    pointer-events: none;
+    z-index: -1;
+    animation: floatRotate 120s linear infinite;
+}
+
+/* Float + rotate animation */
+@keyframes floatRotate {
+    0% { top: -50px; left: -50px; transform: rotate(0deg); }
+    50% { top: 50px; left: 50px; transform: rotate(180deg); }
+    100% { top: -50px; left: -50px; transform: rotate(360deg); }
+}
+
+/* Content container (glass effect) */
+.about-us-container {
+    position: relative;
+    max-width: 64rem;
+    padding: 2rem;
+    background: rgba(20, 30, 30, 0.6);
+    border-radius: 16px;
+    color: var(--light);
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeIn 0.8s forwards;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 10px 30px rgba(2,6,23,0.35);
+}
+
+/* Title */
+.about-us-title {
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin-bottom: 1rem;
+    color: var(--light);
+    text-align: center;
+}
+
+/* Paragraph text */
+.about-us-text {
+    font-size: 1.125rem;
+    margin-top: 1rem;
+    line-height: 1.6;
+    color: rgba(252, 255, 252, 0.85);
+}
+
+/* Back button container */
+.about-us-back {
+    margin-top: 2rem;
+    text-align: center;
+}
+
+/* Back button style */
+.back-button {
+    display: inline-block;
+    background: linear-gradient(90deg, var(--green-1), var(--green-2));
+    color: var(--light);
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: transform 140ms ease, box-shadow 220ms ease, filter 120ms ease;
+}
+
+.back-button:hover {
+    transform: translateY(-2px);
+    filter: brightness(1.05);
+    box-shadow:
+        0 10px 30px rgba(36,130,50,0.16),
+        0 0 20px rgba(42,168,74,0.18),
+        0 0 40px rgba(42,168,74,0.10);
+}
+
+/* Fade-in animation */
+@keyframes fadeIn {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .about-us-container { margin: 1rem; padding: 1.5rem; }
+    .about-us-title { font-size: 2rem; }
+    .about-us-text { font-size: 1rem; }
+}
