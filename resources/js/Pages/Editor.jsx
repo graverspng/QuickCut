@@ -5,11 +5,14 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 export default function Editor({ project }) {
     const [mediaFiles, setMediaFiles] = useState(project.media_files || []);
     const [clips, setClips] = useState(project.clips || []);
+    const [musicTracks, setMusicTracks] = useState(project.music_tracks || []);
     const [activeClipIndex, setActiveClipIndex] = useState(0);
     const [selectedClipIndex, setSelectedClipIndex] = useState(null);
+    const [selectedMusicIndex, setSelectedMusicIndex] = useState(null);
     const [currentTime, setCurrentTime] = useState(0);
-    const [globalDuration, setGlobalDuration] = useState(60); // fallback timeline length
+    const [globalDuration, setGlobalDuration] = useState(60);
     const videoRef = useRef(null);
+    const audioRefs = useRef([]); // keep refs for music
 
     const togglePlay = () => {
         if (!videoRef.current) return;
@@ -20,12 +23,23 @@ export default function Editor({ project }) {
     const goBack = () => router.get(route('dashboard'));
 
     const handleFileUpload = (e) => {
-        const files = Array.from(e.target.files).map((file) => ({
-            name: file.name,
-            source: URL.createObjectURL(file),
-            duration: 0,
-        }));
-        setMediaFiles((prev) => [...prev, ...files]);
+        const files = Array.from(e.target.files).map((file) => {
+            const isAudio = file.type.startsWith('audio/');
+            const fileObj = {
+                name: file.name,
+                source: URL.createObjectURL(file),
+                duration: 0,
+                type: isAudio ? 'audio' : 'video',
+                startTime: 0, // default
+            };
+            return fileObj;
+        });
+
+        const audioFiles = files.filter(f => f.type === 'audio');
+        const videoFiles = files.filter(f => f.type === 'video');
+
+        setMediaFiles((prev) => [...prev, ...videoFiles]);
+        setMusicTracks((prev) => [...prev, ...audioFiles]);
     };
 
     const handleDragStart = (e, index) => {
@@ -36,7 +50,13 @@ export default function Editor({ project }) {
         e.preventDefault();
         const index = parseInt(e.dataTransfer.getData('index'));
         const file = mediaFiles[index];
-        if (file) setClips((prev) => [...prev, { ...file }]);
+        if (!file) return;
+
+        if (file.type === 'video') {
+            setClips((prev) => [...prev, { ...file }]);
+        } else if (file.type === 'audio') {
+            setMusicTracks((prev) => [...prev, { ...file, startTime: currentTime }]); // place at playhead
+        }
     };
 
     const handleSave = () => {
@@ -44,10 +64,11 @@ export default function Editor({ project }) {
             project_id: project.id,
             media_files: mediaFiles,
             clips: clips,
+            music_tracks: musicTracks,
         });
     };
 
-    // Fetch clip durations
+    // load durations
     useEffect(() => {
         clips.forEach((clip, i) => {
             if (!clip.duration) {
@@ -62,14 +83,27 @@ export default function Editor({ project }) {
                 };
             }
         });
-    }, [clips]);
 
-    // Compute total timeline duration
+        musicTracks.forEach((track, i) => {
+            if (!track.duration) {
+                const audio = document.createElement('audio');
+                audio.src = track.source;
+                audio.onloadedmetadata = () => {
+                    setMusicTracks((prev) => {
+                        const updated = [...prev];
+                        updated[i].duration = audio.duration;
+                        return updated;
+                    });
+                };
+            }
+        });
+    }, [clips, musicTracks]);
+
     const totalDuration = useMemo(() => {
         return clips.reduce((sum, c) => sum + (c.duration || 0), 0) || globalDuration;
     }, [clips, globalDuration]);
 
-    // Switch active clip
+    // switch clips
     useEffect(() => {
         if (videoRef.current && clips[activeClipIndex]) {
             videoRef.current.src = clips[activeClipIndex].source;
@@ -78,7 +112,7 @@ export default function Editor({ project }) {
         }
     }, [activeClipIndex, clips]);
 
-    // Sync playback across clips
+    // time sync
     useEffect(() => {
         const video = videoRef.current;
         if (!video) return;
@@ -87,7 +121,28 @@ export default function Editor({ project }) {
             const elapsedBefore = clips
                 .slice(0, activeClipIndex)
                 .reduce((sum, c) => sum + (c.duration || 0), 0);
-            setCurrentTime(elapsedBefore + video.currentTime);
+            const globalTime = elapsedBefore + video.currentTime;
+            setCurrentTime(globalTime);
+
+            // sync music with playhead
+            musicTracks.forEach((track, i) => {
+                const audio = audioRefs.current[i];
+                if (!audio) return;
+                if (globalTime >= track.startTime && globalTime <= track.startTime + track.duration) {
+                    const relativeTime = globalTime - track.startTime;
+                    if (Math.abs(audio.currentTime - relativeTime) > 0.2) {
+                        audio.currentTime = relativeTime;
+                    }
+                    if (video.paused) {
+                        audio.pause();
+                    } else {
+                        audio.play().catch(() => {});
+                    }
+                } else {
+                    audio.pause();
+                    audio.currentTime = 0;
+                }
+            });
         };
 
         const onEnded = () => {
@@ -97,6 +152,12 @@ export default function Editor({ project }) {
                 video.pause();
                 setActiveClipIndex(0);
                 setCurrentTime(0);
+                audioRefs.current.forEach((a) => {
+                    if (a) {
+                        a.pause();
+                        a.currentTime = 0;
+                    }
+                });
             }
         };
 
@@ -107,9 +168,8 @@ export default function Editor({ project }) {
             video.removeEventListener('timeupdate', onTimeUpdate);
             video.removeEventListener('ended', onEnded);
         };
-    }, [clips, activeClipIndex]);
+    }, [clips, activeClipIndex, musicTracks]);
 
-    // Seek in timeline
     const handleSeek = (e) => {
         const rect = e.currentTarget.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
@@ -132,25 +192,40 @@ export default function Editor({ project }) {
             videoRef.current.currentTime = newGlobalTime - acc;
             videoRef.current.play().catch(() => {});
         }
+
+        // sync all music instantly
+        musicTracks.forEach((track, i) => {
+            const audio = audioRefs.current[i];
+            if (!audio) return;
+            if (newGlobalTime >= track.startTime && newGlobalTime <= track.startTime + track.duration) {
+                audio.currentTime = newGlobalTime - track.startTime;
+                if (!videoRef.current.paused) audio.play().catch(() => {});
+            } else {
+                audio.pause();
+                audio.currentTime = 0;
+            }
+        });
     };
 
-    // Keyboard shortcuts
+    // hotkeys
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.code === 'Space') {
                 e.preventDefault();
                 togglePlay();
             }
-            if (e.code === 'Backspace' || e.code === 'Delete') {
-                if (selectedClipIndex !== null) {
-                    setClips((prev) => prev.filter((_, i) => i !== selectedClipIndex));
-                    setSelectedClipIndex(null);
-                }
+            if ((e.code === 'Backspace' || e.code === 'Delete') && selectedClipIndex !== null) {
+                setClips((prev) => prev.filter((_, i) => i !== selectedClipIndex));
+                setSelectedClipIndex(null);
+            }
+            if ((e.code === 'Backspace' || e.code === 'Delete') && selectedMusicIndex !== null) {
+                setMusicTracks((prev) => prev.filter((_, i) => i !== selectedMusicIndex));
+                setSelectedMusicIndex(null);
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedClipIndex]);
+    }, [selectedClipIndex, selectedMusicIndex]);
 
     return (
         <AuthenticatedLayout hideNavbar={true}>
@@ -211,7 +286,7 @@ export default function Editor({ project }) {
                             </button>
                         </div>
 
-                        {/* Timeline */}
+                        {/* Video Timeline */}
                         <div
                             className="h-24 bg-gray-300 p-2 flex items-center overflow-x-auto relative cursor-pointer"
                             onClick={handleSeek}
@@ -224,8 +299,10 @@ export default function Editor({ project }) {
                                         <div
                                             key={index}
                                             onClick={(e) => {
-                                                e.stopPropagation(); // prevent seek
-                                                setSelectedClipIndex(index);
+                                                e.stopPropagation();
+                                                setSelectedClipIndex(
+                                                    isSelected ? null : index
+                                                ); // toggle select
                                             }}
                                             className={`h-full rounded flex items-center justify-center text-white cursor-pointer ${
                                                 isSelected ? 'bg-red-500' : 'bg-blue-500'
@@ -244,6 +321,43 @@ export default function Editor({ project }) {
                                         left: `${(currentTime / totalDuration) * 1200}px`,
                                     }}
                                 />
+                            </div>
+                        </div>
+
+                        {/* Music Timeline */}
+                        <div
+                            className="h-16 bg-yellow-100 p-2 flex items-center overflow-x-auto relative cursor-pointer"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedMusicIndex(null);
+                            }}
+                        >
+                            <div className="flex items-center" style={{ width: '1200px' }}>
+                                {musicTracks.map((track, index) => {
+                                    const width = (track.duration / totalDuration) * 1200;
+                                    const isSelected = selectedMusicIndex === index;
+                                    return (
+                                        <div
+                                            key={index}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedMusicIndex(
+                                                    isSelected ? null : index
+                                                ); // toggle select
+                                            }}
+                                            className={`h-full rounded flex items-center justify-center text-black cursor-pointer ${
+                                                isSelected ? 'bg-purple-500' : 'bg-purple-300'
+                                            }`}
+                                            style={{ width: `${width}px` }}
+                                        >
+                                            {track.name}
+                                            <audio
+                                                ref={(el) => (audioRefs.current[index] = el)}
+                                                src={track.source}
+                                            />
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     </div>

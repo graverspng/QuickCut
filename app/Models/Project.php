@@ -9,11 +9,19 @@ class Project extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['user_id', 'name', 'media_files', 'clips', 'is_premium'];
+    protected $fillable = [
+        'user_id',
+        'name',
+        'media_files',
+        'clips',
+        'music_tracks', // added
+        'is_premium'
+    ];
 
     protected $casts = [
         'media_files' => 'array',
         'clips' => 'array',
+        'music_tracks' => 'array', // added
         'is_premium' => 'boolean',
     ];
 

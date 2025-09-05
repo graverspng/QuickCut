@@ -27,10 +27,11 @@ class ProjectController extends Controller
             'name' => $request->name,
             'media_files' => [],
             'clips' => [],
+            'music_tracks' => [], // added
         ]);
     
-        // Redirect to editor page
         return redirect()->route('editor', ['project' => $project->id]);
     }
+    
     
 }
