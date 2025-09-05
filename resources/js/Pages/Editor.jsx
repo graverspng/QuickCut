@@ -12,7 +12,7 @@ export default function Editor({ project }) {
     const [currentTime, setCurrentTime] = useState(0);
     const [globalDuration, setGlobalDuration] = useState(60);
     const videoRef = useRef(null);
-    const audioRefs = useRef([]); // keep refs for music
+    const audioRefs = useRef([]);
 
     const togglePlay = () => {
         if (!videoRef.current) return;
@@ -30,7 +30,7 @@ export default function Editor({ project }) {
                 source: URL.createObjectURL(file),
                 duration: 0,
                 type: isAudio ? 'audio' : 'video',
-                startTime: 0, // default
+                startTime: 0,
             };
             return fileObj;
         });
@@ -55,7 +55,7 @@ export default function Editor({ project }) {
         if (file.type === 'video') {
             setClips((prev) => [...prev, { ...file }]);
         } else if (file.type === 'audio') {
-            setMusicTracks((prev) => [...prev, { ...file, startTime: currentTime }]); // place at playhead
+            setMusicTracks((prev) => [...prev, { ...file, startTime: currentTime }]);
         }
     };
 
@@ -66,6 +66,49 @@ export default function Editor({ project }) {
             clips: clips,
             music_tracks: musicTracks,
         });
+    };
+
+    // ✂️ CUT TOOL FUNCTION
+    const handleCut = () => {
+        let acc = 0;
+        let targetIndex = null;
+        let relativeTime = 0;
+
+        for (let i = 0; i < clips.length; i++) {
+            if (currentTime < acc + clips[i].duration) {
+                targetIndex = i;
+                relativeTime = currentTime - acc;
+                break;
+            }
+            acc += clips[i].duration;
+        }
+
+        if (targetIndex === null) return;
+
+        const clip = clips[targetIndex];
+
+        // only cut if inside the clip, not at start or end
+        if (relativeTime <= 0 || relativeTime >= clip.duration) return;
+
+        const before = {
+            ...clip,
+            name: clip.name + ' (Part 1)',
+            duration: relativeTime,
+        };
+        const after = {
+            ...clip,
+            name: clip.name + ' (Part 2)',
+            duration: clip.duration - relativeTime,
+        };
+
+        const newClips = [
+            ...clips.slice(0, targetIndex),
+            before,
+            after,
+            ...clips.slice(targetIndex + 1),
+        ];
+
+        setClips(newClips);
     };
 
     // load durations
@@ -103,7 +146,7 @@ export default function Editor({ project }) {
         return clips.reduce((sum, c) => sum + (c.duration || 0), 0) || globalDuration;
     }, [clips, globalDuration]);
 
-    // switch clips
+    // clip switching
     useEffect(() => {
         if (videoRef.current && clips[activeClipIndex]) {
             videoRef.current.src = clips[activeClipIndex].source;
@@ -112,7 +155,7 @@ export default function Editor({ project }) {
         }
     }, [activeClipIndex, clips]);
 
-    // time sync
+    // sync video + music
     useEffect(() => {
         const video = videoRef.current;
         if (!video) return;
@@ -124,7 +167,6 @@ export default function Editor({ project }) {
             const globalTime = elapsedBefore + video.currentTime;
             setCurrentTime(globalTime);
 
-            // sync music with playhead
             musicTracks.forEach((track, i) => {
                 const audio = audioRefs.current[i];
                 if (!audio) return;
@@ -193,7 +235,6 @@ export default function Editor({ project }) {
             videoRef.current.play().catch(() => {});
         }
 
-        // sync all music instantly
         musicTracks.forEach((track, i) => {
             const audio = audioRefs.current[i];
             if (!audio) return;
@@ -240,6 +281,12 @@ export default function Editor({ project }) {
                             className="bg-gray-200 px-3 py-1 rounded hover:bg-gray-300"
                         >
                             Back
+                        </button>
+                        <button
+                            onClick={handleCut}
+                            className="bg-blue-500 px-3 py-1 rounded text-white hover:bg-blue-600"
+                        >
+                            ✂️ Cut Clip
                         </button>
                         <button
                             onClick={handleSave}
@@ -302,7 +349,7 @@ export default function Editor({ project }) {
                                                 e.stopPropagation();
                                                 setSelectedClipIndex(
                                                     isSelected ? null : index
-                                                ); // toggle select
+                                                );
                                             }}
                                             className={`h-full rounded flex items-center justify-center text-white cursor-pointer ${
                                                 isSelected ? 'bg-red-500' : 'bg-blue-500'
@@ -343,7 +390,7 @@ export default function Editor({ project }) {
                                                 e.stopPropagation();
                                                 setSelectedMusicIndex(
                                                     isSelected ? null : index
-                                                ); // toggle select
+                                                );
                                             }}
                                             className={`h-full rounded flex items-center justify-center text-black cursor-pointer ${
                                                 isSelected ? 'bg-purple-500' : 'bg-purple-300'
