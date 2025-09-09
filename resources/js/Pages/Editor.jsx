@@ -26,7 +26,7 @@ export default function Editor({ project }) {
     const handleFileUpload = (e) => {
         const files = Array.from(e.target.files).map((file) => {
             const isAudio = file.type.startsWith('audio/');
-            const fileObj = {
+            return {
                 name: file.name,
                 source: URL.createObjectURL(file),
                 duration: 0,
@@ -35,7 +35,6 @@ export default function Editor({ project }) {
                 startTime: 0,
                 sourceDuration: 0,
             };
-            return fileObj;
         });
 
         const audioFiles = files.filter((f) => f.type === 'audio');
@@ -56,7 +55,7 @@ export default function Editor({ project }) {
         if (!file) return;
 
         if (file.type === 'video') {
-            setClips((prev) => [...prev, { ...file, startOffset: 0 }]);
+            setClips((prev) => [...prev, { ...file, startOffset: 0, startTime: prev.reduce((sum, c) => sum + (c.duration || 0), 0) }]);
         } else if (file.type === 'audio') {
             setMusicTracks((prev) => [...prev, { ...file, startTime: currentTime, startOffset: 0 }]);
         }
@@ -77,21 +76,19 @@ export default function Editor({ project }) {
             const clip = clips[targetIndex];
             if (!clip || clip.type === 'gap') return;
 
-            const elapsedBefore = clips.slice(0, targetIndex).reduce((s, c) => s + (c.duration || 0), 0);
-            const relativeTime = currentTime - elapsedBefore;
-
+            const relativeTime = currentTime - (clip.startTime || 0);
             if (relativeTime <= 0 || relativeTime >= (clip.duration || 0)) return;
 
             const before = {
                 ...clip,
-                name: clip.name,
                 startOffset: clip.startOffset || 0,
+                startTime: clip.startTime,
                 duration: relativeTime,
             };
             const after = {
                 ...clip,
-                name: clip.name,
                 startOffset: (clip.startOffset || 0) + relativeTime,
+                startTime: (clip.startTime || 0) + relativeTime,
                 duration: (clip.duration || 0) - relativeTime,
             };
 
@@ -115,7 +112,6 @@ export default function Editor({ project }) {
 
             const before = {
                 ...track,
-                name: track.name,
                 startOffset: track.startOffset || 0,
                 startTime: track.startTime,
                 duration: relativeTime,
@@ -123,7 +119,6 @@ export default function Editor({ project }) {
 
             const after = {
                 ...track,
-                name: track.name,
                 startOffset: (track.startOffset || 0) + relativeTime,
                 startTime: (track.startTime || 0) + relativeTime,
                 duration: (track.duration || 0) - relativeTime,
@@ -140,6 +135,62 @@ export default function Editor({ project }) {
         }
     };
 
+    // --- DRAG & DROP HANDLERS FOR CLIPS & MUSIC ---
+
+    const handleClipDragStart = (e, index) => {
+        e.dataTransfer.setData('clipIndex', index);
+    };
+
+    const handleClipDrop = (e, dropIndex) => {
+        e.preventDefault();
+        const draggedIndex = parseInt(e.dataTransfer.getData('clipIndex'));
+        if (draggedIndex === dropIndex) return;
+
+        setClips((prev) => {
+            const updated = [...prev];
+            const [draggedClip] = updated.splice(draggedIndex, 1);
+            updated.splice(dropIndex, 0, draggedClip);
+
+            // Recalculate timeline startTime
+            let accumulated = 0;
+            return updated.map((clip) => {
+                const c = { ...clip };
+                c.startTime = accumulated;
+                accumulated += c.duration || 0;
+                return c;
+            });
+        });
+
+        setSelectedClipIndex(dropIndex);
+    };
+
+    const handleTrackDragStart = (e, index) => {
+        e.dataTransfer.setData('trackIndex', index);
+    };
+
+    const handleTrackDrop = (e, dropIndex) => {
+        e.preventDefault();
+        const draggedIndex = parseInt(e.dataTransfer.getData('trackIndex'));
+        if (draggedIndex === dropIndex) return;
+
+        setMusicTracks((prev) => {
+            const updated = [...prev];
+            const [draggedTrack] = updated.splice(draggedIndex, 1);
+            updated.splice(dropIndex, 0, draggedTrack);
+
+            let accumulated = 0;
+            return updated.map((track) => {
+                const t = { ...track };
+                t.startTime = accumulated;
+                accumulated += t.duration || 0;
+                return t;
+            });
+        });
+
+        setSelectedMusicIndex(dropIndex);
+    };
+
+    // --- LOAD CLIP & TRACK METADATA ---
     useEffect(() => {
         clips.forEach((clip, i) => {
             if (!clip.source) return;
@@ -153,8 +204,8 @@ export default function Editor({ project }) {
                         const c = { ...list[i] };
                         const srcDur = vid.duration || 0;
                         c.sourceDuration = srcDur;
-                        const startOffset = c.startOffset || 0;
                         if (!c.duration || c.duration <= 0) {
+                            const startOffset = c.startOffset || 0;
                             c.duration = Math.max(0, srcDur - startOffset);
                         }
                         list[i] = c;
@@ -193,6 +244,7 @@ export default function Editor({ project }) {
         return s || globalDuration;
     }, [clips, globalDuration]);
 
+    // --- VIDEO PLAYBACK ---
     useEffect(() => {
         const video = videoRef.current;
         const seg = clips[activeClipIndex];
@@ -214,16 +266,13 @@ export default function Editor({ project }) {
             const seg = clips[activeClipIndex];
             if (!seg) return;
 
-            const segStartOffset = seg.startOffset || 0;
+            const segStartTime = seg.startTime || 0;
             const segDuration = seg.duration || 0;
-            const segEndInSource = segStartOffset + segDuration;
 
-            const segRelative = Math.max(0, (video.currentTime || 0) - segStartOffset);
-            const elapsedBefore = clips.slice(0, activeClipIndex).reduce((s, c) => s + (c.duration || 0), 0);
-            const globalTime = elapsedBefore + segRelative;
+            const globalTime = segStartTime + (video.currentTime - (seg.startOffset || 0));
             setCurrentTime(globalTime);
 
-            if ((video.currentTime || 0) >= segEndInSource - 0.05) {
+            if ((video.currentTime || 0) >= (seg.startOffset || 0) + segDuration - 0.05) {
                 if (activeClipIndex < clips.length - 1) {
                     setActiveClipIndex((p) => p + 1);
                 } else {
@@ -253,12 +302,8 @@ export default function Editor({ project }) {
                     if (Math.abs((audio.currentTime || 0) - desired) > 0.25) {
                         audio.currentTime = desired;
                     }
-                    if (!video.paused && audio.paused) {
-                        audio.play().catch(() => {});
-                    }
-                    if (video.paused && !audio.paused) {
-                        audio.pause();
-                    }
+                    if (!video.paused && audio.paused) audio.play().catch(() => {});
+                    if (video.paused && !audio.paused) audio.pause();
                 } else if (globalTime < trackStart) {
                     audio.pause();
                     audio.currentTime = track.startOffset || 0;
@@ -278,19 +323,18 @@ export default function Editor({ project }) {
         const timelineWidth = rect.width;
         const newGlobalTime = (clickX / timelineWidth) * totalDuration;
 
-        let acc = 0;
         let newIndex = 0;
         for (let i = 0; i < clips.length; i++) {
-            const segDur = clips[i].duration || 0;
-            if (newGlobalTime < acc + segDur) {
+            const clipStart = clips[i].startTime || 0;
+            const clipEnd = clipStart + (clips[i].duration || 0);
+            if (newGlobalTime >= clipStart && newGlobalTime < clipEnd) {
                 newIndex = i;
                 break;
             }
-            acc += segDur;
         }
 
         const seg = clips[newIndex];
-        const segRelative = Math.max(0, newGlobalTime - acc);
+        const segRelative = Math.max(0, newGlobalTime - (seg?.startTime || 0));
         const seekTimeInSource = (seg?.startOffset || 0) + segRelative;
 
         setActiveClipIndex(newIndex);
@@ -385,7 +429,6 @@ export default function Editor({ project }) {
             <Head title={project.name} />
 
             <div className="editor-container">
-                {/* Hidden preloaders */}
                 <div style={{ display: "none" }}>
                     {clips.map((clip, i) => (
                         <video key={i} src={clip.source} preload="auto" />
@@ -439,6 +482,10 @@ export default function Editor({ project }) {
                                     return (
                                         <div
                                             key={index}
+                                            draggable
+                                            onDragStart={(e) => handleClipDragStart(e, index)}
+                                            onDragOver={(e) => e.preventDefault()}
+                                            onDrop={(e) => handleClipDrop(e, index)}
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setSelectedClipIndex(isSelected ? null : index);
@@ -470,10 +517,15 @@ export default function Editor({ project }) {
                             <div className="flex items-center" style={{ width: '1200px' }}>
                                 {musicTracks.map((track, index) => {
                                     const width = (track.duration / totalDuration) * 1200;
-                                    const isSelected = selectedMusicIndex === index;
+                                    const isSelected = selectedMusicIndex
+                                    === index;
                                     return (
                                         <div
                                             key={index}
+                                            draggable
+                                            onDragStart={(e) => handleTrackDragStart(e, index)}
+                                            onDragOver={(e) => e.preventDefault()}
+                                            onDrop={(e) => handleTrackDrop(e, index)}
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setSelectedMusicIndex(isSelected ? null : index);
