@@ -3,7 +3,6 @@ import { Head, router } from '@inertiajs/react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import '@/../css/Editor.css';
 
-
 export default function Editor({ project }) {
     const [mediaFiles, setMediaFiles] = useState(project.media_files || []);
     const [clips, setClips] = useState(project.clips || []);
@@ -72,9 +71,7 @@ export default function Editor({ project }) {
         });
     };
 
-    // ✂️ Cut function (unchanged semantics)
     const handleCut = () => {
-        // If a clip is selected, cut that clip at playhead (segment-relative).
         if (selectedClipIndex !== null) {
             const targetIndex = selectedClipIndex;
             const clip = clips[targetIndex];
@@ -108,7 +105,6 @@ export default function Editor({ project }) {
             return;
         }
 
-        // If an audio (music) is selected, cut that track at playhead (global time relative to track)
         if (selectedMusicIndex !== null) {
             const tIndex = selectedMusicIndex;
             const track = musicTracks[tIndex];
@@ -142,17 +138,15 @@ export default function Editor({ project }) {
             setSelectedMusicIndex(tIndex + 1);
             return;
         }
-
-        // nothing selected -> do nothing
     };
 
-    // Load durations and sourceDuration
     useEffect(() => {
         clips.forEach((clip, i) => {
             if (!clip.source) return;
             if (!clip.sourceDuration || !clip.duration) {
                 const vid = document.createElement('video');
                 vid.src = clip.source;
+                vid.preload = 'auto';
                 vid.onloadedmetadata = () => {
                     setClips((prev) => {
                         const list = [...prev];
@@ -175,6 +169,7 @@ export default function Editor({ project }) {
             if (!track.sourceDuration || !track.duration) {
                 const aud = document.createElement('audio');
                 aud.src = track.source;
+                aud.preload = 'auto';
                 aud.onloadedmetadata = () => {
                     setMusicTracks((prev) => {
                         const arr = [...prev];
@@ -198,30 +193,19 @@ export default function Editor({ project }) {
         return s || globalDuration;
     }, [clips, globalDuration]);
 
-    // Switch active clip — seek to segment startOffset
     useEffect(() => {
         const video = videoRef.current;
         const seg = clips[activeClipIndex];
         if (!video || !seg) return;
 
-        video.src = seg.source;
         const start = seg.startOffset || 0;
+        video.src = seg.source;
+        video.currentTime = start;
 
-        const seekAndPlay = () => {
-            video.currentTime = start;
-            video.play().catch(() => {});
-            video.removeEventListener('loadedmetadata', seekAndPlay);
-        };
-
-        if (isFinite(video.duration) && video.duration > 0) {
-            video.currentTime = start;
-            video.play().catch(() => {});
-        } else {
-            video.addEventListener('loadedmetadata', seekAndPlay);
-        }
+        const playPromise = video.play();
+        if (playPromise !== undefined) playPromise.catch(() => {});
     }, [activeClipIndex, clips]);
 
-    // Sync video + music and enforce segment ends
     useEffect(() => {
         const video = videoRef.current;
         if (!video) return;
@@ -235,12 +219,11 @@ export default function Editor({ project }) {
             const segEndInSource = segStartOffset + segDuration;
 
             const segRelative = Math.max(0, (video.currentTime || 0) - segStartOffset);
-
             const elapsedBefore = clips.slice(0, activeClipIndex).reduce((s, c) => s + (c.duration || 0), 0);
             const globalTime = elapsedBefore + segRelative;
             setCurrentTime(globalTime);
 
-            if ((video.currentTime || 0) >= segEndInSource - 0.03) {
+            if ((video.currentTime || 0) >= segEndInSource - 0.05) {
                 if (activeClipIndex < clips.length - 1) {
                     setActiveClipIndex((p) => p + 1);
                 } else {
@@ -254,10 +237,8 @@ export default function Editor({ project }) {
                         }
                     });
                 }
-                return;
             }
 
-            // Music sync (keeps playing until natural end; before-start resets to offset)
             musicTracks.forEach((track, i) => {
                 const audio = audioRefs.current[i];
                 if (!audio) return;
@@ -282,35 +263,13 @@ export default function Editor({ project }) {
                     audio.pause();
                     audio.currentTime = track.startOffset || 0;
                 } else {
-                    // past track end — pause but do not reset (allow natural end if it was playing)
                     audio.pause();
                 }
             });
         };
 
-        const onEnded = () => {
-            if (activeClipIndex < clips.length - 1) {
-                setActiveClipIndex((p) => p + 1);
-            } else {
-                video.pause();
-                setActiveClipIndex(0);
-                setCurrentTime(0);
-                audioRefs.current.forEach((a) => {
-                    if (a) {
-                        a.pause();
-                        a.currentTime = 0;
-                    }
-                });
-            }
-        };
-
         video.addEventListener('timeupdate', onTimeUpdate);
-        video.addEventListener('ended', onEnded);
-
-        return () => {
-            video.removeEventListener('timeupdate', onTimeUpdate);
-            video.removeEventListener('ended', onEnded);
-        };
+        return () => video.removeEventListener('timeupdate', onTimeUpdate);
     }, [clips, activeClipIndex, musicTracks]);
 
     const handleSeek = (e) => {
@@ -338,20 +297,10 @@ export default function Editor({ project }) {
 
         if (videoRef.current && seg) {
             videoRef.current.src = seg.source;
-            const doSeek = () => {
-                videoRef.current.currentTime = seekTimeInSource;
-                videoRef.current.play().catch(() => {});
-                videoRef.current.removeEventListener('loadedmetadata', doSeek);
-            };
-            if (isFinite(videoRef.current.duration) && videoRef.current.duration > 0) {
-                videoRef.current.currentTime = seekTimeInSource;
-                videoRef.current.play().catch(() => {});
-            } else {
-                videoRef.current.addEventListener('loadedmetadata', doSeek);
-            }
+            videoRef.current.currentTime = seekTimeInSource;
+            videoRef.current.play().catch(() => {});
         }
 
-        // sync audio elements
         musicTracks.forEach((track, i) => {
             const audio = audioRefs.current[i];
             if (!audio) return;
@@ -371,7 +320,6 @@ export default function Editor({ project }) {
         });
     };
 
-    // Hotkeys: with audio deletion ripple behavior
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.code === 'Space') {
@@ -379,13 +327,11 @@ export default function Editor({ project }) {
                 togglePlay();
             }
 
-            // Delete video clip (removes the clip)
             if ((e.code === 'Backspace' || e.code === 'Delete') && selectedClipIndex !== null) {
                 setClips((prev) => prev.filter((_, i) => i !== selectedClipIndex));
                 setSelectedClipIndex(null);
             }
 
-            // Delete audio segment -> ripple-delete for subsequent tracks (shift startTime left)
             if ((e.code === 'Backspace' || e.code === 'Delete') && selectedMusicIndex !== null) {
                 setMusicTracks((prev) => {
                     const delIndex = selectedMusicIndex;
@@ -393,9 +339,8 @@ export default function Editor({ project }) {
                     if (!deleted) return prev;
                     const delDur = deleted.duration || 0;
 
-                    // build new tracks with startTime shifted for those after deleted index
                     const newTracks = prev.reduce((acc, t, i) => {
-                        if (i === delIndex) return acc; // skip deleted
+                        if (i === delIndex) return acc;
                         const copy = { ...t };
                         if (i > delIndex) {
                             copy.startTime = Math.max(0, (copy.startTime || 0) - delDur);
@@ -404,8 +349,6 @@ export default function Editor({ project }) {
                         return acc;
                     }, []);
 
-                    // after state update, re-sync audio elements to currentTime
-                    // use small timeout so DOM refs update after render
                     setTimeout(() => {
                         newTracks.forEach((track, idx) => {
                             const audio = audioRefs.current[idx];
@@ -415,14 +358,12 @@ export default function Editor({ project }) {
                             const tOffset = track.startOffset || 0;
 
                             if (currentTime >= tStart && currentTime <= tStart + tDur) {
-                                // inside — seek to correct position and play if video playing
                                 audio.currentTime = tOffset + (currentTime - tStart);
                                 if (!videoRef.current.paused) audio.play().catch(() => {});
                             } else if (currentTime < tStart) {
                                 audio.pause();
                                 audio.currentTime = tOffset;
                             } else {
-                                // past end
                                 audio.pause();
                             }
                         });
@@ -444,7 +385,13 @@ export default function Editor({ project }) {
             <Head title={project.name} />
 
             <div className="editor-container">
-                {/* Header */}
+                {/* Hidden preloaders */}
+                <div style={{ display: "none" }}>
+                    {clips.map((clip, i) => (
+                        <video key={i} src={clip.source} preload="auto" />
+                    ))}
+                </div>
+
                 <div className="editor-header">
                     <h2>{project.name}</h2>
                     <div>
@@ -455,7 +402,6 @@ export default function Editor({ project }) {
                 </div>
 
                 <div className="editor-main">
-                    {/* Media Library */}
                     <div className="media-library">
                         <h3>Media Library</h3>
                         <input type="file" multiple onChange={handleFileUpload} className="mb-2" />
@@ -473,13 +419,11 @@ export default function Editor({ project }) {
                         </div>
                     </div>
 
-                    {/* Editor Area */}
                     <div
                         className="editor-area"
                         onDrop={handleDrop}
                         onDragOver={(e) => e.preventDefault()}
                     >
-                        {/* Video Player */}
                         <div className="video-player">
                             <video ref={videoRef} />
                             <button className="play-btn" onClick={togglePlay}>
@@ -487,7 +431,6 @@ export default function Editor({ project }) {
                             </button>
                         </div>
 
-                        {/* Video Timeline */}
                         <div className="timeline" onClick={handleSeek}>
                             <div className="flex items-center" style={{ width: '1200px' }}>
                                 {clips.map((clip, index) => {
@@ -508,7 +451,6 @@ export default function Editor({ project }) {
                                     );
                                 })}
 
-                                {/* Playhead */}
                                 <div
                                     className="playhead"
                                     style={{
@@ -518,7 +460,6 @@ export default function Editor({ project }) {
                             </div>
                         </div>
 
-                        {/* Music Timeline */}
                         <div
                             className="music-timeline"
                             onClick={(e) => {
