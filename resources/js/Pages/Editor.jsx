@@ -1,6 +1,8 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router } from '@inertiajs/react';
 import { useState, useRef, useEffect, useMemo } from 'react';
+import '@/../css/Editor.css';
+
 
 export default function Editor({ project }) {
     const [mediaFiles, setMediaFiles] = useState(project.media_files || []);
@@ -441,43 +443,29 @@ export default function Editor({ project }) {
         <AuthenticatedLayout hideNavbar={true}>
             <Head title={project.name} />
 
-            <div className="flex flex-col h-screen p-4">
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-2xl font-bold text-gray-800">{project.name}</h2>
-                    <div className="flex space-x-2">
-                        <button
-                            onClick={goBack}
-                            className="bg-gray-200 px-3 py-1 rounded hover:bg-gray-300"
-                        >
-                            Back
-                        </button>
-                        <button
-                            onClick={handleCut}
-                            className="bg-blue-500 px-3 py-1 rounded text-white hover:bg-blue-600"
-                        >
-                            ✂️ Cut Clip
-                        </button>
-                        <button
-                            onClick={handleSave}
-                            className="bg-green-500 px-3 py-1 rounded text-white hover:bg-green-600"
-                        >
-                            Save
-                        </button>
+            <div className="editor-container">
+                {/* Header */}
+                <div className="editor-header">
+                    <h2>{project.name}</h2>
+                    <div>
+                        <button onClick={goBack} className="back-btn">Back</button>
+                        <button onClick={handleCut} className="cut-btn">✂️ Cut Clip</button>
+                        <button onClick={handleSave} className="save-btn">Save</button>
                     </div>
                 </div>
 
-                <div className="flex flex-1 overflow-hidden">
+                <div className="editor-main">
                     {/* Media Library */}
-                    <div className="w-1/4 bg-gray-100 border-r overflow-y-auto p-4">
-                        <h3 className="font-semibold mb-2">Media Library</h3>
+                    <div className="media-library">
+                        <h3>Media Library</h3>
                         <input type="file" multiple onChange={handleFileUpload} className="mb-2" />
-                        <div className="space-y-2">
+                        <div>
                             {mediaFiles.map((file, index) => (
                                 <div
                                     key={index}
                                     draggable
                                     onDragStart={(e) => handleDragStart(e, index)}
-                                    className="bg-gray-200 h-16 flex items-center justify-center cursor-pointer"
+                                    className="media-item"
                                 >
                                     {file.name}
                                 </div>
@@ -487,26 +475,20 @@ export default function Editor({ project }) {
 
                     {/* Editor Area */}
                     <div
-                        className="flex-1 flex flex-col bg-gray-50"
+                        className="editor-area"
                         onDrop={handleDrop}
                         onDragOver={(e) => e.preventDefault()}
                     >
                         {/* Video Player */}
-                        <div className="flex-1 relative bg-black flex justify-center items-center">
-                            <video ref={videoRef} className="w-full h-full object-contain" />
-                            <button
-                                className="absolute bottom-2 left-2 bg-white px-2 py-1 rounded"
-                                onClick={togglePlay}
-                            >
+                        <div className="video-player">
+                            <video ref={videoRef} />
+                            <button className="play-btn" onClick={togglePlay}>
                                 Play / Pause
                             </button>
                         </div>
 
                         {/* Video Timeline */}
-                        <div
-                            className="h-24 bg-gray-300 p-2 flex items-center overflow-x-auto relative cursor-pointer"
-                            onClick={handleSeek}
-                        >
+                        <div className="timeline" onClick={handleSeek}>
                             <div className="flex items-center" style={{ width: '1200px' }}>
                                 {clips.map((clip, index) => {
                                     const width = (clip.duration / totalDuration) * 1200;
@@ -518,9 +500,7 @@ export default function Editor({ project }) {
                                                 e.stopPropagation();
                                                 setSelectedClipIndex(isSelected ? null : index);
                                             }}
-                                            className={`h-full rounded flex items-center justify-center text-white cursor-pointer ${
-                                                isSelected ? 'bg-red-500' : 'bg-blue-500'
-                                            }`}
+                                            className={`clip ${isSelected ? 'selected' : ''}`}
                                             style={{ width: `${width}px` }}
                                         >
                                             {clip.name}
@@ -530,7 +510,7 @@ export default function Editor({ project }) {
 
                                 {/* Playhead */}
                                 <div
-                                    className="absolute top-0 bottom-0 w-1 bg-red-700"
+                                    className="playhead"
                                     style={{
                                         left: `${(currentTime / totalDuration) * 1200}px`,
                                     }}
@@ -540,7 +520,7 @@ export default function Editor({ project }) {
 
                         {/* Music Timeline */}
                         <div
-                            className="h-16 bg-yellow-100 p-2 flex items-center overflow-x-auto relative cursor-pointer"
+                            className="music-timeline"
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedMusicIndex(null);
@@ -557,9 +537,7 @@ export default function Editor({ project }) {
                                                 e.stopPropagation();
                                                 setSelectedMusicIndex(isSelected ? null : index);
                                             }}
-                                            className={`h-full rounded flex items-center justify-center text-black cursor-pointer ${
-                                                isSelected ? 'bg-purple-500' : 'bg-purple-300'
-                                            }`}
+                                            className={`track ${isSelected ? 'selected' : ''}`}
                                             style={{ width: `${width}px` }}
                                         >
                                             {track.name}
