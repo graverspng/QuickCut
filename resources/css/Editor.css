@@ -184,7 +184,6 @@
 }
 
 .clip:hover {
-    transform: scale(1.02);
     opacity: 0.9;
 }
 
@@ -238,3 +237,29 @@
     width: 2px;
     background: red;
 }
+
+/* Extend handles for clip trimming */
+.extend-handle {
+    width: 6px;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.6);
+    cursor: ew-resize;
+    z-index: 20;
+    border-radius: 2px;
+    transition: background 0.2s;
+}
+
+.extend-handle:hover {
+    background: rgba(255, 255, 255, 1);
+}
+
+.extend-handle.left {
+    left: 0;
+}
+
+.extend-handle.right {
+    right: 0;
+}
+
