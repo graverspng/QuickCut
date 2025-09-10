@@ -1,0 +1,74 @@
+:root {
+    --dark: #000;
+    --green-1: #248232;
+    --green-2: #2BA84A;
+    --light: #FCFFFC;
+  }
+  
+  .editor-mobile {
+    background: var(--dark);
+    color: var(--light);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  
+  /* Video Preview */
+  .video-preview {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .video-preview video {
+    width: 100%;
+    height: auto;
+    border-radius: 8px;
+    max-height: 50vh;
+  }
+  
+  /* Controls */
+  .mobile-controls {
+    display: flex;
+    justify-content: space-around;
+    padding: 10px;
+    background: #111;
+    border-top: 1px solid #333;
+  }
+  .mobile-controls button {
+    flex: 1;
+    margin: 0 5px;
+    padding: 12px;
+    font-size: 18px;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    border: none;
+    color: var(--light);
+    background: var(--green-1);
+  }
+  .mobile-controls button:hover {
+    background: var(--green-2);
+  }
+  
+  /* Timeline scrollable */
+  .timeline-mobile {
+    display: flex;
+    overflow-x: auto;
+    padding: 10px;
+    background: #111;
+    gap: 10px;
+  }
+  .clip-mobile, .track-mobile {
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: #222;
+    white-space: nowrap;
+  }
+  .clip-mobile.selected {
+    background: var(--green-2);
+  }
+  .track-mobile.selected {
+    background: #444;
+  }
+  
