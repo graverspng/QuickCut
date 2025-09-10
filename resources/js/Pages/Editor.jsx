@@ -62,13 +62,12 @@ export default function Editor({ project }) {
     };
 
     const handleSave = () => {
-        router.post(route('projects.store'), {
-            project_id: project.id,
+        router.put(route('projects.update', project.id), {
             media_files: mediaFiles,
             clips: clips,
             music_tracks: musicTracks,
         });
-    };
+    };    
 
     const handleCut = () => {
         if (selectedClipIndex !== null) {

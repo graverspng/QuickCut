@@ -15,9 +15,13 @@ class DatabaseSeeder extends Seeder
     {
         // User::factory(10)->create();
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        User::firstOrCreate(
+            ['email' => 'test@example.com'], // search by unique column
+            [
+                'name' => 'Test User',
+                'password' => bcrypt('password'), // required if your model has a non-nullable password
+            ]
+        );
+        
     }
 }

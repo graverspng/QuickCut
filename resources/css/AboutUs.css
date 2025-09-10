@@ -1,13 +1,10 @@
-:root {
+.about-us-background {
     --dark: #040F0F;
     --muted: #2D3A3A;
     --light: #FCFFFC;
     --green-1: #248232;
     --green-2: #2BA84A;
-}
 
-/* Full-page background */
-.about-us-background {
     min-height: 100vh;
     background-color: var(--dark);
     display: flex;
@@ -68,12 +65,22 @@
     margin-top: 1rem;
     line-height: 1.6;
     color: rgba(252, 255, 252, 0.85);
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeInUp 0.8s forwards;
 }
+.about-us-text:nth-of-type(1) { animation-delay: 0.2s; }
+.about-us-text:nth-of-type(2) { animation-delay: 0.4s; }
+.about-us-text:nth-of-type(3) { animation-delay: 0.6s; }
 
 /* Back button container */
 .about-us-back {
     margin-top: 2rem;
     text-align: center;
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeInUp 0.8s forwards;
+    animation-delay: 0.8s;
 }
 
 /* Back button style */
@@ -97,12 +104,53 @@
         0 0 40px rgba(42,168,74,0.10);
 }
 
+/* Tagline big title */
+.about-us-tagline {
+    font-size: 2.8rem;
+    font-weight: 900;
+    text-align: center;
+    margin-top: 2.5rem;
+    opacity: 0;
+    transform: translateY(40px);
+    animation: fadeInUp 1s forwards;
+    animation-delay: 1s;
+    letter-spacing: 1px;
+}
+
+/* Each word gradient */
+.tag-explore {
+    background: linear-gradient(90deg, #248232, #2BA84A);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: glowPulse 4s ease-in-out infinite;
+}
+.tag-create {
+    background: linear-gradient(90deg, #2BA84A, #3CCF65);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: glowPulse 4s ease-in-out infinite;
+    animation-delay: 1s;
+}
+.tag-share {
+    background: linear-gradient(90deg, #3CCF65, #54E07A);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: glowPulse 4s ease-in-out infinite;
+    animation-delay: 2s;
+}
+
+/* Glow pulse */
+@keyframes glowPulse {
+    0%, 100% { text-shadow: 0 0 8px rgba(36,130,50,0.4), 0 0 16px rgba(43,168,74,0.3); }
+    50% { text-shadow: 0 0 20px rgba(36,130,50,0.8), 0 0 40px rgba(43,168,74,0.6); }
+}
+
 /* Fade-in animation */
 @keyframes fadeIn {
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeInUp {
+    to { opacity: 1; transform: translateY(0); }
 }
 
 /* Responsive adjustments */
@@ -110,4 +158,5 @@
     .about-us-container { margin: 1rem; padding: 1.5rem; }
     .about-us-title { font-size: 2rem; }
     .about-us-text { font-size: 1rem; }
+    .about-us-tagline { font-size: 2rem; }
 }

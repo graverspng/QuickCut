@@ -14,15 +14,13 @@ class Project extends Model
         'name',
         'media_files',
         'clips',
-        'music_tracks', // added
-        'is_premium'
+        'music_tracks',
     ];
 
     protected $casts = [
         'media_files' => 'array',
         'clips' => 'array',
-        'music_tracks' => 'array', // added
-        'is_premium' => 'boolean',
+        'music_tracks' => 'array',
     ];
 
     public function user()

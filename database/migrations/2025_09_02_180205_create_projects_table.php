@@ -8,15 +8,21 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('projects', function (Blueprint $table) {
-            $table->json('music_tracks')->nullable()->after('clips');
+        Schema::create('projects', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->string('name')->nullable();
+            $table->text('description')->nullable();
+            $table->json('media_files')->nullable();
+            $table->json('clips')->nullable();
+            $table->json('music_tracks')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
         });
     }
 
     public function down(): void
     {
-        Schema::table('projects', function (Blueprint $table) {
-            $table->dropColumn('music_tracks');
-        });
+        Schema::dropIfExists('projects');
     }
 };

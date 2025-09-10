@@ -1,21 +1,31 @@
 import { Link } from '@inertiajs/react';
 
-export default function NavLink({
-    active = false,
-    className = '',
-    children,
-    ...props
-}) {
+export default function NavLink({ href, active, children }) {
     return (
         <Link
-            {...props}
+            href={href}
             className={
-                'inline-flex items-center border-b-2 px-1 pt-1 text-sm font-medium leading-5 transition duration-150 ease-in-out focus:outline-none ' +
                 (active
-                    ? 'border-indigo-400 text-gray-900 focus:border-indigo-700'
-                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 focus:border-gray-300 focus:text-gray-700') +
-                className
+                    ? "border-b-2 font-semibold"
+                    : "border-b-2 border-transparent") +
+                " inline-flex items-center px-1 pt-1 text-sm transition-colors duration-300 ease-in-out"
             }
+            style={{
+                color: active ? "var(--green-2)" : "var(--green-1)",
+                textShadow: active ? "0 0 8px rgba(43,168,74,0.6)" : "none",
+                transition: "color 0.4s ease, text-shadow 0.6s ease",
+            }}
+            onMouseEnter={(e) => {
+                e.target.style.color = "var(--green-2)";
+                e.target.style.textShadow =
+                    "0 0 8px rgba(43,168,74,0.8), 0 0 14px rgba(43,168,74,0.5)";
+            }}
+            onMouseLeave={(e) => {
+                e.target.style.color = active ? "var(--green-2)" : "var(--green-1)";
+                e.target.style.textShadow = active
+                    ? "0 0 8px rgba(43,168,74,0.6)"
+                    : "none";
+            }}
         >
             {children}
         </Link>

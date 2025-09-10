@@ -1,16 +1,13 @@
-/* ================================
-   🎬 Editor.css — Modern Editor UI
-   ================================ */
-
-   :root {
-    --dark: #000000;    /* full black background */
-    --green-1: #248232; /* darker green */
-    --green-2: #2BA84A; /* bright green accent */
-    --muted: #1a1a1a;   /* dark gray for subtle gradients */
-    --light: #FCFFFC;   /* off-white text */
+:root {
+    --dark: #000000;    /* background */
+    --muted: #1a1a1a;   /* panels */
+    --light: #FCFFFC;   /* text */
+    --green-1: #248232; /* deep green */
+    --green-2: #2BA84A; /* neon green */
+    --green-3: #3CCF65; /* glowing lime */
 }
 
-/* General Layout */
+/* Container */
 .editor-container {
     display: flex;
     flex-direction: column;
@@ -18,63 +15,74 @@
     background: var(--dark);
     color: var(--light);
     font-family: "Inter", sans-serif;
+    overflow: hidden;
 }
 
-/* Top bar */
+/* ========================
+   Header
+   ======================== */
 .editor-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     background: var(--muted);
-    padding: 12px 20px;
+    padding: 16px 24px;
     border-bottom: 1px solid #333;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+    animation: slideDown 0.6s ease;
 }
 
 .editor-header h2 {
-    font-size: 20px;
-    font-weight: 600;
-    color: var(--light);
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--green-2);
+    letter-spacing: 1px;
+    text-shadow: 0 0 8px rgba(43,168,74,0.4);
 }
 
 .editor-header button {
-    background: #2a2a2a;
+    background: #222;
     border: none;
     padding: 8px 16px;
-    margin-left: 8px;
-    border-radius: 6px;
+    margin-left: 10px;
+    border-radius: 8px;
     color: var(--light);
     font-size: 14px;
     cursor: pointer;
-    transition: background 0.2s ease, transform 0.1s ease;
+    transition: all 0.25s ease;
+    box-shadow: 0 0 8px rgba(0,0,0,0.5);
 }
 
 .editor-header button:hover {
-    background: #3a3a3a;
-    transform: scale(1.05);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.6);
 }
 
-.editor-header .save-btn {
-    background: var(--green-2);
+.save-btn {
+    background: linear-gradient(90deg, var(--green-1), var(--green-2));
 }
-.editor-header .save-btn:hover {
-    background: var(--green-1);
-}
-
-.editor-header .cut-btn {
-    background: #3498db;
-}
-.editor-header .cut-btn:hover {
-    background: #2980b9;
+.save-btn:hover {
+    background: var(--green-3);
+    box-shadow: 0 0 20px rgba(60,207,101,0.4);
 }
 
-.editor-header .back-btn {
+.cut-btn {
+    background: linear-gradient(90deg, #3498db, #2980b9);
+}
+.cut-btn:hover {
+    box-shadow: 0 0 20px rgba(52,152,219,0.4);
+}
+
+.back-btn {
+    background: #444;
+}
+.back-btn:hover {
     background: #555;
 }
-.editor-header .back-btn:hover {
-    background: #666;
-}
 
-/* Main body */
+/* ========================
+   Main Layout
+   ======================== */
 .editor-main {
     display: flex;
     flex: 1;
@@ -88,29 +96,33 @@
     border-right: 1px solid #333;
     padding: 16px;
     overflow-y: auto;
+    animation: slideInLeft 0.6s ease;
 }
 
 .media-library h3 {
-    font-size: 16px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--green-2);
     margin-bottom: 12px;
-    color: var(--light);
 }
 
 .media-item {
-    background: #2a2a2a;
+    background: #222;
     height: 60px;
-    border-radius: 8px;
-    margin-bottom: 8px;
+    border-radius: 10px;
+    margin-bottom: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: var(--light);
     cursor: grab;
-    transition: background 0.2s;
+    transition: all 0.25s ease;
+    border: 1px solid rgba(255,255,255,0.05);
 }
-
 .media-item:hover {
-    background: #3a3a3a;
+    background: #2a2a2a;
+    transform: scale(1.03);
+    box-shadow: 0 0 10px rgba(43,168,74,0.3);
 }
 
 /* Editor Area */
@@ -119,6 +131,7 @@
     display: flex;
     flex-direction: column;
     background: var(--dark);
+    animation: fadeIn 0.6s ease;
 }
 
 /* Video Player */
@@ -129,70 +142,75 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    border-bottom: 1px solid #333;
 }
 
 .video-player video {
-    max-width: 100%;
-    max-height: 100%;
-    border-radius: 6px;
-    box-shadow: 0 0 12px rgba(0, 0, 0, 0.6);
+    max-width: 90%;
+    max-height: 90%;
+    border-radius: 10px;
+    box-shadow: 0 0 30px rgba(0,0,0,0.8);
 }
 
 .video-player .play-btn {
     position: absolute;
-    bottom: 12px;
-    left: 12px;
-    background: var(--light);
-    color: var(--dark);
-    padding: 6px 12px;
-    border-radius: 4px;
-    font-size: 13px;
-    font-weight: 600;
+    bottom: 20px;
+    left: 20px;
+    background: linear-gradient(90deg, var(--green-1), var(--green-2));
+    color: var(--light);
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 700;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: all 0.25s ease;
 }
 .video-player .play-btn:hover {
-    background: #ddd;
+    background: var(--green-3);
+    box-shadow: 0 0 20px rgba(60,207,101,0.4);
 }
 
-/* Timeline Base */
+/* ========================
+   Timelines
+   ======================== */
 .timeline {
     height: 100px;
     background: var(--muted);
     border-top: 1px solid #333;
     display: flex;
     align-items: center;
-    overflow-x: auto;
     position: relative;
-    padding: 8px;
+    padding: 10px;
     cursor: pointer;
+    overflow-x: auto;
 }
 
-/* Video clips */
+/* Clips */
 .clip {
     height: 100%;
-    border-radius: 4px;
-    margin-right: 2px;
+    border-radius: 6px;
+    margin-right: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 12px;
-    font-weight: 500;
+    font-weight: 600;
     color: var(--light);
     background: linear-gradient(135deg, var(--green-1), var(--green-2));
-    transition: transform 0.1s;
+    transition: all 0.25s ease;
+    padding: 0 6px;
 }
-
 .clip:hover {
+    transform: scale(1.02);
     opacity: 0.9;
 }
-
 .clip.selected {
     border: 2px solid #ff5555;
     background: #c0392b !important;
+    box-shadow: 0 0 15px rgba(255,85,85,0.4);
 }
 
-/* Music tracks */
+/* Music Tracks */
 .music-timeline {
     height: 70px;
     background: var(--dark);
@@ -201,32 +219,31 @@
     align-items: center;
     overflow-x: auto;
     position: relative;
-    padding: 8px;
+    padding: 10px;
 }
 
 .track {
     height: 100%;
-    border-radius: 4px;
-    margin-right: 2px;
+    border-radius: 6px;
+    margin-right: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: transform 0.1s;
+    font-weight: 600;
     background: linear-gradient(135deg, #9b59b6, #8e44ad);
     color: var(--light);
+    transition: all 0.25s ease;
+    padding: 0 6px;
 }
-
 .track:hover {
-    transform: scale(1.02);
-    opacity: 0.9;
+    transform: scale(1.03);
+    box-shadow: 0 0 15px rgba(155,89,182,0.4);
 }
-
 .track.selected {
     border: 2px solid #ffcc00;
     background: linear-gradient(to right, #e67e22, #d35400);
+    box-shadow: 0 0 15px rgba(230,126,34,0.5);
 }
 
 /* Playhead */
@@ -234,32 +251,23 @@
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 2px;
+    width: 3px;
     background: red;
+    box-shadow: 0 0 10px rgba(255,0,0,0.6);
 }
 
-/* Extend handles for clip trimming */
-.extend-handle {
-    width: 6px;
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    background: rgba(255, 255, 255, 0.6);
-    cursor: ew-resize;
-    z-index: 20;
-    border-radius: 2px;
-    transition: background 0.2s;
+/* ========================
+   Animations
+   ======================== */
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
 }
-
-.extend-handle:hover {
-    background: rgba(255, 255, 255, 1);
+@keyframes slideInLeft {
+    from { opacity: 0; transform: translateX(-40px); }
+    to { opacity: 1; transform: translateX(0); }
 }
-
-.extend-handle.left {
-    left: 0;
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
-
-.extend-handle.right {
-    right: 0;
-}
-

@@ -1,0 +1,203 @@
+:root {
+    --dark: #000000;
+    --muted: #1a1a1a;
+    --light: #FCFFFC;
+    --green-1: #248232;
+    --green-2: #2BA84A;
+}
+
+/* Slide-in fade animation */
+@keyframes slideInUp {
+    0% {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Animate intro text */
+.dashboard-intro {
+    opacity: 0;
+    animation: slideInUp 0.8s ease-out forwards;
+    animation-delay: 100ms;
+}
+
+/* Slide-in animation */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.slide-in {
+    opacity: 0;
+    animation: slideIn 0.6s ease-out forwards;
+}
+
+/* Fade-in-up for text/modal */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in-up {
+    opacity: 0;
+    animation: fadeInUp 0.8s ease-out forwards;
+}
+
+
+/* Animate each project card */
+.project-card {
+    opacity: 0;
+    transform: translateY(20px);
+    animation: slideInUp 0.6s ease-out forwards;
+}
+
+/* Stagger animation */
+.project-card:nth-child(1) { animation-delay: 200ms; }
+.project-card:nth-child(2) { animation-delay: 350ms; }
+.project-card:nth-child(3) { animation-delay: 500ms; }
+.project-card:nth-child(4) { animation-delay: 650ms; }
+
+
+/* Page wrapper */
+.dashboard-page {
+    min-height: 100vh;
+    background: var(--dark);
+    padding: 48px 24px;
+}
+
+.dashboard-wrapper {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+/* Project cards */
+.project-card {
+    background: var(--muted);
+    border-radius: 20px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+    transition: transform 200ms ease, box-shadow 250ms ease, background 200ms ease;
+    position: relative;
+    border: 1px solid rgba(255,255,255,0.05);
+    color: var(--light);
+}
+
+.project-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 16px 40px rgba(43,168,74,0.25);
+    background: #1f1f1f;
+}
+
+/* Create project card */
+.create-card {
+    border: 2px dashed var(--green-2);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--green-2);
+    font-weight: bold;
+    transition: background 200ms ease, transform 200ms ease;
+}
+
+.create-card:hover {
+    background: rgba(43,168,74,0.08);
+    transform: translateY(-4px);
+}
+
+/* Delete button */
+.delete-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: rgba(255,0,0,0.15);
+    color: #ff4d4d;
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 200ms ease, transform 200ms ease, opacity 200ms ease;
+}
+
+.delete-btn:hover {
+    background: rgba(255,0,0,0.25);
+    transform: scale(1.1);
+}
+
+/* Modal styles */
+.modal-card {
+    background: #1f1f1f;
+    border-radius: 16px;
+    padding: 28px;
+    width: 400px;
+    max-width: 90%;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.6);
+    border: 1px solid rgba(255,255,255,0.05);
+}
+
+.modal-input {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--light);
+    padding: 12px;
+    border-radius: 8px;
+    width: 100%;
+    outline: none;
+    transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.modal-input:focus {
+    border-color: var(--green-2);
+    box-shadow: 0 0 0 4px rgba(43,168,74,0.2);
+}
+
+.modal-cancel {
+    background: rgba(255,255,255,0.1);
+    color: var(--light);
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: background 150ms ease;
+}
+
+.modal-cancel:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+.modal-create {
+    background: linear-gradient(90deg, var(--green-1), var(--green-2));
+    color: var(--light);
+    padding: 8px 18px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    transition: transform 150ms ease, box-shadow 200ms ease;
+}
+
+.modal-create:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 20px rgba(43,168,74,0.3);
+}
