@@ -71,4 +71,39 @@
   .track-mobile.selected {
     background: #444;
   }
-  
+  .media-pool-mobile {
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.media-item-mobile {
+    background: #2a2a2a;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: grab;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--light);
+}
+
+.media-item-mobile.video {
+    background: linear-gradient(135deg, var(--green-1), var(--green-2));
+}
+.media-item-mobile.audio {
+    background: linear-gradient(135deg, #9b59b6, #8e44ad);
+}
+
+.video-timeline {
+    margin-top: 12px;
+    background: var(--muted);
+    padding: 8px;
+    border-radius: 8px;
+}
+.audio-timeline {
+    margin-top: 12px;
+    background: #111;
+    padding: 8px;
+    border-radius: 8px;
+}

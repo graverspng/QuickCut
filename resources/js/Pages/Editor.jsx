@@ -3,6 +3,8 @@ import { Head, router } from '@inertiajs/react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { normalizeClips, normalizeTracks, getClipWidth } from '@/utils/timelineUtils';
 import '@/../css/Editor.css';
+import '@/../css/EditorMobile.css'; // 📱 mobile overrides
+
 
 export default function Editor({ project }) {
     const [mediaFiles, setMediaFiles] = useState(project.media_files || []);
@@ -59,13 +61,11 @@ export default function Editor({ project }) {
                 sourceDuration: 0,
             };
         });
-
-        const audioFiles = files.filter((f) => f.type === 'audio');
-        const videoFiles = files.filter((f) => f.type === 'video');
-
-        setMediaFiles((prev) => [...prev, ...videoFiles]);
-        setMusicTracks((prev) => [...prev, ...audioFiles]);
+    
+        // ✅ Add ALL files (video + audio) only to Media Library
+        setMediaFiles((prev) => [...prev, ...files]);
     };
+    
 
     const handleDragStart = (e, index) => {
         e.dataTransfer.setData('index', index);
@@ -353,7 +353,7 @@ export default function Editor({ project }) {
         const clickX = e.clientX - rect.left;
         const timelineWidth = rect.width;
         const newGlobalTime = (clickX / timelineWidth) * totalDuration;
-
+    
         let newIndex = 0;
         for (let i = 0; i < clips.length; i++) {
             const clipStart = clips[i].startTime || 0;
@@ -363,37 +363,31 @@ export default function Editor({ project }) {
                 break;
             }
         }
-
+    
         const seg = clips[newIndex];
-        const segRelative = Math.max(0, newGlobalTime - (seg?.startTime || 0));
-        const seekTimeInSource = (seg?.startOffset || 0) + segRelative;
-
+        if (!seg) return;
+    
+        const segRelative = Math.max(0, newGlobalTime - (seg.startTime || 0));
+        const seekTimeInSource = (seg.startOffset || 0) + segRelative;
+    
+        // ✅ remember playback state
+        const wasPlaying = videoRef.current && !videoRef.current.paused;
+    
         setActiveClipIndex(newIndex);
-
-        if (videoRef.current && seg) {
+    
+        if (videoRef.current) {
             videoRef.current.src = seg.source;
             videoRef.current.currentTime = seekTimeInSource;
-            videoRef.current.play().catch(() => {});
-        }
-
-        musicTracks.forEach((track, i) => {
-            const audio = audioRefs.current[i];
-            if (!audio) return;
-            const tStart = track.startTime || 0;
-            const tDur = track.duration || 0;
-            const tOffset = track.startOffset || 0;
-
-            if (newGlobalTime >= tStart && newGlobalTime <= tStart + tDur) {
-                audio.currentTime = tOffset + (newGlobalTime - tStart);
-                if (!videoRef.current.paused) audio.play().catch(() => {});
-            } else if (newGlobalTime < tStart) {
-                audio.pause();
-                audio.currentTime = tOffset;
+    
+            if (wasPlaying) {
+                videoRef.current.play().catch(() => {});
             } else {
-                audio.pause();
+                videoRef.current.pause(); // ✅ force it to stay paused
             }
-        });
-    };
+        }
+    
+        setCurrentTime(newGlobalTime);
+    };    
 
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -427,7 +421,7 @@ export default function Editor({ project }) {
 
             <div className="editor-container">
                 <div style={{ display: "none" }}>
-                    {clips.map((clip, i) => (
+                        {clips.map((clip, i) => (
                         <video key={i} src={clip.source} preload="auto" />
                     ))}
                 </div>
