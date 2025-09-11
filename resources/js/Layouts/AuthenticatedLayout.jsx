@@ -27,15 +27,25 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                 </Link>
                             </div>
 
-                            {/* Nav Links */}
+                            {/* Nav Links (Desktop) */}
                             <div className="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
                                 <NavLink
                                     href={route('dashboard')}
                                     active={route().current('dashboard')}
                                     className="text-[#2BA84A] hover:text-[#248232] font-semibold transition"
                                 >
-                                    Projects
+                                    Media Projects
                                 </NavLink>
+
+                                {/* 🔹 New Audio Projects link */}
+                                <NavLink
+                                    href={route('audio.projects')}
+                                    active={route().current('audio.projects')}
+                                    className="text-[#2BA84A] hover:text-[#248232] font-semibold transition"
+                                >
+                                    Audio Projects
+                                </NavLink>
+
                                 <NavLink
                                     href={route('about.us')}
                                     active={route().current('about.us')}
@@ -123,10 +133,28 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                     {/* Mobile Dropdown */}
                     <div className={(showingNavigationDropdown ? 'block' : 'hidden') + ' sm:hidden'}>
                         <div className="space-y-1 pb-3 pt-2 bg-[#1a1a1a]">
-                            <ResponsiveNavLink href={route('dashboard')} active={route().current('dashboard')} className="text-[#2BA84A] hover:text-[#248232] font-semibold">
+                            <ResponsiveNavLink
+                                href={route('dashboard')}
+                                active={route().current('dashboard')}
+                                className="text-[#2BA84A] hover:text-[#248232] font-semibold"
+                            >
                                 Projects
                             </ResponsiveNavLink>
-                            <ResponsiveNavLink href={route('about.us')} active={route().current('about.us')} className="text-[#2BA84A] hover:text-[#248232] font-semibold">
+
+                            {/* 🔹 New Audio Projects link for mobile */}
+                            <ResponsiveNavLink
+                                href={route('audio.projects')}
+                                active={route().current('audio.projects')}
+                                className="text-[#2BA84A] hover:text-[#248232] font-semibold"
+                            >
+                                Audio Projects
+                            </ResponsiveNavLink>
+
+                            <ResponsiveNavLink
+                                href={route('about.us')}
+                                active={route().current('about.us')}
+                                className="text-[#2BA84A] hover:text-[#248232] font-semibold"
+                            >
                                 About Us
                             </ResponsiveNavLink>
                         </div>
@@ -138,10 +166,18 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                             </div>
 
                             <div className="mt-3 space-y-1">
-                                <ResponsiveNavLink href={route('profile.edit')} className="text-[#2BA84A] hover:text-[#248232] font-semibold">
+                                <ResponsiveNavLink
+                                    href={route('profile.edit')}
+                                    className="text-[#2BA84A] hover:text-[#248232] font-semibold"
+                                >
                                     Profile
                                 </ResponsiveNavLink>
-                                <ResponsiveNavLink method="post" href={route('logout')} as="button" className="text-red-400 hover:text-red-500">
+                                <ResponsiveNavLink
+                                    method="post"
+                                    href={route('logout')}
+                                    as="button"
+                                    className="text-red-400 hover:text-red-500"
+                                >
                                     Log Out
                                 </ResponsiveNavLink>
                             </div>

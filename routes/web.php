@@ -4,6 +4,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\EditorController;
 use App\Http\Controllers\AboutUsController;
+use App\Http\Controllers\AudioProjectController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -12,18 +13,27 @@ Route::get('/', function () {
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {
+    // === VIDEO PROJECTS ===
     Route::get('/dashboard', [ProjectController::class, 'index'])->name('dashboard');
     Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
     Route::put('/projects/{project}', [ProjectController::class, 'update'])->name('projects.update');
+    Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])->name('projects.destroy');
     Route::get('/editor/{project}', [EditorController::class, 'show'])->name('editor');
 
+    // === AUDIO PROJECTS ===
+    Route::get('/audio-projects', [AudioProjectController::class, 'index'])->name('audio.projects');
+    Route::post('/audio-projects', [AudioProjectController::class, 'store'])->name('audio.projects.store');
+    Route::put('/audio-projects/{audioProject}', [AudioProjectController::class, 'update'])->name('audio.projects.update');
+    Route::delete('/audio-projects/{audioProject}', [AudioProjectController::class, 'destroy'])->name('audio.projects.destroy');
+
+    // === USER PROFILE ===
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
+    // === ABOUT US ===
     Route::get('/about-us', [AboutUsController::class, 'index'])->name('about.us');
-
-    Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])->name('projects.destroy');
+    Route::get('/audio-editor/{audioProject}', [AudioProjectController::class, 'show'])->name('audio.editor');
 
 });
 

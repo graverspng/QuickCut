@@ -1,0 +1,84 @@
+@import './Editor.css';
+
+/* Fixed timeline inside editor area */
+.fixed-timeline {
+    height: auto;
+    min-height: 120px;
+    position: relative;
+    overflow: hidden;
+    padding: 10px;
+    background: var(--muted);
+}
+
+/* Wrapper adjusts dynamically to editor width */
+.layers-inner {
+    position: relative;
+    height: 100%;
+}
+
+/* Layer row */
+.layer-row {
+    position: relative;
+    height: 70px;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid #222;
+    padding-left: 90px;
+}
+
+/* Label */
+.layer-label {
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    font-weight: 700;
+    color: #8aa;
+    text-transform: uppercase;
+}
+
+/* Track block */
+.track {
+    position: absolute;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #9b59b6, #8e44ad);
+    color: var(--light);
+    cursor: grab;
+    padding: 0 10px;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+}
+.track:hover {
+    transform: scale(1.02);
+    box-shadow: 0 0 14px rgba(155,89,182,0.45);
+}
+.track.selected {
+    border: 2px solid #ffcc00;
+    background: linear-gradient(to right, #e67e22, #d35400);
+    box-shadow: 0 0 16px rgba(230,126,34,0.5);
+}
+
+/* Playhead */
+.playhead {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: red;
+    box-shadow: 0 0 10px rgba(255,0,0,0.6);
+    pointer-events: none;
+}
+
+/* Controls */
+.audio-player-controls {
+    padding: 10px;
+    background: var(--muted);
+    border-bottom: 1px solid #333;
+}
