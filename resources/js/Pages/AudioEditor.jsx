@@ -1,7 +1,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router } from '@inertiajs/react';
-import { useState, useRef, useEffect, useMemo } from 'react';
-import '@/../css/Editor.css';        // base editor styling
+import { useState, useRef, useEffect } from 'react';
+import '@/../css/Editor.css';        // your base editor styles
 import '@/../css/AudioEditor.css';   // audio-specific overrides
 
 export default function AudioEditor({ project }) {
@@ -12,29 +12,31 @@ export default function AudioEditor({ project }) {
     const [currentTime, setCurrentTime] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
 
-    // Session length in seconds (default 120s)
-    const [sessionLength, setSessionLength] = useState(120);
+    // We still keep a session length for playhead logic (seek/play),
+    // but track visuals will "fit to screen".
+    const [sessionLength] = useState(120); // seconds
 
     const audioRefs = useRef([]);
     const editorRef = useRef(null);
     const [timelineWidth, setTimelineWidth] = useState(0);
 
-    // --- dynamically track editor width
+    // Dynamically measure right-side editor width so tracks fill it exactly
     useEffect(() => {
-        if (!editorRef.current) return;
         const updateWidth = () => {
-            setTimelineWidth(editorRef.current.offsetWidth);
+            if (editorRef.current) {
+                setTimelineWidth(editorRef.current.offsetWidth);
+            }
         };
         updateWidth();
         window.addEventListener('resize', updateWidth);
         return () => window.removeEventListener('resize', updateWidth);
     }, []);
 
-    // === HELPERS ===
+    // Helpers
     const normalizeTracks = (arr) =>
         arr.map((t) => ({
             ...t,
-            startTime: t.startTime ?? 0,
+            startTime: 0,                  // 🟢 force start at 0 so it begins at left edge
             startOffset: t.startOffset ?? 0,
             sourceDuration: t.sourceDuration ?? 0,
             duration: t.duration || t.sourceDuration || 0,
@@ -43,10 +45,8 @@ export default function AudioEditor({ project }) {
 
     const pxFromTime = (sec) =>
         timelineWidth > 0 ? (sec / sessionLength) * timelineWidth : 0;
-    const timeFromPx = (px) =>
-        timelineWidth > 0 ? (px / timelineWidth) * sessionLength : 0;
 
-    // === FILE UPLOAD to Media Library ===
+    // Upload to library
     const handleFileUpload = (e) => {
         const files = Array.from(e.target.files).map((file) => ({
             name: file.name,
@@ -60,26 +60,24 @@ export default function AudioEditor({ project }) {
         setMediaFiles((prev) => [...prev, ...files]);
     };
 
-    // === Drag from Library to Timeline ===
+    // Drag from library to timeline
     const handleDrop = (e) => {
         e.preventDefault();
         const index = parseInt(e.dataTransfer.getData('index'));
         const file = mediaFiles[index];
         if (!file) return;
 
+        // Drop always adds a track that visually spans the timeline (fit-to-screen),
+        // but we still keep duration for playback.
         setTracks((prev) =>
             normalizeTracks([
                 ...prev,
-                {
-                    ...file,
-                    startTime: currentTime, // drop where playhead is
-                    startOffset: 0,
-                },
+                { ...file, startTime: 0, startOffset: 0 },
             ])
         );
     };
 
-    // === Save to DB ===
+    // Save
     const handleSave = () => {
         router.put(route('audio.projects.update', project.id), {
             name: project.name,
@@ -88,7 +86,7 @@ export default function AudioEditor({ project }) {
         });
     };
 
-    // === Reorder tracks vertically (layer order) ===
+    // Reorder layers vertically
     const handleTrackDragStart = (e, index) => {
         e.dataTransfer.setData('trackIndex', index);
     };
@@ -107,7 +105,7 @@ export default function AudioEditor({ project }) {
         setSelectedTrackIndex(dropIndex);
     };
 
-    // === Load audio metadata for true durations ===
+    // Load true duration metadata
     useEffect(() => {
         tracks.forEach((track, i) => {
             if (!track.source) return;
@@ -128,11 +126,10 @@ export default function AudioEditor({ project }) {
                 };
             }
         });
-    }, [tracks]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tracks.length]);
 
-    const totalDuration = sessionLength;
-
-    // === Playback ===
+    // Playback
     const togglePlay = () => {
         if (isPlaying) {
             setIsPlaying(false);
@@ -141,17 +138,17 @@ export default function AudioEditor({ project }) {
         }
 
         setIsPlaying(true);
+
         audioRefs.current.forEach((a, i) => {
             const track = tracks[i];
             if (!track || !a) return;
 
-            const trackStart = track.startTime || 0;
-            const trackOffset = track.startOffset || 0;
+            const trackStart = 0; // forced
             const trackEnd = trackStart + (track.duration || 0);
+            const off = track.startOffset || 0;
 
             if (currentTime >= trackStart && currentTime < trackEnd) {
-                const rel = currentTime - trackStart;
-                a.currentTime = trackOffset + rel;
+                a.currentTime = off + (currentTime - trackStart);
                 a.play().catch(() => {});
             } else {
                 a.pause();
@@ -159,13 +156,14 @@ export default function AudioEditor({ project }) {
         });
     };
 
+    // Drive playhead + sync
     useEffect(() => {
         let id;
         if (isPlaying) {
             id = setInterval(() => {
                 setCurrentTime((prev) => {
                     const next = prev + 0.1;
-                    if (next >= totalDuration) {
+                    if (next >= sessionLength) {
                         setIsPlaying(false);
                         audioRefs.current.forEach((a) => a && a.pause());
                         return 0;
@@ -175,13 +173,12 @@ export default function AudioEditor({ project }) {
                         const track = tracks[i];
                         if (!track || !a) return;
 
-                        const trackStart = track.startTime || 0;
-                        const trackOffset = track.startOffset || 0;
-                        const trackEnd = trackStart + (track.duration || 0);
+                        const start = 0;
+                        const end = start + (track.duration || 0);
+                        const off = track.startOffset || 0;
 
-                        if (next >= trackStart && next < trackEnd) {
-                            const rel = next - trackStart;
-                            const desired = trackOffset + rel;
+                        if (next >= start && next < end) {
+                            const desired = off + (next - start);
                             if (Math.abs((a.currentTime || 0) - desired) > 0.25) {
                                 a.currentTime = desired;
                             }
@@ -196,9 +193,9 @@ export default function AudioEditor({ project }) {
             }, 100);
         }
         return () => clearInterval(id);
-    }, [isPlaying, totalDuration, tracks]);
+    }, [isPlaying, sessionLength, tracks]);
 
-    // Spacebar toggle
+    // Spacebar
     useEffect(() => {
         const onKey = (e) => {
             if (e.code === 'Space') {
@@ -211,27 +208,36 @@ export default function AudioEditor({ project }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isPlaying, tracks, currentTime]);
 
-    // === Seek on timeline click ===
+    // Seek by click
     const handleSeek = (e) => {
         const rect = e.currentTarget.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
-        const newTime = timeFromPx(clickX);
-        setCurrentTime(Math.max(0, Math.min(sessionLength, newTime)));
+        // Convert pixel → time inside the visible width
+        const newTime =
+            timelineWidth > 0 ? (clickX / timelineWidth) * sessionLength : 0;
 
+        const clamped = Math.max(0, Math.min(sessionLength, newTime));
+        setCurrentTime(clamped);
+
+        // Preposition audio
         audioRefs.current.forEach((a, i) => {
             const track = tracks[i];
             if (!track || !a) return;
-            const s = track.startTime || 0;
+            const start = 0;
+            const end = start + (track.duration || 0);
             const off = track.startOffset || 0;
-            const end = s + (track.duration || 0);
 
-            if (newTime >= s && newTime < end) {
-                a.currentTime = off + (newTime - s);
+            if (clamped >= start && clamped < end) {
+                a.currentTime = off + (clamped - start);
             } else {
                 a.pause();
             }
         });
     };
+
+    // Track visual width: fill visible area fully.
+    const TRACK_INSET_X = 24; // left+right padding/gap inside row
+    const fittedTrackWidth = Math.max(40, timelineWidth - TRACK_INSET_X);
 
     return (
         <AuthenticatedLayout hideNavbar={true}>
@@ -247,7 +253,7 @@ export default function AudioEditor({ project }) {
                 </div>
 
                 <div className="editor-main">
-                    {/* Media Library */}
+                    {/* LEFT: Media Library */}
                     <div className="media-library">
                         <h3>Audio Library</h3>
                         <div
@@ -286,7 +292,7 @@ export default function AudioEditor({ project }) {
                         </div>
                     </div>
 
-                    {/* Timeline */}
+                    {/* RIGHT: Timeline */}
                     <div
                         ref={editorRef}
                         className="editor-area"
@@ -306,10 +312,9 @@ export default function AudioEditor({ project }) {
                                     className="playhead"
                                     style={{ left: `${pxFromTime(currentTime)}px` }}
                                 />
-                                {/* Tracks */}
+
+                                {/* Layers */}
                                 {tracks.map((track, index) => {
-                                    const left = pxFromTime(track.startTime || 0);
-                                    const width = pxFromTime(track.duration || 0);
                                     const isSelected = selectedTrackIndex === index;
                                     return (
                                         <div key={index} className="layer-row">
@@ -324,7 +329,10 @@ export default function AudioEditor({ project }) {
                                                     setSelectedTrackIndex(isSelected ? null : index);
                                                 }}
                                                 className={`track ${isSelected ? 'selected' : ''}`}
-                                                style={{ left: `${left}px`, width: `${width}px` }}
+                                                style={{
+                                                    left: '0px',                       // 🟢 start at left edge
+                                                    width: `${fittedTrackWidth}px`,   // 🟢 fill the visible timeline
+                                                }}
                                             >
                                                 {track.name}
                                                 <audio
