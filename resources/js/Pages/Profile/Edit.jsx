@@ -3,34 +3,36 @@ import { Head } from '@inertiajs/react';
 import DeleteUserForm from './Partials/DeleteUserForm';
 import UpdatePasswordForm from './Partials/UpdatePasswordForm';
 import UpdateProfileInformationForm from './Partials/UpdateProfileInformationForm';
+import '@/../css/dashboard.css'; // 🔹 import dashboard styles
 
 export default function Edit({ mustVerifyEmail, status }) {
     return (
-        <AuthenticatedLayout
-            header={
-                <h2 className="text-xl font-semibold leading-tight text-gray-800">
-                    Profile
-                </h2>
-            }
-        >
+        <AuthenticatedLayout>
             <Head title="Profile" />
 
-            <div className="py-12">
-                <div className="mx-auto max-w-7xl space-y-6 sm:px-6 lg:px-8">
-                    <div className="bg-white p-4 shadow sm:rounded-lg sm:p-8">
+            <div className="dashboard-page">
+                <div className="dashboard-wrapper">
+                    {/* Page title */}
+                    <div className="text-center mb-10 fade-in-up">
+                        <h2 className="text-4xl font-bold text-white">Profile</h2>
+                        <p className="text-gray-400 mt-2">
+                            Manage your account information below.
+                        </p>
+                    </div>
+
+                    {/* Grid of cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <UpdateProfileInformationForm
                             mustVerifyEmail={mustVerifyEmail}
                             status={status}
-                            className="max-w-xl"
+                            className="project-card"
                         />
-                    </div>
 
-                    <div className="bg-white p-4 shadow sm:rounded-lg sm:p-8">
-                        <UpdatePasswordForm className="max-w-xl" />
-                    </div>
+                        <UpdatePasswordForm className="project-card" />
 
-                    <div className="bg-white p-4 shadow sm:rounded-lg sm:p-8">
-                        <DeleteUserForm className="max-w-xl" />
+                        <div className="md:col-span-2">
+                            <DeleteUserForm className="project-card" />
+                        </div>
                     </div>
                 </div>
             </div>

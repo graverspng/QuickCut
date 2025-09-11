@@ -4,7 +4,6 @@ import ResponsiveNavLink from '@/Components/ResponsiveNavLink';
 import { Link, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
-
 import QuickCutCutoutImg from '@/Pages/Auth/Img/QuickCut_Cutout.png';
 
 export default function AuthenticatedLayout({ header, children, hideNavbar }) {
@@ -73,9 +72,20 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                             </span>
                                         </Dropdown.Trigger>
 
-                                        <Dropdown.Content className="bg-[#1a1a1a] border border-gray-700">
-                                            <Dropdown.Link href={route('profile.edit')} className="text-[#FCFFFC] hover:text-[#2BA84A]">Profile</Dropdown.Link>
-                                            <Dropdown.Link href={route('logout')} method="post" as="button" className="text-red-400 hover:text-red-500">
+                                        {/* 🔹 Dark dropdown menu */}
+                                        <Dropdown.Content className="bg-[#1a1a1a] border border-gray-700 rounded-lg shadow-lg">
+                                            <Dropdown.Link
+                                                href={route('profile.edit')}
+                                                className="text-[#2BA84A] hover:text-[#248232] font-semibold"
+                                            >
+                                                Profile
+                                            </Dropdown.Link>
+                                            <Dropdown.Link
+                                                href={route('logout')}
+                                                method="post"
+                                                as="button"
+                                                className="text-red-400 hover:text-red-500"
+                                            >
                                                 Log Out
                                             </Dropdown.Link>
                                         </Dropdown.Content>
@@ -128,7 +138,7 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                             </div>
 
                             <div className="mt-3 space-y-1">
-                                <ResponsiveNavLink href={route('profile.edit')} className="text-[#FCFFFC] hover:text-[#2BA84A]">
+                                <ResponsiveNavLink href={route('profile.edit')} className="text-[#2BA84A] hover:text-[#248232] font-semibold">
                                     Profile
                                 </ResponsiveNavLink>
                                 <ResponsiveNavLink method="post" href={route('logout')} as="button" className="text-red-400 hover:text-red-500">

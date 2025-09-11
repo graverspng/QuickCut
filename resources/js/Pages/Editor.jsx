@@ -429,29 +429,69 @@ export default function Editor({ project }) {
                 <div className="editor-header">
                     <h2>{project.name}</h2>
                     <div>
-                        <button onClick={goBack} className="back-btn">Back</button>
                         <button onClick={handleCut} className="cut-btn">✂️ Cut Clip</button>
+                        <button onClick={goBack} className="back-btn">Back</button>
                         <button onClick={handleSave} className="save-btn">Save</button>
                     </div>
                 </div>
 
                 <div className="editor-main">
-                    <div className="media-library">
-                        <h3>Media Library</h3>
-                        <input type="file" multiple onChange={handleFileUpload} className="mb-2" />
-                        <div>
-                            {mediaFiles.map((file, index) => (
-                                <div
-                                    key={index}
-                                    draggable
-                                    onDragStart={(e) => handleDragStart(e, index)}
-                                    className="media-item"
-                                >
-                                    {file.name}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+                <div className="media-library">
+    <h3>Media Library</h3>
+    <div
+    className="upload-dropzone"
+    onDragOver={(e) => e.preventDefault()}
+    onDrop={(e) => {
+        e.preventDefault();
+        handleFileUpload({ target: { files: e.dataTransfer.files } });
+    }}
+    onClick={() => document.getElementById('hiddenFileInput').click()}
+>
+<p style={{ fontSize: "10px" }}>Drop files here or click to upload</p>
+    <input
+        id="hiddenFileInput"
+        type="file"
+        multiple
+        style={{ display: "none" }}
+        onChange={handleFileUpload}
+    />
+</div>
+
+
+    {/* --- Video Section --- */}
+    <div className="media-section video-section">
+        <h4>📹 Video</h4>
+        <div className="section-divider" />
+        {mediaFiles.filter(f => f.type === 'video').map((file, index) => (
+            <div
+                key={index}
+                draggable
+                onDragStart={(e) => handleDragStart(e, mediaFiles.indexOf(file))}
+                className="media-item"
+            >
+                {file.name}
+            </div>
+        ))}
+    </div>
+
+    {/* --- Audio Section --- */}
+    <div className="media-section audio-section">
+        <h4>🎵 Audio</h4>
+        <div className="section-divider" />
+        {mediaFiles.filter(f => f.type === 'audio').map((file, index) => (
+            <div
+                key={index}
+                draggable
+                onDragStart={(e) => handleDragStart(e, mediaFiles.indexOf(file))}
+                className="media-item"
+            >
+                {file.name}
+            </div>
+        ))}
+    </div>
+</div>
+
+
 
                     <div
                         className="editor-area"
