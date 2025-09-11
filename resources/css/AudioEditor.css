@@ -1,95 +1,89 @@
+/* We reuse your Editor.css for the shell (header, library, buttons, colors) */
 @import './Editor.css';
 
-/* ====== DAW Timeline (namespaced to avoid collisions with video editor) ====== */
+/* ========================
+   Audio timeline specifics
+   ======================== */
 
-.daw-timeline {
-  flex: 1;
-  overflow-x: auto;
-  overflow-y: hidden;
-  position: relative;
-  background: var(--muted);
-  border-top: 1px solid #333;
-  cursor: pointer;
+/* Use the same "timeline" bar as video editor, but make it host layered rows */
+.fixed-timeline {
+    /* keep same look as .timeline in Editor.css but taller and for layers */
+    height: auto;
+    min-height: 120px;
+    position: relative;
+    overflow: hidden; /* no horizontal scroll here – fixed width like video editor */
+    padding: 10px;
 }
 
-.daw-layers {
-  position: relative;
-  height: 100%;
+/* Inner wrapper with fixed pixel width like the video editor (TIMELINE_PX = 1200) */
+.fixed-timeline .layers-inner {
+    position: relative;
+    height: 100%;
 }
 
-/* One horizontal lane per layer */
-.daw-row {
-  position: relative;
-  height: 70px;
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid #222;
-  padding-left: 90px;     /* space for label gutter */
+/* One row per layer */
+.layer-row {
+    position: relative;
+    height: 70px;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid #222;
+    padding-left: 90px; /* space for the label */
 }
 
-.daw-row-label {
-  position: absolute;
-  left: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 12px;
-  font-weight: 700;
-  color: #8aa;
-  text-transform: uppercase;
+/* Label at the left of each row */
+.layer-label {
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    font-weight: 700;
+    color: #8aa;
+    text-transform: uppercase;
 }
 
-/* The clip rectangle */
-.daw-track {
-  position: absolute;
-  height: 44px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 0 12px;
-
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--light);
-
-  background: linear-gradient(135deg, #9b59b6, #8e44ad);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
-
-  cursor: grab;
-  transition: transform .15s ease, box-shadow .15s ease;
+/* The purple audio block */
+.track {
+    position: absolute;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #9b59b6, #8e44ad);
+    color: var(--light);
+    cursor: grab;
+    padding: 0 10px;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+}
+.track:hover {
+    transform: scale(1.02);
+    box-shadow: 0 0 14px rgba(155,89,182,0.45);
+}
+.track.selected {
+    border: 2px solid #ffcc00;
+    background: linear-gradient(to right, #e67e22, #d35400);
+    box-shadow: 0 0 16px rgba(230,126,34,0.5);
 }
 
-.daw-track:hover {
-  transform: scale(1.01);
-  box-shadow: 0 0 14px rgba(155,89,182,0.45);
-}
-.daw-track.selected {
-  border: 2px solid #ffcc00;
-  background: linear-gradient(to right, #e67e22, #d35400);
-  box-shadow: 0 0 16px rgba(230,126,34,0.5);
-}
-
-.daw-track-name {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* The red vertical playhead */
+.playhead {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: red;
+    box-shadow: 0 0 10px rgba(255,0,0,0.6);
+    pointer-events: none;
 }
 
-/* Red playhead */
-.daw-playhead {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: red;
-  box-shadow: 0 0 10px rgba(255,0,0,0.6);
-  pointer-events: none;
-}
-
-/* Controls (reuse your palette) */
+/* Controls bar above the timeline (matches your style) */
 .audio-player-controls {
-  padding: 10px;
-  background: var(--muted);
-  border-bottom: 1px solid #333;
+    padding: 10px;
+    background: var(--muted);
+    border-bottom: 1px solid #333;
 }
