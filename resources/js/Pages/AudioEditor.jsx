@@ -1,21 +1,23 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router } from '@inertiajs/react';
-import { useState, useRef, useEffect, useMemo } from 'react';
-import '@/../css/Editor.css';        // base editor styling (your existing one)
-import '@/../css/AudioEditor.css';   // small audio-specific overrides
+import { useState, useRef, useEffect } from 'react';
+import '@/../css/Editor.css';
+import '@/../css/AudioEditor.css';
 
 export default function AudioEditor({ project }) {
     const [tracks, setTracks] = useState(project.tracks || []);
     const [mediaFiles, setMediaFiles] = useState([]);
     const [selectedTrackIndex, setSelectedTrackIndex] = useState(null);
+    const [ghostClip, setGhostClip] = useState(null);
 
     const [currentTime, setCurrentTime] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
 
-    // ⚠️ FIX: keep a fixed session length like a DAW (editable later if you want a UI)
     const [sessionLength, setSessionLength] = useState(120); // seconds
 
     const audioRefs = useRef([]);
+    const timelineRef = useRef(null);
+    const [scrollLeft, setScrollLeft] = useState(0);
 
     // === CONSTANTS for a stable layout like your video editor ===
     const TIMELINE_PX = 1200; // fixed pixel width of the timeline area (matches Editor.jsx)
@@ -28,43 +30,76 @@ export default function AudioEditor({ project }) {
             startOffset: t.startOffset ?? 0,
             sourceDuration: t.sourceDuration ?? 0,
             duration: t.duration || t.sourceDuration || 0,
+            volume: t.volume ?? 1,
             type: 'audio',
         }));
 
     const pxFromTime = (sec) => (sec / sessionLength) * TIMELINE_PX;
     const timeFromPx = (px) => (px / TIMELINE_PX) * sessionLength;
+    const snapToGrid = (time, step = 1) => Math.round(time / step) * step;
+
+    const isAudioFile = (file) => {
+        if (!file) return false;
+        if (file.type && file.type.startsWith('audio/')) return true;
+        const ext = file.name?.split('.').pop()?.toLowerCase();
+        return ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a'].includes(ext) || file.source?.startsWith('blob:');
+    };
 
     // === FILE UPLOAD to Media Library ===
     const handleFileUpload = (e) => {
-        const files = Array.from(e.target.files).map((file) => ({
-            name: file.name,
-            source: URL.createObjectURL(file),
-            duration: 0,
-            startOffset: 0,
-            startTime: 0,
-            sourceDuration: 0,
-            type: 'audio',
-        }));
+        const files = Array.from(e.target.files)
+            .filter(isAudioFile)
+            .map((file) => ({
+                name: file.name,
+                source: URL.createObjectURL(file),
+                duration: 0,
+                startOffset: 0,
+                startTime: 0,
+                sourceDuration: 0,
+                volume: 1,
+                type: 'audio',
+            }));
         setMediaFiles((prev) => [...prev, ...files]);
+    };
+
+    const getTimeFromEvent = (e) => {
+        const rect = timelineRef.current.getBoundingClientRect();
+        const dropX = e.clientX - rect.left + timelineRef.current.scrollLeft - 80;
+        return snapToGrid(timeFromPx(Math.max(dropX, 0)), 1);
     };
 
     // === Drag from Library to Timeline ===
     const handleDrop = (e) => {
         e.preventDefault();
         const index = parseInt(e.dataTransfer.getData('index'));
-        const file = mediaFiles[index];
-        if (!file) return;
+        const file = mediaFiles[index];   // ✅ correct    
+        if (!file || !isAudioFile(file)) return;
 
+        const dropTime = getTimeFromEvent(e);
         setTracks((prev) =>
             normalizeTracks([
                 ...prev,
                 {
                     ...file,
-                    startTime: currentTime, // drop where playhead is
+                    startTime: dropTime,
                     startOffset: 0,
+                    volume: file.volume ?? 1,
                 },
             ])
         );
+        setGhostClip(null);
+    };
+
+    const handleDragOverTimeline = (e) => {
+        e.preventDefault();
+        const index = parseInt(e.dataTransfer.getData('index'));
+        const file = mediaFiles[index];
+        if (!file || !isAudioFile(file)) return;
+        setGhostClip({
+            name: file.name,
+            startTime: getTimeFromEvent(e),
+            duration: 10,
+        });
     };
 
     // === Save to DB ===
@@ -95,7 +130,7 @@ export default function AudioEditor({ project }) {
         setSelectedTrackIndex(dropIndex);
     };
 
-    // === Load audio metadata for true durations ===
+    // === Load audio metadata for true durations and expand session length ===
     useEffect(() => {
         tracks.forEach((track, i) => {
             if (!track.source) return;
@@ -103,20 +138,33 @@ export default function AudioEditor({ project }) {
                 const aud = document.createElement('audio');
                 aud.src = track.source;
                 aud.preload = 'auto';
+                const start = track.startTime || 0;
                 aud.onloadedmetadata = () => {
+                    const d = aud.duration || 0;
                     setTracks((prev) => {
                         const arr = [...prev];
                         const t = { ...arr[i] };
-                        const d = aud.duration || 0;
                         t.sourceDuration = d;
                         if (!t.duration || t.duration <= 0) t.duration = d;
                         arr[i] = t;
                         return normalizeTracks(arr);
                     });
+                    setSessionLength((prev) => {
+                        const end = start + d;
+                        return prev >= end ? prev : end;
+                    });
                 };
             }
         });
     }, [tracks]);
+
+    useEffect(() => {
+        const el = timelineRef.current;
+        if (!el) return;
+        const onScroll = () => setScrollLeft(el.scrollLeft);
+        el.addEventListener('scroll', onScroll);
+        return () => el.removeEventListener('scroll', onScroll);
+    }, []);
 
     // === Project length is fixed by sessionLength; playhead stops there ===
     const totalDuration = sessionLength;
@@ -137,7 +185,7 @@ export default function AudioEditor({ project }) {
             const trackStart = track.startTime || 0;
             const trackOffset = track.startOffset || 0;
             const trackEnd = trackStart + (track.duration || 0);
-
+            a.volume = track.volume ?? 1;
             if (currentTime >= trackStart && currentTime < trackEnd) {
                 const rel = currentTime - trackStart;
                 a.currentTime = trackOffset + rel;
@@ -170,7 +218,7 @@ export default function AudioEditor({ project }) {
                         const trackStart = track.startTime || 0;
                         const trackOffset = track.startOffset || 0;
                         const trackEnd = trackStart + (track.duration || 0);
-
+                        a.volume = track.volume ?? 1;
                         if (next >= trackStart && next < trackEnd) {
                             const rel = next - trackStart;
                             const desired = trackOffset + rel;
@@ -205,25 +253,33 @@ export default function AudioEditor({ project }) {
 
     // === Seek on timeline click ===
     const handleSeek = (e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
-        const newTime = timeFromPx(clickX);
+        const rect = timelineRef.current.getBoundingClientRect();
+        const clickX = e.clientX - rect.left + timelineRef.current.scrollLeft - 80;
+        const newTime = snapToGrid(timeFromPx(clickX), 1);
         setCurrentTime(Math.max(0, Math.min(sessionLength, newTime)));
 
-        // pre-position audio elements
         audioRefs.current.forEach((a, i) => {
             const track = tracks[i];
             if (!track || !a) return;
             const s = track.startTime || 0;
             const off = track.startOffset || 0;
             const end = s + (track.duration || 0);
-
+            a.volume = track.volume ?? 1;
             if (newTime >= s && newTime < end) {
                 a.currentTime = off + (newTime - s);
             } else {
                 a.pause();
             }
         });
+    };
+
+    const handleVolumeChange = (index, vol) => {
+        setTracks((prev) => {
+            const arr = [...prev];
+            arr[index] = { ...arr[index], volume: vol };
+            return normalizeTracks(arr);
+        });
+        if (audioRefs.current[index]) audioRefs.current[index].volume = vol;
     };
 
     return (
@@ -235,6 +291,26 @@ export default function AudioEditor({ project }) {
                 <div className="editor-header">
                     <h2>{project.name} 🎵</h2>
                     <div>
+                        {selectedTrackIndex !== null && (
+                            <label className="volume-control">
+                                Volume
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="100"
+                                    value={(tracks[selectedTrackIndex]?.volume ?? 1) * 100}
+                                    onChange={(e) =>
+                                        handleVolumeChange(
+                                            selectedTrackIndex,
+                                            parseFloat(e.target.value) / 100
+                                        )
+                                    }
+                                />
+                                <span className="volume-value">
+                                    {Math.round((tracks[selectedTrackIndex]?.volume ?? 1) * 100)}
+                                </span>
+                            </label>
+                        )}
                         <button onClick={handleSave} className="save-btn">Save</button>
                         <button onClick={() => router.get(route('audio.projects'))} className="back-btn">Back</button>
                     </div>
@@ -281,29 +357,65 @@ export default function AudioEditor({ project }) {
                         </div>
                     </div>
 
-                    {/* RIGHT: Audio timeline area (same overall layout as video editor) */}
-                    <div
-                        className="editor-area"
-                        onDrop={handleDrop}
-                        onDragOver={(e) => e.preventDefault()}
-                    >
-                        {/* Controls (same style as your video play button) */}
+                    {/* RIGHT: Audio timeline area */}
+                    <div className="editor-area">
                         <div className="audio-player-controls">
                             <button className="play-btn" onClick={togglePlay}>
                                 {isPlaying ? 'Pause' : 'Play'}
                             </button>
                         </div>
 
-                        {/* Timeline with fixed width (no shrinking), click to seek */}
-                        <div className="timeline fixed-timeline" onClick={handleSeek}>
+                        {/* Time ruler */}
+                        <div className="time-ruler top">
+                            <div
+                                className="ruler-inner"
+                                style={{
+                                    width: `${TIMELINE_PX}px`,
+                                    transform: `translateX(-${scrollLeft}px)`,
+                                }}
+                            >
+                                {Array.from({ length: Math.ceil(sessionLength) + 1 }, (_, i) => {
+                                    if (i % 5 !== 0) return null;
+                                    return (
+                                        <div
+                                            key={i}
+                                            className="time-tick"
+                                            style={{ left: `${pxFromTime(i)}px` }}
+                                        >
+                                            {Math.floor(i / 60)}:{String(i % 60).padStart(2, '0')}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Scrollable timeline */}
+                        <div
+                            className="timeline"
+                            ref={timelineRef}
+                            onClick={handleSeek}
+                            onDrop={handleDrop}
+                            onDragOver={handleDragOverTimeline}
+                        >
                             <div className="layers-inner" style={{ width: `${TIMELINE_PX}px` }}>
-                                {/* Playhead */}
                                 <div
                                     className="playhead"
                                     style={{ left: `${pxFromTime(currentTime)}px` }}
                                 />
 
-                                {/* One row per track/layer */}
+                                {ghostClip && (
+                                    <div
+                                        className="track ghost-track"
+                                        style={{
+                                            left: `${pxFromTime(ghostClip.startTime)}px`,
+                                            width: `${pxFromTime(ghostClip.duration)}px`,
+                                            top: '5px',
+                                        }}
+                                    >
+                                        {ghostClip.name}
+                                    </div>
+                                )}
+
                                 {tracks.map((track, index) => {
                                     const left = pxFromTime(track.startTime || 0);
                                     const width = pxFromTime(track.duration || 0);
@@ -328,10 +440,11 @@ export default function AudioEditor({ project }) {
                                                     width: `${width}px`,
                                                 }}
                                             >
-                                                {track.name}
+                                                <span className="track-name">{track.name}</span>
                                                 <audio
                                                     ref={(el) => (audioRefs.current[index] = el)}
                                                     src={track.source}
+                                                    volume={track.volume ?? 1}
                                                 />
                                             </div>
                                         </div>
