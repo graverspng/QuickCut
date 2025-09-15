@@ -7,9 +7,33 @@ import '@/../css/EditorMobile.css'; // 📱 mobile overrides
 
 
 export default function Editor({ project }) {
-    const [mediaFiles, setMediaFiles] = useState(project.media_files || []);
-    const [clips, setClips] = useState(project.clips || []);
-    const [musicTracks, setMusicTracks] = useState(project.music_tracks || []);
+    const [mediaFiles, setMediaFiles] = useState(() =>
+        (project.media_files || []).map((f) => {
+            if (f.source?.startsWith('local-')) {
+                const data = localStorage.getItem(f.source);
+                return { ...f, source: data || '', storageKey: f.source };
+            }
+            return f;
+        })
+    );
+    const [clips, setClips] = useState(() =>
+        (project.clips || []).map((c) => {
+            if (c.source?.startsWith('local-')) {
+                const data = localStorage.getItem(c.source);
+                return { ...c, source: data || '', storageKey: c.source };
+            }
+            return c;
+        })
+    );
+    const [musicTracks, setMusicTracks] = useState(() =>
+        (project.music_tracks || []).map((t) => {
+            if (t.source?.startsWith('local-')) {
+                const data = localStorage.getItem(t.source);
+                return { ...t, source: data || '', storageKey: t.source };
+            }
+            return t;
+        })
+    );
     const [activeClipIndex, setActiveClipIndex] = useState(0);
     const [selectedClipIndex, setSelectedClipIndex] = useState(null);
     const [selectedMusicIndex, setSelectedMusicIndex] = useState(null);
@@ -48,19 +72,37 @@ export default function Editor({ project }) {
 
     const goBack = () => router.get(route('dashboard'));
 
-    const handleFileUpload = (e) => {
-        const files = Array.from(e.target.files).map((file) => {
-            const isAudio = file.type.startsWith('audio/');
-            return {
-                name: file.name,
-                source: URL.createObjectURL(file),
-                duration: 0,
-                type: isAudio ? 'audio' : 'video',
-                startOffset: 0,
-                startTime: 0,
-                sourceDuration: 0,
-            };
-        });
+    const handleFileUpload = async (e) => {
+        const uploads = Array.from(e.target.files);
+
+        const files = await Promise.all(
+            uploads.map(
+                (file) =>
+                    new Promise((resolve) => {
+                        const reader = new FileReader();
+                        const key = `local-${crypto.randomUUID?.() || Date.now()}`;
+                        reader.onload = () => {
+                            const dataUrl = reader.result;
+                            try {
+                                localStorage.setItem(key, dataUrl);
+                            } catch (_) {
+                                // ignore quota errors
+                            }
+                            resolve({
+                                name: file.name,
+                                source: dataUrl,
+                                storageKey: key,
+                                duration: 0,
+                                type: file.type.startsWith('audio/') ? 'audio' : 'video',
+                                startOffset: 0,
+                                startTime: 0,
+                                sourceDuration: 0,
+                            });
+                        };
+                        reader.readAsDataURL(file);
+                    })
+            )
+        );
     
         // ✅ Add ALL files (video + audio) only to Media Library
         setMediaFiles((prev) => [...prev, ...files]);
@@ -96,10 +138,23 @@ export default function Editor({ project }) {
     };
 
     const handleSave = () => {
+        const mediaToSave = mediaFiles.map(({ storageKey, source, ...rest }) => ({
+            ...rest,
+            source: storageKey || source,
+        }));
+        const clipsToSave = clips.map(({ storageKey, source, ...rest }) => ({
+            ...rest,
+            source: storageKey || source,
+        }));
+        const tracksToSave = musicTracks.map(({ storageKey, source, ...rest }) => ({
+            ...rest,
+            source: storageKey || source,
+        }));
+
         router.put(route('projects.update', project.id), {
-            media_files: mediaFiles,
-            clips: clips,
-            music_tracks: musicTracks,
+            media_files: mediaToSave,
+            clips: clipsToSave,
+            music_tracks: tracksToSave,
         });
     };
 

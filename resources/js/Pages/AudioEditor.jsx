@@ -5,7 +5,15 @@ import '@/../css/Editor.css';
 import '@/../css/AudioEditor.css';
 
 export default function AudioEditor({ project }) {
-    const [tracks, setTracks] = useState(project.tracks || []);
+    const [tracks, setTracks] = useState(() =>
+        (project.tracks || []).map((t) => {
+            if (t.source?.startsWith('local-')) {
+                const data = localStorage.getItem(t.source);
+                return { ...t, source: data || '', storageKey: t.source };
+            }
+            return t;
+        })
+    );
     const [mediaFiles, setMediaFiles] = useState([]);
     const [selectedTrackIndex, setSelectedTrackIndex] = useState(null);
     const [ghostClip, setGhostClip] = useState(null);
@@ -40,27 +48,42 @@ export default function AudioEditor({ project }) {
 
     const isAudioFile = (file) => {
         if (!file) return false;
-        if (file.type && file.type.startsWith('audio/')) return true;
+        if (file.type && file.type.startsWith('audio')) return true;
         const ext = file.name?.split('.').pop()?.toLowerCase();
-        return ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a'].includes(ext) || file.source?.startsWith('blob:');
+        return (
+            ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a'].includes(ext) ||
+            file.source?.startsWith('data:audio')
+        );
     };
 
     // === FILE UPLOAD to Media Library ===
-    const handleFileUpload = (e) => {
-        const files = Array.from(e.target.files)
-            .filter(isAudioFile)
-            .map((file) => ({
-                name: file.name,
-                source: URL.createObjectURL(file),
-                duration: 0,
-                startOffset: 0,
-                startTime: 0,
-                sourceDuration: 0,
-                volume: 1,
-                type: 'audio',
-            }));
-        setMediaFiles((prev) => [...prev, ...files]);
-    };
+    const handleFileUpload = async (e) => {
+        const fileList = Array.from(e.target.files).filter(isAudioFile);
+    
+        const files = await Promise.all(
+            fileList.map(
+                (file) =>
+                    new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onload = () =>
+                            resolve({
+                                name: file.name,
+                                source: reader.result,
+                                duration: 0,
+                                startOffset: 0,
+                                startTime: 0,
+                                sourceDuration: 0,
+                                volume: 1,
+                                type: 'audio',
+                            });
+                        reader.readAsDataURL(file);
+                    })
+            )
+        );
+    
+        setMediaFiles((prev) => [...prev, ...files]);  // ✅ Add this
+    }; // ✅ close the function properly
+    
 
     const getTimeFromEvent = (e) => {
         const rect = timelineRef.current.getBoundingClientRect();
@@ -104,10 +127,15 @@ export default function AudioEditor({ project }) {
 
     // === Save to DB ===
     const handleSave = () => {
+        const tracksToSave = tracks.map(({ storageKey, source, ...rest }) => ({
+            ...rest,
+            source: storageKey || source,
+        }));
+
         router.put(route('audio.projects.update', project.id), {
             name: project.name,
             description: project.description,
-            tracks,
+            tracks: tracksToSave,
         });
     };
 
