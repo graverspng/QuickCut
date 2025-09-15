@@ -193,6 +193,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
     font-size: 12px;
     font-weight: 600;
     color: var(--light);
@@ -208,6 +209,23 @@
     border: 2px solid #ff5555;
     background: #c0392b !important;
     box-shadow: 0 0 15px rgba(255,85,85,0.4);
+}
+
+.clip-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    background: rgba(255,255,255,0.7);
+    cursor: ew-resize;
+}
+
+.clip-handle.left {
+    left: 0;
+}
+
+.clip-handle.right {
+    right: 0;
 }
 
 /* Music Tracks */

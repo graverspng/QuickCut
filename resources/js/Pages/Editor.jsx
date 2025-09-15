@@ -5,13 +5,20 @@ import { normalizeClips, normalizeTracks, getClipWidth } from '@/utils/timelineU
 import '@/../css/Editor.css';
 import '@/../css/EditorMobile.css'; // 📱 mobile overrides
 
-
 export default function Editor({ project }) {
+    const resolveLocal = (key, fallback = '') => {
+        try {
+            return localStorage.getItem(key) || fallback;
+        } catch (_) {
+            return fallback;
+        }
+    };
+
     const [mediaFiles, setMediaFiles] = useState(() =>
         (project.media_files || []).map((f) => {
             if (f.source?.startsWith('local-')) {
-                const data = localStorage.getItem(f.source);
-                return { ...f, source: data || '', storageKey: f.source };
+                const data = resolveLocal(f.source, '');
+                return { ...f, source: data, storageKey: f.source };
             }
             return f;
         })
@@ -19,8 +26,8 @@ export default function Editor({ project }) {
     const [clips, setClips] = useState(() =>
         (project.clips || []).map((c) => {
             if (c.source?.startsWith('local-')) {
-                const data = localStorage.getItem(c.source);
-                return { ...c, source: data || '', storageKey: c.source };
+                const data = resolveLocal(c.source, '');
+                return { ...c, source: data, storageKey: c.source };
             }
             return c;
         })
@@ -28,8 +35,8 @@ export default function Editor({ project }) {
     const [musicTracks, setMusicTracks] = useState(() =>
         (project.music_tracks || []).map((t) => {
             if (t.source?.startsWith('local-')) {
-                const data = localStorage.getItem(t.source);
-                return { ...t, source: data || '', storageKey: t.source };
+                const data = resolveLocal(t.source, '');
+                return { ...t, source: data, storageKey: t.source };
             }
             return t;
         })
@@ -41,7 +48,7 @@ export default function Editor({ project }) {
     const [globalDuration, setGlobalDuration] = useState(60);
     const videoRef = useRef(null);
     const audioRefs = useRef([]);
-    
+    const [resizeState, setResizeState] = useState(null);
 
     // === HELPERS TO NORMALIZE TIMELINE ===
     const normalizeClips = (clips) => {
@@ -72,6 +79,7 @@ export default function Editor({ project }) {
 
     const goBack = () => router.get(route('dashboard'));
 
+    // Store uploaded files as data URLs in localStorage
     const handleFileUpload = async (e) => {
         const uploads = Array.from(e.target.files);
 
@@ -80,7 +88,7 @@ export default function Editor({ project }) {
                 (file) =>
                     new Promise((resolve) => {
                         const reader = new FileReader();
-                        const key = `local-${crypto.randomUUID?.() || Date.now()}`;
+                        const key = `local-${globalThis.crypto?.randomUUID?.() || Date.now()}`;
                         reader.onload = () => {
                             const dataUrl = reader.result;
                             try {
@@ -103,11 +111,10 @@ export default function Editor({ project }) {
                     })
             )
         );
-    
+
         // ✅ Add ALL files (video + audio) only to Media Library
         setMediaFiles((prev) => [...prev, ...files]);
     };
-    
 
     const handleDragStart = (e, index) => {
         e.dataTransfer.setData('index', index);
@@ -150,6 +157,7 @@ export default function Editor({ project }) {
             ...rest,
             source: storageKey || source,
         }));
+
 
         router.put(route('projects.update', project.id), {
             media_files: mediaToSave,
@@ -270,6 +278,24 @@ export default function Editor({ project }) {
         setSelectedMusicIndex(dropIndex);
     };
 
+    // --- CLIP RESIZING ---
+    const startResize = (e, index, edge) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const clip = clips[index];
+        if (!clip) return;
+        const pxPerSec = 1200 / totalDuration;
+        setResizeState({
+            index,
+            edge,
+            startX: e.clientX,
+            origStartOffset: clip.startOffset || 0,
+            origDuration: clip.duration || 0,
+            sourceDuration: clip.sourceDuration || clip.duration || 0,
+            pxPerSec,
+        });
+    };
+
     // --- LOAD CLIP & TRACK METADATA ---
     useEffect(() => {
         clips.forEach((clip, i) => {
@@ -324,25 +350,58 @@ export default function Editor({ project }) {
         return s || globalDuration;
     }, [clips, globalDuration]);
 
+    // Handle resize dragging
+    useEffect(() => {
+        if (!resizeState) return;
+        const onMove = (e) => {
+            setClips((prev) => {
+                const arr = [...prev];
+                const clip = { ...arr[resizeState.index] };
+                const deltaTime = (e.clientX - resizeState.startX) / resizeState.pxPerSec;
+                if (resizeState.edge === 'end') {
+                    let newDuration = resizeState.origDuration + deltaTime;
+                    const maxDuration = resizeState.sourceDuration - resizeState.origStartOffset;
+                    newDuration = Math.max(0, Math.min(maxDuration, newDuration));
+                    clip.duration = newDuration;
+                } else if (resizeState.edge === 'start') {
+                    let ns = resizeState.origStartOffset + deltaTime;
+                    ns = Math.max(0, Math.min(ns, resizeState.origStartOffset + resizeState.origDuration));
+                    const end = resizeState.origStartOffset + resizeState.origDuration;
+                    clip.startOffset = ns;
+                    clip.duration = end - ns;
+                }
+                arr[resizeState.index] = clip;
+                return normalizeClips(arr);
+            });
+        };
+        const onUp = () => setResizeState(null);
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+        return () => {
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+        };
+    }, [resizeState]);
+
+
     // --- VIDEO PLAYBACK ---
     useEffect(() => {
         const video = videoRef.current;
         const seg = clips[activeClipIndex];
-        if (!video || !seg) return;
-    
+        if (!video || !seg || !seg.source) return;
+
         // regenerate blob URL if needed
         let source = seg.source;
         if (seg.file && seg.source.startsWith("blob:")) {
             source = URL.createObjectURL(seg.file);
         }
-    
+
         video.src = source;
         video.currentTime = seg.startOffset || 0;
-    
+
         const playPromise = video.play();
         if (playPromise !== undefined) playPromise.catch(() => {});
     }, [activeClipIndex, clips]);
-    
 
     useEffect(() => {
         const video = videoRef.current;
@@ -408,8 +467,8 @@ export default function Editor({ project }) {
         const clickX = e.clientX - rect.left;
         const timelineWidth = rect.width;
         const newGlobalTime = (clickX / timelineWidth) * totalDuration;
-    
-        let newIndex = 0;
+
+        let newIndex = 0
         for (let i = 0; i < clips.length; i++) {
             const clipStart = clips[i].startTime || 0;
             const clipEnd = clipStart + (clips[i].duration || 0);
@@ -418,31 +477,31 @@ export default function Editor({ project }) {
                 break;
             }
         }
-    
+
         const seg = clips[newIndex];
         if (!seg) return;
-    
+
         const segRelative = Math.max(0, newGlobalTime - (seg.startTime || 0));
         const seekTimeInSource = (seg.startOffset || 0) + segRelative;
-    
+
         // ✅ remember playback state
         const wasPlaying = videoRef.current && !videoRef.current.paused;
-    
+
         setActiveClipIndex(newIndex);
-    
+
         if (videoRef.current) {
             videoRef.current.src = seg.source;
             videoRef.current.currentTime = seekTimeInSource;
-    
+
             if (wasPlaying) {
                 videoRef.current.play().catch(() => {});
             } else {
                 videoRef.current.pause(); // ✅ force it to stay paused
             }
         }
-    
+
         setCurrentTime(newGlobalTime);
-    };    
+    };
 
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -568,7 +627,7 @@ export default function Editor({ project }) {
                                     return (
                                         <div
                                             key={index}
-                                            draggable
+                                            draggable={!isSelected}
                                             onDragStart={(e) => handleClipDragStart(e, index)}
                                             onDragOver={(e) => e.preventDefault()}
                                             onDrop={(e) => handleClipDrop(e, index)}
@@ -579,6 +638,18 @@ export default function Editor({ project }) {
                                             className={`clip ${isSelected ? 'selected' : ''}`}
                                             style={{ width: `${width}px` }}
                                         >
+                                            {isSelected && (
+                                                <>
+                                                    <div
+                                                        className="clip-handle left"
+                                                        onMouseDown={(e) => startResize(e, index, 'start')}
+                                                    />
+                                                    <div
+                                                        className="clip-handle right"
+                                                        onMouseDown={(e) => startResize(e, index, 'end')}
+                                                    />
+                                                </>
+                                            )}
                                             {clip.name}
                                         </div>
                                     );
@@ -634,3 +705,4 @@ export default function Editor({ project }) {
         </AuthenticatedLayout>
     );
 }
+2
