@@ -498,13 +498,12 @@ export default function Editor({ project }) {
   const totalDuration = useMemo(() => {
     const clipDur = clips.reduce((sum, c) => sum + (c.duration || 0), 0);
   
-    // Music should consider startTime + duration (not just duration sum)
+    // limit music duration to clip duration unless user cut it shorter
     const musicDur = musicTracks.reduce((max, t) => {
-      const end = (t.startTime || 0) + (t.duration || 0);
+      const end = (t.startTime || 0) + Math.min(t.duration || 0, clipDur);
       return Math.max(max, end);
     }, 0);
   
-    // Effects can also extend the timeline
     const effectDur = effects.reduce((max, fx) => {
       const end = (fx.startTime || 0) + (fx.duration || 0);
       return Math.max(max, end);
@@ -512,6 +511,7 @@ export default function Editor({ project }) {
   
     return Math.max(clipDur, musicDur, effectDur, globalDuration);
   }, [clips, musicTracks, effects, globalDuration]);
+  
   
   
 
@@ -683,14 +683,16 @@ export default function Editor({ project }) {
                   }
                 });
               } else {
-                // ✅ freeze last frame instead of black screen
-                video.pause();
+                // ✅ keep showing last frame while audio continues
                 try {
-                  video.currentTime = Math.max(0, video.duration - 0.05);
+                  video.pause();
+                  if (video.duration && !isNaN(video.duration)) {
+                    video.currentTime = Math.max(0, video.duration - 0.05);
+                  }
                 } catch (e) {
-                  // ignore if duration not ready
+                  console.warn("Could not hold last frame", e);
                 }
-              }              
+              }                                
             }
           }          
 
@@ -736,13 +738,12 @@ export default function Editor({ project }) {
 
   const handleSeek = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const scrollX = e.currentTarget.parentElement.scrollLeft; // ✅ get scroll offset
+    const scrollX = e.currentTarget.parentElement.scrollLeft; // ✅ account for scroll
     const clickX = e.clientX - rect.left + scrollX;
-    const fullWidth = totalDuration * 20; // ✅ use full scaled width
+    const fullWidth = totalDuration * 20;
     const newGlobalTime = (clickX / fullWidth) * totalDuration;
-    
-
-    let newIndex = 0;
+  
+    let newIndex = null;
     for (let i = 0; i < clips.length; i++) {
       const clipStart = clips[i].startTime || 0;
       const clipEnd = clipStart + (clips[i].duration || 0);
@@ -751,32 +752,40 @@ export default function Editor({ project }) {
         break;
       }
     }
-
-    const seg = clips[newIndex];
-    if (!seg) return;
-
-    const segRelative = Math.max(0, newGlobalTime - (seg.startTime || 0));
-    const seekTimeInSource = (seg.startOffset || 0) + segRelative;
-
-    // remember playback state
-    const wasPlaying = videoRef.current && !videoRef.current.paused;
-
-    setActiveClipIndex(newIndex);
-
-    if (videoRef.current) {
-      videoRef.current.src = seg.source;
-      videoRef.current.currentTime = seekTimeInSource;
-
-      if (wasPlaying) {
-        videoRef.current.play().catch(() => {});
-      } else {
+  
+    const seg = newIndex !== null ? clips[newIndex] : null;
+  
+    if (seg) {
+      const segRelative = Math.max(0, newGlobalTime - (seg.startTime || 0));
+      const seekTimeInSource = (seg.startOffset || 0) + segRelative;
+  
+      const wasPlaying = videoRef.current && !videoRef.current.paused;
+      setActiveClipIndex(newIndex);
+  
+      if (videoRef.current) {
+        videoRef.current.src = seg.source;
+        videoRef.current.currentTime = seekTimeInSource;
+  
+        if (wasPlaying) {
+          videoRef.current.play().catch(() => {});
+        } else {
+          videoRef.current.pause();
+        }
+      }
+    } else {
+      // ✅ no video → black screen, but still allow audio playback
+      setActiveClipIndex(null);
+      if (videoRef.current) {
         videoRef.current.pause();
+        videoRef.current.removeAttribute("src");
+        videoRef.current.load(); // clears → black screen
       }
     }
-
+  
     setCurrentTime(newGlobalTime);
     applyFilterAtTime(newGlobalTime);
   };
+  
 
   useEffect(() => {
     const handleKeyDown = (e) => {
