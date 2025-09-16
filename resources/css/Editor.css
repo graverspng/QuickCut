@@ -5,6 +5,8 @@
     --green-1: #248232; /* deep green */
     --green-2: #2BA84A; /* neon green */
     --green-3: #3CCF65; /* glowing lime */
+    --cyan-1: #00bcd4;  /* effects lane color */
+    --blue-1: #3498db;  /* secondary accent */
 }
 
 /* Container */
@@ -125,6 +127,21 @@
     box-shadow: 0 0 10px rgba(43,168,74,0.3);
 }
 
+.media-item.effect-item {
+    background: linear-gradient(135deg, #0f2e2f, #123a3c);
+    border: 1px solid rgba(0,188,212,0.35);
+    box-shadow: 0 0 10px rgba(0,188,212,0.25);
+}
+.media-item.effect-item:hover {
+    box-shadow: 0 0 14px rgba(0,188,212,0.45);
+}
+
+.hint {
+    font-size: 11px;
+    opacity: 0.8;
+    margin-top: 6px;
+}
+
 /* Editor Area */
 .editor-area {
     flex: 1;
@@ -173,6 +190,127 @@
 /* ========================
    Timelines
    ======================== */
+
+/* NEW: Effects Timeline (top lane) */
+/* Effects Timeline */
+.effects-timeline {
+    height: 100px;              /* was 70px */
+    background: #0b1111;
+    border-top: 1px solid #19383b;
+    border-bottom: 1px solid #132b2e;
+    display: flex;
+    align-items: center;
+    overflow-x: auto;
+    position: relative;
+    padding: 10px;
+}
+
+/* Effect block thickness */
+.effect-block {
+    position: absolute;
+    height: 85%;                 /* make block thicker */
+    top: 7%;                     /* center it vertically */
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: #e4fdff;
+    background: linear-gradient(135deg, rgba(0,188,212,0.35), rgba(0,188,212,0.2));
+    border: 1px solid rgba(0,188,212,0.45);
+    box-shadow: 0 0 14px rgba(0,188,212,0.25), inset 0 0 6px rgba(0,188,212,0.15);
+    transition: all 0.2s ease;
+    padding: 0 12px;
+}
+
+.effect-block {
+    background: linear-gradient(
+      to right,
+      rgba(0,188,212,0) 0%,               /* fade-in */
+      rgba(0,188,212,0.35) 15%, 
+      rgba(0,188,212,0.35) 85%, 
+      rgba(0,188,212,0) 100%              /* fade-out */
+    );
+  }
+
+  .timeline-scroll {
+    overflow-x: auto;
+    overflow-y: hidden; /* only horizontal scroll */
+    white-space: nowrap;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  /* Make each timeline lane visible */
+  .effects-timeline {
+    height: 80px;
+    background: #0a0f0f;
+    border-bottom: 1px solid #222;
+    position: relative;
+  }
+  
+  .timeline {
+    height: 100px;
+    background: #1a1a1a;
+    border-bottom: 1px solid #222;
+    position: relative;
+  }
+  
+  .music-timeline {
+    height: 80px;
+    background: #111;
+    position: relative;
+  }
+  
+  
+
+
+.effect-block {
+    position: absolute;
+    height: 85%;                 /* make block thicker */
+    top: 7%;                     /* center it vertically */
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: #e4fdff;
+    background: linear-gradient(135deg, rgba(0,188,212,0.35), rgba(0,188,212,0.2));
+    border: 1px solid rgba(0,188,212,0.45);
+    box-shadow: 0 0 14px rgba(0,188,212,0.25), inset 0 0 6px rgba(0,188,212,0.15);
+    transition: all 0.2s ease;
+    padding: 0 12px;
+}
+.effect-block:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 18px rgba(0,188,212,0.45), inset 0 0 6px rgba(0,188,212,0.22);
+}
+.effect-block.selected {
+    border: 2px solid #00e5ff;
+    box-shadow: 0 0 22px rgba(0,229,255,0.45), inset 0 0 6px rgba(0,229,255,0.3);
+}
+
+.effect-badges {
+    position: absolute;
+    bottom: 4px;
+    right: 6px;
+    display: flex;
+    gap: 4px;
+}
+.badge {
+    font-size: 10px;
+    background: rgba(0,188,212,0.18);
+    border: 1px solid rgba(0,188,212,0.35);
+    border-radius: 6px;
+    padding: 1px 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Clips Timeline (middle) */
 .timeline {
     height: 100px;
     background: var(--muted);
@@ -219,16 +357,10 @@
     background: rgba(255,255,255,0.7);
     cursor: ew-resize;
 }
+.clip-handle.left { left: 0; }
+.clip-handle.right { right: 0; }
 
-.clip-handle.left {
-    left: 0;
-}
-
-.clip-handle.right {
-    right: 0;
-}
-
-/* Music Tracks */
+/* Music Tracks (bottom) */
 .music-timeline {
     height: 70px;
     background: var(--dark);
@@ -331,6 +463,22 @@
     background: #9b59b6;
     box-shadow: 0 0 6px rgba(155,89,182,0.6);
 }
+
+/* NEW: Effects section card in sidebar */
+.effects-section {
+    background: rgba(0,188,212,0.08);
+    border: 1px solid rgba(0,188,212,0.35);
+}
+.effects-section h4 {
+    color: #00e5ff;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+}
+.effects-section .section-divider {
+    background: rgba(0,188,212,0.75);
+    box-shadow: 0 0 6px rgba(0,188,212,0.7);
+}
+
 /* Upload Dropzone */
 .upload-dropzone {
     background: rgba(43,168,74,0.08); /* faint neon green glow */
@@ -357,4 +505,38 @@
     background: rgba(60,207,101,0.2);
     border-color: var(--green-3);
     box-shadow: 0 0 25px rgba(60,207,101,0.6);
+}
+
+/* Effect intensity slider */
+.effect-slider {
+    position: absolute;
+    bottom: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80%;
+    appearance: none;
+    height: 6px;
+    background: rgba(0,188,212,0.25);
+    border-radius: 6px;
+    outline: none;
+    cursor: pointer;
+}
+
+.effect-slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #00e5ff;
+    cursor: grab;
+    box-shadow: 0 0 6px rgba(0,229,255,0.6);
+}
+
+.effect-slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #00e5ff;
+    cursor: grab;
+    box-shadow: 0 0 6px rgba(0,229,255,0.6);
 }
