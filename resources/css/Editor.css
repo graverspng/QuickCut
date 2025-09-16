@@ -250,6 +250,26 @@
     border-bottom: 1px solid #222;
     position: relative;
   }
+
+  .timeline {
+    position: relative;
+    min-height: 40px;   /* enough height so empty background exists */
+    background: rgba(0,0,0,0.05); /* faint background so you see gaps */
+    cursor: pointer;
+  }
+  .timeline .clip {
+    position: relative;
+    z-index: 2;
+  }
+  .playhead {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: red;
+    z-index: 3;
+  }
+  
   
   .timeline {
     height: 100px;
