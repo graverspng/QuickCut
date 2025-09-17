@@ -102,6 +102,9 @@ export default function Editor({ project }) {
   const [resizeState, setResizeState] = useState(null);
   // NEW: resize state for effects
   const [resizeEffectState, setResizeEffectState] = useState(null);
+  // NEW: resize state for music tracks
+const [resizeMusicState, setResizeMusicState] = useState(null);
+
 
   // --- HELPERS TO NORMALIZE TIMELINE (keep your originals local) ---
   const normalizeClipsLocal = (clipsArr) => {
@@ -129,6 +132,25 @@ export default function Editor({ project }) {
     if (videoRef.current.paused) videoRef.current.play();
     else videoRef.current.pause();
   };
+
+  // --- MUSIC RESIZING ---
+const startMusicResize = (e, index, edge) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const track = musicTracks[index];
+    if (!track) return;
+    const pxPerSec = 1200 / totalDuration;
+    setResizeMusicState({
+      index,
+      edge,
+      startX: e.clientX,
+      origStartOffset: track.startOffset || 0,
+      origDuration: track.duration || 0,
+      sourceDuration: track.sourceDuration || track.duration || 0,
+      pxPerSec,
+    });
+  };
+  
 
   const goBack = () => router.get(route('dashboard'));
 
@@ -494,6 +516,44 @@ export default function Editor({ project }) {
       }
     });
   }, [clips, musicTracks]);
+
+  useEffect(() => {
+    if (!resizeMusicState) return;
+  
+    const onMove = (e) => {
+      setMusicTracks((prev) => {
+        const arr = [...prev];
+        const track = { ...arr[resizeMusicState.index] };
+        const deltaTime = (e.clientX - resizeMusicState.startX) / resizeMusicState.pxPerSec;
+  
+        if (resizeMusicState.edge === 'end') {
+          let newDuration = (resizeMusicState.origDuration || 0) + deltaTime;
+          const maxDur = (resizeMusicState.sourceDuration || Infinity) - (resizeMusicState.origStartOffset || 0);
+          newDuration = Math.max(0, Math.min(maxDur, newDuration));
+          track.duration = newDuration;
+        } else if (resizeMusicState.edge === 'start') {
+          let ns = (resizeMusicState.origStartOffset || 0) + deltaTime;
+          ns = Math.max(0, Math.min(ns, (resizeMusicState.origStartOffset || 0) + (resizeMusicState.origDuration || 0)));
+          const end = (resizeMusicState.origStartOffset || 0) + (resizeMusicState.origDuration || 0);
+          track.startOffset = ns;
+          track.duration = end - ns;
+        }
+  
+        arr[resizeMusicState.index] = track;
+        return normalizeTracksLocal(arr);
+      });
+    };
+  
+    const onUp = () => setResizeMusicState(null);
+  
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [resizeMusicState]);
+  
 
   const totalDuration = useMemo(() => {
     const clipDur = clips.reduce((sum, c) => sum + (c.duration || 0), 0);
@@ -1084,25 +1144,38 @@ export default function Editor({ project }) {
         const width = (track.duration / totalDuration) * (totalDuration * 20);
         const isSelected = selectedMusicIndex === index;
         return (
-          <div
-            key={index}
-            draggable
-            onDragStart={(e) => handleTrackDragStart(e, index)}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => handleTrackDrop(e, index)}
-            onClick={(e) => {
-              e.stopPropagation();
-              setSelectedMusicIndex(isSelected ? null : index);
-            }}
-            className={`track ${isSelected ? 'selected' : ''}`}
-            style={{ width: `${width}px` }}
-          >
-            {track.name}
-            <audio
-              ref={(el) => (audioRefs.current[index] = el)}
-              src={track.source}
-            />
-          </div>
+<div
+  key={index}
+  draggable
+  onDragStart={(e) => handleTrackDragStart(e, index)}
+  onDragOver={(e) => e.preventDefault()}
+  onDrop={(e) => handleTrackDrop(e, index)}
+  onClick={(e) => {
+    e.stopPropagation();
+    setSelectedMusicIndex(isSelected ? null : index);
+  }}
+  className={`track ${isSelected ? 'selected' : ''}`}
+  style={{ width: `${width}px` }}
+>
+  {track.name}
+  <audio
+    ref={(el) => (audioRefs.current[index] = el)}
+    src={track.source}
+  />
+
+  {isSelected && (
+    <>
+      <div
+        className="clip-handle left"
+        onMouseDown={(e) => startMusicResize(e, index, 'start')}
+      />
+      <div
+        className="clip-handle right"
+        onMouseDown={(e) => startMusicResize(e, index, 'end')}
+      />
+    </>
+  )}
+</div>
         );
       })}
     </div>

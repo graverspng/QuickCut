@@ -208,8 +208,8 @@
 /* Effect block thickness */
 .effect-block {
     position: absolute;
-    height: 85%;                 /* make block thicker */
-    top: 7%;                     /* center it vertically */
+    height: 85%;    /* relative to timeline lane height */
+    top: 7%;
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -245,7 +245,7 @@
   
   /* Make each timeline lane visible */
   .effects-timeline {
-    height: 80px;
+    height: 100px;
     background: #0a0f0f;
     border-bottom: 1px solid #222;
     position: relative;
@@ -261,6 +261,19 @@
     position: relative;
     z-index: 2;
   }
+
+  
+  .music-timeline .clip-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    background: rgba(255,255,255,0.7);
+    cursor: ew-resize;
+  }
+  .music-timeline .clip-handle.left { left: 0; }
+  .music-timeline .clip-handle.right { right: 0; }
+  
   .playhead {
     position: absolute;
     top: 0;
@@ -407,9 +420,10 @@
     padding: 0 6px;
 }
 .track:hover {
-    transform: scale(1.03);
+    transform: scale(1.01);
     box-shadow: 0 0 15px rgba(155,89,182,0.4);
 }
+
 .track.selected {
     border: 2px solid #ffcc00;
     background: linear-gradient(to right, #e67e22, #d35400);
