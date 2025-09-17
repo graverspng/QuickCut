@@ -16,36 +16,47 @@ use Inertia\Response;
 class RegisteredUserController extends Controller
 {
     /**
-     * Display the registration view.
+     * Parāda reģistrācijas skatu (formu).
+     * 
+     * @return Response
      */
     public function create(): Response
     {
+        // Atgriež Inertia skatu ar reģistrācijas lapu
         return Inertia::render('Auth/Register');
     }
 
     /**
-     * Handle an incoming registration request.
+     * Apstrādā ienākošo reģistrācijas pieprasījumu.
+     * Veic datu validāciju, izveido jaunu lietotāju, autorizē to un novirza uz dashboard.
      *
      * @throws \Illuminate\Validation\ValidationException
+     * @param Request $request
+     * @return RedirectResponse
      */
     public function store(Request $request): RedirectResponse
     {
+        // Validē ievadītos datus: name, email un password
         $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|lowercase|email|max:255|unique:'.User::class,
-            'password' => ['required', 'confirmed', Rules\Password::defaults()],
+            'name' => 'required|string|max:255',                            // Vārds ir obligāts, teksts, max 255 simboli
+            'email' => 'required|string|lowercase|email|max:255|unique:'.User::class,  // Epasts obligāts, email formāts, unikāls lietotāju tabulā
+            'password' => ['required', 'confirmed', Rules\Password::defaults()],  // Parole obligāta, jāatbilst noteikumiem, jāsakrīt ar apstiprinājumu
         ]);
 
+        // Izveido jaunu lietotāju ar noformētajiem datiem
         $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
+            'name' => $request->name,                                      // Lietotāja vārds
+            'email' => $request->email,                                    // Lietotāja e-pasts
+            'password' => Hash::make($request->password),                  // Paroles šifrēšana (hashēšana)
         ]);
 
+        // Izsauc notikumu, ka lietotājs ir reģistrējies (var izmantot email apstiprināšanai, utt.)
         event(new Registered($user));
 
+        // Automātiski autorizē (piesldedzas) jaunizveidotajā lietotājā
         Auth::login($user);
 
+        // Pāradresē uz dashboard lapu
         return redirect(route('dashboard', absolute: false));
     }
 }
