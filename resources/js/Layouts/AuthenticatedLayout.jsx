@@ -176,6 +176,7 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
     About Us
 </ResponsiveNavLink>
 
+
                         </div>
 
                         <div className="border-t border-gray-700 pb-1 pt-4 bg-[#1a1a1a]">

@@ -1,0 +1,170 @@
+:root {
+    --dark: #000000;
+    --muted: #1a1a1a;
+    --light: #FCFFFC;
+    --green-1: #248232;
+    --green-2: #2BA84A;
+  }
+  
+  /* Page wrapper */
+  .formatchanger-page {
+    min-height: 100vh;
+    background: var(--dark);
+    padding: 48px 24px;
+  }
+  
+  .formatchanger-wrapper {
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  
+  /* Title */
+  .formatchanger-title {
+    text-align: center;
+    margin-bottom: 40px;
+    animation: fadeInUp 0.8s ease-out forwards;
+  }
+  
+  .formatchanger-title h2 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--light);
+  }
+  
+  .formatchanger-title p {
+    color: #9ca3af;
+    margin-top: 8px;
+    font-size: 0.95rem;
+  }
+  
+  /* Card */
+  .fc-card {
+    background: var(--muted);
+    border-radius: 20px;
+    padding: 24px;
+    color: var(--light);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.05);
+    transition: transform 200ms ease, box-shadow 250ms ease;
+  }
+  
+  .fc-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 18px 40px rgba(43,168,74,0.2);
+  }
+  
+  /* Inputs */
+  .fc-input {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--light);
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    width: 100%;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  
+  .fc-input:focus {
+    outline: none;
+    border-color: var(--green-2);
+    box-shadow: 0 0 0 4px rgba(43,168,74,0.2);
+  }
+  
+  /* Buttons */
+  .fc-button {
+    background: linear-gradient(90deg, var(--green-1), var(--green-2));
+    color: var(--light);
+    padding: 10px 20px;
+    border-radius: 10px;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.2s ease;
+  }
+  
+  .fc-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 20px rgba(43,168,74,0.3);
+  }
+  
+  /* Upload area */
+  .fc-upload {
+    border: 2px dashed rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 32px;
+    text-align: center;
+    background: rgba(255,255,255,0.02);
+    transition: border-color 0.3s, background 0.3s;
+  }
+  
+  .fc-upload:hover {
+    border-color: var(--green-2);
+    background: rgba(43,168,74,0.05);
+  }
+  
+  .fc-upload label {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--green-2);
+  }
+  
+  .fc-upload label:hover {
+    color: var(--green-1);
+  }
+  
+  /* Highlight when dragging */
+  .fc-upload.drag-active {
+    border-color: var(--green-2);
+    background: rgba(43,168,74,0.1);
+  }
+  
+  /* History list */
+  .fc-history li {
+    padding: 12px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.05);
+    transition: background 0.2s;
+  }
+  
+  .fc-history li:hover {
+    background: rgba(43,168,74,0.08);
+  }
+  
+  /* Loader */
+  .loader-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    backdrop-filter: blur(4px);
+  }
+  
+  .loader {
+    border: 6px solid rgba(255,255,255,0.15);
+    border-top: 6px solid var(--green-2);
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  
+  /* Animations */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  
+  .fade-in-up {
+    opacity: 0;
+    animation: fadeInUp 0.8s ease-out forwards;
+  }
+  
