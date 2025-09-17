@@ -5,6 +5,7 @@ use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\EditorController;
 use App\Http\Controllers\AboutUsController;
 use App\Http\Controllers\AudioProjectController;
+use App\Http\Controllers\FormatChangerController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -34,6 +35,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // === ABOUT US ===
     Route::get('/about-us', [AboutUsController::class, 'index'])->name('about.us');
     Route::get('/audio-editor/{audioProject}', [AudioProjectController::class, 'show'])->name('audio.editor');
+    Route::get('/format-changer', [FormatChangerController::class, 'index'])->name('format.changer');
+    
+    
 
 });
 

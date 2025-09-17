@@ -45,6 +45,17 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                 >
                                     Audio Projects
                                 </NavLink>
+                                {console.log('Format changer route:', route('format.changer'))}
+<NavLink
+    href={route('format.changer')}
+    active={route().current('format.changer')}
+    className="text-[#2BA84A] hover:text-[#248232] font-semibold transition"
+>
+    Format Changer
+</NavLink>
+
+
+
 
                                 <NavLink
                                     href={route('about.us')}
@@ -148,6 +159,13 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                 className="text-[#2BA84A] hover:text-[#248232] font-semibold"
                             >
                                 Audio Projects
+                            </ResponsiveNavLink>
+                            <ResponsiveNavLink
+                                href={route('format.changer')}
+                                active={route().current('format.changer')}
+                                className="text-[#2BA84A] hover:text-[#248232] font-semibold"
+                            >
+                                Format Changer
                             </ResponsiveNavLink>
 
                             <ResponsiveNavLink
