@@ -4,7 +4,7 @@ import ResponsiveNavLink from '@/Components/ResponsiveNavLink';
 import { Link, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
-import QuickCutCutoutImg from '@/Pages/Auth/Img/QuickCut_Cutout.png';
+import QuickCutCutoutImg from '@/Pages/Auth/img/QuickCut_Cutout.png';
 
 export default function AuthenticatedLayout({ header, children, hideNavbar }) {
     const user = usePage().props.auth.user;
@@ -46,13 +46,13 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                     Audio Projects
                                 </NavLink>
                                 {console.log('Format changer route:', route('format.changer'))}
-<NavLink
-    href={route('format.changer')}
-    active={route().current('format.changer')}
-    className="text-[#2BA84A] hover:text-[#248232] font-semibold transition"
->
-    Format Changer
-</NavLink>
+                                <NavLink
+                                    href={route('format.changer')}
+                                    active={route().current('format.changer')}
+                                    className="text-[#2BA84A] hover:text-[#248232] font-semibold transition"
+                                >
+                                    Format Changer
+                                </NavLink>
 
 
 
@@ -161,20 +161,21 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                 Audio Projects
                             </ResponsiveNavLink>
                             <ResponsiveNavLink
-                                href={route('format.changer')}
-                                active={route().current('format.changer')}
-                                className="text-[#2BA84A] hover:text-[#248232] font-semibold"
-                            >
-                                Format Changer
-                            </ResponsiveNavLink>
+    href={route('format.changer')}
+    active={route().current('format.changer')}
+    className="text-[#2BA84A] hover:text-[#248232] font-semibold"
+>
+    Format Changer
+</ResponsiveNavLink>
 
-                            <ResponsiveNavLink
-                                href={route('about.us')}
-                                active={route().current('about.us')}
-                                className="text-[#2BA84A] hover:text-[#248232] font-semibold"
-                            >
-                                About Us
-                            </ResponsiveNavLink>
+<ResponsiveNavLink
+    href={route('about.us')}
+    active={route().current('about.us')}
+    className="text-[#2BA84A] hover:text-[#248232] font-semibold"
+>
+    About Us
+</ResponsiveNavLink>
+
                         </div>
 
                         <div className="border-t border-gray-700 pb-1 pt-4 bg-[#1a1a1a]">

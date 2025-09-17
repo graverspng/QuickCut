@@ -21,7 +21,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])->name('projects.destroy');
     Route::get('/editor/{project}', [EditorController::class, 'show'])->name('editor');
 
-    // === AUDIO PROJECTS ===
+    // === AUDIO PROJECTS ===   
     Route::get('/audio-projects', [AudioProjectController::class, 'index'])->name('audio.projects');
     Route::post('/audio-projects', [AudioProjectController::class, 'store'])->name('audio.projects.store');
     Route::put('/audio-projects/{audioProject}', [AudioProjectController::class, 'update'])->name('audio.projects.update');
