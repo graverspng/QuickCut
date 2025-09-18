@@ -10,6 +10,9 @@
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
 
+        <!-- Favicon (loaded via Vite, just like your login image) -->
+        <link rel="icon" type="image/png" href="{{ Vite::asset('resources/js/Pages/Auth/Img/QuickCut.png') }}">
+
         <!-- Scripts -->
         @routes
         @viteReactRefresh
