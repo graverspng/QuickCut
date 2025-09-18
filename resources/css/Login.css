@@ -108,7 +108,9 @@
     color: var(--light);
     font-weight: 700;
     font-size: 2.5rem;
+    white-space: nowrap; /* 👈 keeps "Welcome back" on one line */
 }
+
 
 .login-card p {
     color: rgba(252,255,252,0.85);

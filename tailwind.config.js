@@ -13,7 +13,8 @@ export default {
     theme: {
         extend: {
             fontFamily: {
-                sans: ['Figtree', ...defaultTheme.fontFamily.sans],
+                // Make Suisse the new default "sans" font
+                sans: ['Suisse', ...defaultTheme.fontFamily.sans],
             },
         },
     },
