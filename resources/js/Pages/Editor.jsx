@@ -37,6 +37,7 @@ const EFFECT_PRESETS = [
 ];
 
 export default function Editor({ project }) {
+  // ===== Rehydrate local-keys from localStorage safely =====
   const resolveLocal = (key, fallback = '') => {
     try {
       return localStorage.getItem(key) || fallback;
@@ -45,38 +46,27 @@ export default function Editor({ project }) {
     }
   };
 
-  const [mediaFiles, setMediaFiles] = useState(() =>
-    (project.media_files || []).map((f) => {
-      if (f.source?.startsWith('local-')) {
-        const data = resolveLocal(f.source, '');
-        return { ...f, source: data, storageKey: f.source };
-      }
-      return f;
-    })
-  );
+  const rehydrateItems = (items = []) =>
+    items
+      .map((item) => {
+        if (item?.source?.startsWith?.('local-')) {
+          const data = resolveLocal(item.source, '');
+          if (!data) {
+            console.warn('⚠️ Missing local file in storage:', item.source);
+            return null; // drop missing entries to avoid black player
+          }
+          return { ...item, source: data, storageKey: item.source };
+        }
+        return item;
+      })
+      .filter(Boolean);
 
-  const [clips, setClips] = useState(() =>
-    (project.clips || []).map((c) => {
-      if (c.source?.startsWith('local-')) {
-        const data = resolveLocal(c.source, '');
-        return { ...c, source: data, storageKey: c.source };
-      }
-      return c;
-    })
-  );
+  // ===== State (no duplicates) =====
+  const [mediaFiles, setMediaFiles] = useState(() => rehydrateItems(project.media_files || []));
+  const [clips, setClips] = useState(() => rehydrateItems(project.clips || []));
+  const [musicTracks, setMusicTracks] = useState(() => rehydrateItems(project.music_tracks || []));
 
-  const [musicTracks, setMusicTracks] = useState(() =>
-    (project.music_tracks || []).map((t) => {
-      if (t.source?.startsWith('local-')) {
-        const data = resolveLocal(t.source, '');
-        return { ...t, source: data, storageKey: t.source };
-      }
-      return t;
-    })
-  );
-
-  // ===== NEW: Effects state =====
-  // If project.effects exist, use them; otherwise seed with a couple defaults
+  // Effects
   const [effects, setEffects] = useState(() => {
     if (Array.isArray(project.effects) && project.effects.length) return project.effects;
     return [
@@ -85,11 +75,9 @@ export default function Editor({ project }) {
     ];
   });
 
-  const [activeClipIndex, setActiveClipIndex] = useState(0);
+  const [activeClipIndex, setActiveClipIndex] = useState(null);
   const [selectedClipIndex, setSelectedClipIndex] = useState(null);
   const [selectedMusicIndex, setSelectedMusicIndex] = useState(null);
-
-  // NEW: selection for effect blocks
   const [selectedEffectIndex, setSelectedEffectIndex] = useState(null);
 
   const [currentTime, setCurrentTime] = useState(0);
@@ -98,15 +86,12 @@ export default function Editor({ project }) {
   const videoRef = useRef(null);
   const audioRefs = useRef([]);
 
-  // Existing resize state for clips
-  const [resizeState, setResizeState] = useState(null);
-  // NEW: resize state for effects
-  const [resizeEffectState, setResizeEffectState] = useState(null);
-  // NEW: resize state for music tracks
-const [resizeMusicState, setResizeMusicState] = useState(null);
+  // Resizing states
+  const [resizeState, setResizeState] = useState(null); // clips
+  const [resizeEffectState, setResizeEffectState] = useState(null); // effects
+  const [resizeMusicState, setResizeMusicState] = useState(null); // music
 
-
-  // --- HELPERS TO NORMALIZE TIMELINE (keep your originals local) ---
+  // ===== Helpers to normalize timeline =====
   const normalizeClipsLocal = (clipsArr) => {
     let accumulated = 0;
     return clipsArr.map((clip) => {
@@ -134,7 +119,7 @@ const [resizeMusicState, setResizeMusicState] = useState(null);
   };
 
   // --- MUSIC RESIZING ---
-const startMusicResize = (e, index, edge) => {
+  const startMusicResize = (e, index, edge) => {
     e.stopPropagation();
     e.preventDefault();
     const track = musicTracks[index];
@@ -150,14 +135,12 @@ const startMusicResize = (e, index, edge) => {
       pxPerSec,
     });
   };
-  
 
   const goBack = () => router.get(route('dashboard'));
 
-  // Store uploaded files as data URLs in localStorage
+  // ===== Upload to localStorage and add to library =====
   const handleFileUpload = async (e) => {
-    const uploads = Array.from(e.target.files);
-
+    const uploads = Array.from(e.target.files || []);
     const files = await Promise.all(
       uploads.map(
         (file) =>
@@ -187,7 +170,6 @@ const startMusicResize = (e, index, edge) => {
       )
     );
 
-    // ✅ Add ALL files (video + audio) only to Media Library
     setMediaFiles((prev) => [...prev, ...files]);
   };
 
@@ -196,14 +178,13 @@ const startMusicResize = (e, index, edge) => {
     e.dataTransfer.setData('payload', JSON.stringify(payload));
   };
 
-  // Drop onto timeline area: decide whether it’s media or effect
+  // ===== Drop onto timeline (media/effect) =====
   const handleDrop = (e) => {
     e.preventDefault();
     const data = e.dataTransfer.getData('payload');
     if (!data) return;
     const payload = JSON.parse(data);
 
-    // Drop position time
     const rect = e.currentTarget.getBoundingClientRect();
     const dropX = e.clientX - rect.left;
     const timelineWidth = rect.width;
@@ -214,46 +195,45 @@ const startMusicResize = (e, index, edge) => {
       if (!file) return;
 
       if (file.type === 'video') {
-        setClips((prev) =>
-          normalizeClipsLocal([
+        setClips((prev) => {
+          const newClips = normalizeClipsLocal([
             ...prev,
             {
               ...file,
               startOffset: 0,
               startTime: prev.reduce((sum, c) => sum + (c.duration || 0), 0),
             },
-          ])
-        );
+          ]);
+          if (prev.length === 0) setActiveClipIndex(0); // ✅ select first clip automatically
+          return newClips;
+        });
       } else if (file.type === 'audio') {
-        setMusicTracks((prev) =>
-          normalizeTracksLocal([...prev, { ...file, startTime: dropTime, startOffset: 0 }])
-        );
+        setMusicTracks((prev) => normalizeTracksLocal([...prev, { ...file, startTime: dropTime, startOffset: 0 }]));
       }
     } else if (payload.kind === 'effect') {
-        const base = payload.effect;
-        setEffects((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            name: base.name,
-            type: base.type,
-            color: base.color,
-            intensity: base.intensity ?? 0.5,
-            startTime: dropTime,   // ✅ drop where user placed
-            duration: base.duration ?? 5,
-            fadeIn: base.fadeIn ?? 0,
-            fadeOut: base.fadeOut ?? 0,
-          },
-        ]);
-      }
-      
-}
+      const base = payload.effect;
+      setEffects((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          name: base.name,
+          type: base.type,
+          color: base.color,
+          intensity: base.intensity ?? 0.5,
+          startTime: dropTime,
+          duration: base.duration ?? 5,
+          fadeIn: base.fadeIn ?? 0,
+          fadeOut: base.fadeOut ?? 0,
+        },
+      ]);
+    }
+  };
 
-
+  // ===== Save =====
   const handleSave = () => {
     const mediaToSave = mediaFiles.map(({ storageKey, source, ...rest }) => ({
       ...rest,
-      source: storageKey || source,
+      source: storageKey || source, // save the local key, not base64
     }));
     const clipsToSave = clips.map(({ storageKey, source, ...rest }) => ({
       ...rest,
@@ -264,17 +244,17 @@ const startMusicResize = (e, index, edge) => {
       source: storageKey || source,
     }));
 
-    // Save effects as-is
-    const effectsToSave = effects.map((e) => ({ ...e }));
+    const effectsToSave = effects.map((e) => ({ ...e })); // keep if your DB supports it
 
     router.put(route('projects.update', project.id), {
       media_files: mediaToSave,
       clips: clipsToSave,
       music_tracks: tracksToSave,
-      effects: effectsToSave,
+      effects: effectsToSave, // remove this if your DB doesn't have an `effects` column
     });
   };
 
+  // ===== Cut handlers =====
   const handleCut = () => {
     if (selectedClipIndex !== null) {
       const targetIndex = selectedClipIndex;
@@ -298,12 +278,7 @@ const startMusicResize = (e, index, edge) => {
       };
 
       setClips((prev) => {
-        const newClips = [
-          ...prev.slice(0, targetIndex),
-          before,
-          after,
-          ...prev.slice(targetIndex + 1),
-        ];
+        const newClips = [...prev.slice(0, targetIndex), before, after, ...prev.slice(targetIndex + 1)];
         return normalizeClipsLocal(newClips);
       });
 
@@ -334,12 +309,7 @@ const startMusicResize = (e, index, edge) => {
       };
 
       setMusicTracks((prev) => {
-        const newTracks = [
-          ...prev.slice(0, tIndex),
-          before,
-          after,
-          ...prev.slice(tIndex + 1),
-        ];
+        const newTracks = [...prev.slice(0, tIndex), before, after, ...prev.slice(tIndex + 1)];
         return normalizeTracksLocal(newTracks);
       });
 
@@ -355,17 +325,8 @@ const startMusicResize = (e, index, edge) => {
       const relativeTime = currentTime - (fx.startTime || 0);
       if (relativeTime <= 0 || relativeTime >= (fx.duration || 0)) return;
 
-      const before = {
-        ...fx,
-        startTime: fx.startTime,
-        duration: relativeTime,
-      };
-
-      const after = {
-        ...fx,
-        startTime: (fx.startTime || 0) + relativeTime,
-        duration: (fx.duration || 0) - relativeTime,
-      };
+      const before = { ...fx, startTime: fx.startTime, duration: relativeTime };
+      const after = { ...fx, startTime: (fx.startTime || 0) + relativeTime, duration: (fx.duration || 0) - relativeTime };
 
       setEffects((prev) => {
         const arr = [...prev];
@@ -378,10 +339,8 @@ const startMusicResize = (e, index, edge) => {
     }
   };
 
-  // --- DRAG & DROP reordering for clips/tracks (keep your handlers) ---
-  const handleClipDragStart = (e, index) => {
-    e.dataTransfer.setData('clipIndex', index);
-  };
+  // ===== Reorder handlers =====
+  const handleClipDragStart = (e, index) => e.dataTransfer.setData('clipIndex', index);
   const handleClipDrop = (e, dropIndex) => {
     e.preventDefault();
     const draggedIndex = parseInt(e.dataTransfer.getData('clipIndex'));
@@ -397,9 +356,7 @@ const startMusicResize = (e, index, edge) => {
     setSelectedClipIndex(dropIndex);
   };
 
-  const handleTrackDragStart = (e, index) => {
-    e.dataTransfer.setData('trackIndex', index);
-  };
+  const handleTrackDragStart = (e, index) => e.dataTransfer.setData('trackIndex', index);
   const handleTrackDrop = (e, dropIndex) => {
     e.preventDefault();
     const draggedIndex = parseInt(e.dataTransfer.getData('trackIndex'));
@@ -415,10 +372,7 @@ const startMusicResize = (e, index, edge) => {
     setSelectedMusicIndex(dropIndex);
   };
 
-  // --- EFFECTS: reorder by drag between lanes positions (visual only) ---
-  const handleEffectDragStart = (e, index) => {
-    e.dataTransfer.setData('effectIndex', index);
-  };
+  const handleEffectDragStart = (e, index) => e.dataTransfer.setData('effectIndex', index);
   const handleEffectDrop = (e, dropIndex) => {
     e.preventDefault();
     const draggedIndex = parseInt(e.dataTransfer.getData('effectIndex'));
@@ -433,7 +387,7 @@ const startMusicResize = (e, index, edge) => {
     setSelectedEffectIndex(dropIndex);
   };
 
-  // --- CLIP RESIZING (existing) ---
+  // ===== Clip resizing =====
   const startResize = (e, index, edge) => {
     e.stopPropagation();
     e.preventDefault();
@@ -451,7 +405,7 @@ const startMusicResize = (e, index, edge) => {
     });
   };
 
-  // --- EFFECT RESIZING (new) ---
+  // ===== Effect resizing =====
   const startEffectResize = (e, index, edge) => {
     e.stopPropagation();
     e.preventDefault();
@@ -468,7 +422,7 @@ const startMusicResize = (e, index, edge) => {
     });
   };
 
-  // --- LOAD CLIP & TRACK METADATA ---
+  // ===== Load metadata (video/audio) =====
   useEffect(() => {
     clips.forEach((clip, i) => {
       if (!clip.source) return;
@@ -517,15 +471,16 @@ const startMusicResize = (e, index, edge) => {
     });
   }, [clips, musicTracks]);
 
+  // ===== Music resize mouse events =====
   useEffect(() => {
     if (!resizeMusicState) return;
-  
+
     const onMove = (e) => {
       setMusicTracks((prev) => {
         const arr = [...prev];
         const track = { ...arr[resizeMusicState.index] };
         const deltaTime = (e.clientX - resizeMusicState.startX) / resizeMusicState.pxPerSec;
-  
+
         if (resizeMusicState.edge === 'end') {
           let newDuration = (resizeMusicState.origDuration || 0) + deltaTime;
           const maxDur = (resizeMusicState.sourceDuration || Infinity) - (resizeMusicState.origStartOffset || 0);
@@ -538,14 +493,14 @@ const startMusicResize = (e, index, edge) => {
           track.startOffset = ns;
           track.duration = end - ns;
         }
-  
+
         arr[resizeMusicState.index] = track;
         return normalizeTracksLocal(arr);
       });
     };
-  
+
     const onUp = () => setResizeMusicState(null);
-  
+
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     return () => {
@@ -553,29 +508,22 @@ const startMusicResize = (e, index, edge) => {
       window.removeEventListener('mouseup', onUp);
     };
   }, [resizeMusicState]);
-  
 
+  // ===== Total duration =====
   const totalDuration = useMemo(() => {
     const clipDur = clips.reduce((sum, c) => sum + (c.duration || 0), 0);
-  
-    // limit music duration to clip duration unless user cut it shorter
     const musicDur = musicTracks.reduce((max, t) => {
       const end = (t.startTime || 0) + Math.min(t.duration || 0, clipDur);
       return Math.max(max, end);
     }, 0);
-  
     const effectDur = effects.reduce((max, fx) => {
       const end = (fx.startTime || 0) + (fx.duration || 0);
       return Math.max(max, end);
     }, 0);
-  
     return Math.max(clipDur, musicDur, effectDur, globalDuration);
   }, [clips, musicTracks, effects, globalDuration]);
-  
-  
-  
 
-  // Handle clip resize dragging
+  // ===== Clip resize mouse events =====
   useEffect(() => {
     if (!resizeState) return;
     const onMove = (e) => {
@@ -608,7 +556,7 @@ const startMusicResize = (e, index, edge) => {
     };
   }, [resizeState]);
 
-  // Handle effect resize dragging
+  // ===== Effect resize mouse events =====
   useEffect(() => {
     if (!resizeEffectState) return;
     const onMove = (e) => {
@@ -621,7 +569,6 @@ const startMusicResize = (e, index, edge) => {
           newDuration = Math.max(0, newDuration);
           fx.duration = newDuration;
         } else if (resizeEffectState.edge === 'start') {
-          // Move start, shorten from the left
           const newStart = (resizeEffectState.origStartTime || 0) + deltaTime;
           const maxStart = (resizeEffectState.origStartTime || 0) + (resizeEffectState.origDuration || 0) - 0.01;
           fx.startTime = Math.max(0, Math.min(newStart, maxStart));
@@ -640,38 +587,28 @@ const startMusicResize = (e, index, edge) => {
     };
   }, [resizeEffectState]);
 
-  // ===== EFFECT RENDERING: compute CSS filters based on active effects =====
+  // ===== Compute CSS filters for current time =====
   const computeFilterForTime = (t) => {
     let filters = [];
-  
     effects.forEach((fx) => {
       const fxStart = fx.startTime || 0;
       const fxEnd = fxStart + (fx.duration || 0);
-  
       if (t < fxStart || t > fxEnd) return;
-  
+
       const rel = t - fxStart;
       const timeLeft = fxEnd - t;
-  
+
       let effectiveIntensity;
-  
-      // Fade-in ramp
       if (fx.fadeIn && rel < fx.fadeIn) {
         effectiveIntensity = (rel / fx.fadeIn) * (fx.intensity ?? 0.5);
-      }
-      // Fade-out ramp
-      else if (fx.fadeOut && timeLeft < fx.fadeOut) {
+      } else if (fx.fadeOut && timeLeft < fx.fadeOut) {
         effectiveIntensity = (timeLeft / fx.fadeOut) * (fx.intensity ?? 0.5);
-      }
-      // Middle section = full effect
-      else {
+      } else {
         effectiveIntensity = fx.intensity ?? 0.5;
       }
-  
-      // Clamp 0..1
+
       effectiveIntensity = Math.max(0, Math.min(1, effectiveIntensity));
-  
-      // ✅ Apply effect
+
       if (fx.type === 'blur') {
         const px = Math.round(12 * effectiveIntensity);
         if (px > 0) filters.push(`blur(${px}px)`);
@@ -681,80 +618,67 @@ const startMusicResize = (e, index, edge) => {
       } else if (fx.type === 'glow') {
         const spread = Math.round(24 * effectiveIntensity);
         const color = fx.color || 'rgba(60,207,101,0.9)';
-        if (spread > 0) {
-          filters.push(`drop-shadow(0 0 ${spread}px ${color})`);
-        }
+        if (spread > 0) filters.push(`drop-shadow(0 0 ${spread}px ${color})`);
       }
     });
-  
     return filters.join(' ');
   };
-  
 
-  // Apply filters each time video clock ticks
+  // ===== Main playback ticker =====
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     const onTimeUpdate = () => {
-        const seg = clips[activeClipIndex];
-      
-        // Compute global time safely
-        let globalTime = 0;
-        if (seg) {
-          const segStartTime = seg.startTime || 0;
-          globalTime = segStartTime + (video.currentTime - (seg.startOffset || 0));
+      const seg = clips[activeClipIndex];
+      let globalTime = 0;
+      if (seg) {
+        const segStartTime = seg.startTime || 0;
+        globalTime = segStartTime + (video.currentTime - (seg.startOffset || 0));
+      } else {
+        globalTime = video.currentTime || 0;
+      }
+      setCurrentTime(globalTime);
+
+      const wrapper = video.parentElement;
+      if (wrapper) {
+        if (seg) wrapper.style.filter = computeFilterForTime(globalTime);
+        else wrapper.style.filter = '';
+      }
+
+      if (seg && (video.currentTime || 0) >= (seg.startOffset || 0) + (seg.duration || 0) - 0.05) {
+        if (activeClipIndex < clips.length - 1) {
+          setActiveClipIndex((p) => p + 1);
         } else {
-          // fallback: use video currentTime directly if no clip
-          globalTime = video.currentTime || 0;
-        }
-        setCurrentTime(globalTime);
-      
-        // Update CSS filters only if a video segment is active
-        const wrapper = video.parentElement;
-        if (wrapper) {
-          if (seg) {
-            wrapper.style.filter = computeFilterForTime(globalTime);
+          const musicStillPlaying = musicTracks.some((track) => {
+            const end = (track.startTime || 0) + (track.duration || 0);
+            return globalTime < end;
+          });
+
+          if (!musicStillPlaying) {
+            video.pause();
+            setActiveClipIndex(0);
+            setCurrentTime(0);
+            const wrap2 = video.parentElement;
+            if (wrap2) wrap2.style.filter = '';
+            audioRefs.current.forEach((a) => {
+              if (a) {
+                a.pause();
+                a.currentTime = 0;
+              }
+            });
           } else {
-            wrapper.style.filter = ''; // no video clip → clear filters
+            try {
+              video.pause();
+              if (video.duration && !isNaN(video.duration)) {
+                video.currentTime = Math.max(0, video.duration - 0.05);
+              }
+            } catch (e) {
+              console.warn('Could not hold last frame', e);
+            }
           }
         }
-      
-        if (seg && (video.currentTime || 0) >= (seg.startOffset || 0) + (seg.duration || 0) - 0.05) {
-            if (activeClipIndex < clips.length - 1) {
-              setActiveClipIndex((p) => p + 1);
-            } else {
-              // ✅ only reset if there's no music playing beyond video
-              const musicStillPlaying = musicTracks.some(track => {
-                const end = (track.startTime || 0) + (track.duration || 0);
-                return globalTime < end; // music extends past video
-              });
-          
-              if (!musicStillPlaying) {
-                video.pause();
-                setActiveClipIndex(0);
-                setCurrentTime(0);
-                const wrap2 = video.parentElement;
-                if (wrap2) wrap2.style.filter = '';
-                audioRefs.current.forEach((a) => {
-                  if (a) {
-                    a.pause();
-                    a.currentTime = 0;
-                  }
-                });
-              } else {
-                // ✅ keep showing last frame while audio continues
-                try {
-                  video.pause();
-                  if (video.duration && !isNaN(video.duration)) {
-                    video.currentTime = Math.max(0, video.duration - 0.05);
-                  }
-                } catch (e) {
-                  console.warn("Could not hold last frame", e);
-                }
-              }                                
-            }
-          }          
+      }
 
       // Sync audio tracks
       musicTracks.forEach((track, i) => {
@@ -786,14 +710,19 @@ const startMusicResize = (e, index, edge) => {
     return () => video.removeEventListener('timeupdate', onTimeUpdate);
   }, [clips, activeClipIndex, musicTracks, effects]);
 
-  // Update filter on seek
+  // ===== Select first clip once clips exist (after rehydrate or add) =====
+  useEffect(() => {
+    if (clips.length > 0 && activeClipIndex === null) {
+      setActiveClipIndex(0);
+    }
+  }, [clips, activeClipIndex]);
+
+  // ===== Seek handler =====
   const applyFilterAtTime = (t) => {
     const video = videoRef.current;
     if (!video) return;
     const wrapper = video.parentElement;
-    if (wrapper) {
-      wrapper.style.filter = computeFilterForTime(t);
-    }
+    if (wrapper) wrapper.style.filter = computeFilterForTime(t);
   };
 
   const handleSeek = (e) => {
@@ -802,7 +731,7 @@ const startMusicResize = (e, index, edge) => {
     const clickX = e.clientX - rect.left + scrollX;
     const fullWidth = totalDuration * 20;
     const newGlobalTime = (clickX / fullWidth) * totalDuration;
-  
+
     let newIndex = null;
     for (let i = 0; i < clips.length; i++) {
       const clipStart = clips[i].startTime || 0;
@@ -812,41 +741,38 @@ const startMusicResize = (e, index, edge) => {
         break;
       }
     }
-  
+
     const seg = newIndex !== null ? clips[newIndex] : null;
-  
+
     if (seg) {
       const segRelative = Math.max(0, newGlobalTime - (seg.startTime || 0));
       const seekTimeInSource = (seg.startOffset || 0) + segRelative;
-  
+
       const wasPlaying = videoRef.current && !videoRef.current.paused;
       setActiveClipIndex(newIndex);
-  
+
       if (videoRef.current) {
         videoRef.current.src = seg.source;
         videoRef.current.currentTime = seekTimeInSource;
-  
-        if (wasPlaying) {
-          videoRef.current.play().catch(() => {});
-        } else {
-          videoRef.current.pause();
-        }
+
+        if (wasPlaying) videoRef.current.play().catch(() => {});
+        else videoRef.current.pause();
       }
     } else {
       // ✅ no video → black screen, but still allow audio playback
       setActiveClipIndex(null);
       if (videoRef.current) {
         videoRef.current.pause();
-        videoRef.current.removeAttribute("src");
+        videoRef.current.removeAttribute('src');
         videoRef.current.load(); // clears → black screen
       }
     }
-  
+
     setCurrentTime(newGlobalTime);
     applyFilterAtTime(newGlobalTime);
   };
-  
 
+  // ===== Global key handlers (delete, space) =====
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.code === 'Space') {
@@ -855,12 +781,19 @@ const startMusicResize = (e, index, edge) => {
       }
 
       if ((e.code === 'Backspace' || e.code === 'Delete') && selectedClipIndex !== null) {
-        setClips((prev) => normalizeClipsLocal(prev.filter((_, i) => i !== selectedClipIndex)));
+        setClips((prev) => {
+          const updated = normalizeClipsLocal(prev.filter((_, i) => i !== selectedClipIndex));
+          return updated;
+        });
         setSelectedClipIndex(null);
+        setActiveClipIndex(null); // ✅ reset active clip after deletion
       }
 
       if ((e.code === 'Backspace' || e.code === 'Delete') && selectedMusicIndex !== null) {
-        setMusicTracks((prev) => normalizeTracksLocal(prev.filter((_, i) => i !== selectedMusicIndex)));
+        setMusicTracks((prev) => {
+          const updated = normalizeTracksLocal(prev.filter((_, i) => i !== selectedMusicIndex));
+          return updated;
+        });
         setSelectedMusicIndex(null);
       }
 
@@ -872,15 +805,14 @@ const startMusicResize = (e, index, edge) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedClipIndex, selectedMusicIndex, selectedEffectIndex, currentTime, musicTracks]);
+  }, [selectedClipIndex, selectedMusicIndex, selectedEffectIndex]);
 
-  // ======== Video source swapping when clip index changes ========
+  // ===== Swap <video> source when activeClipIndex changes =====
   useEffect(() => {
     const video = videoRef.current;
     const seg = clips[activeClipIndex];
     if (!video || !seg || !seg.source) return;
 
-    // regenerate blob URL if needed
     let source = seg.source;
     if (seg.file && seg.source.startsWith('blob:')) {
       source = URL.createObjectURL(seg.file);
@@ -898,7 +830,7 @@ const startMusicResize = (e, index, edge) => {
       <Head title={project.name} />
 
       <div className="editor-container">
-        <div style={{ display: "none" }}>
+        <div style={{ display: 'none' }}>
           {clips.map((clip, i) => (
             <video key={i} src={clip.source} preload="auto" />
           ))}
@@ -927,12 +859,12 @@ const startMusicResize = (e, index, edge) => {
               }}
               onClick={() => document.getElementById('hiddenFileInput').click()}
             >
-              <p style={{ fontSize: "10px" }}>Drop files here or click to upload</p>
+              <p style={{ fontSize: '10px' }}>Drop files here or click to upload</p>
               <input
                 id="hiddenFileInput"
                 type="file"
                 multiple
-                style={{ display: "none" }}
+                style={{ display: 'none' }}
                 onChange={handleFileUpload}
               />
             </div>
@@ -958,7 +890,7 @@ const startMusicResize = (e, index, edge) => {
             <div className="media-section video-section">
               <h4>📹 Video</h4>
               <div className="section-divider" />
-              {mediaFiles.filter(f => f.type === 'video').map((file, index) => (
+              {mediaFiles.filter((f) => f.type === 'video').map((file, index) => (
                 <div
                   key={`vid-${index}`}
                   draggable
@@ -974,7 +906,7 @@ const startMusicResize = (e, index, edge) => {
             <div className="media-section audio-section">
               <h4>🎵 Audio</h4>
               <div className="section-divider" />
-              {mediaFiles.filter(f => f.type === 'audio').map((file, index) => (
+              {mediaFiles.filter((f) => f.type === 'audio').map((file, index) => (
                 <div
                   key={`aud-${index}`}
                   draggable
@@ -1001,37 +933,38 @@ const startMusicResize = (e, index, edge) => {
               </button>
             </div>
 
-{/* ===== Unified Scrollable Timeline ===== */}
-<div className="timeline-scroll">
-  {/* ===== Effects timeline (TOP) ===== */}
-  <div
-    className="effects-timeline"
-    onClick={(e) => {
-      e.stopPropagation();
-      setSelectedEffectIndex(null);
-    }}
-  >
-    <div
-      className="flex items-center"
-      style={{ width: `${totalDuration * 20}px`, position: 'relative' }}
-    >
-      {effects.map((fx, index) => {
-        const width = (fx.duration / totalDuration) * (totalDuration * 20);
-        const left = (fx.startTime / totalDuration) * (totalDuration * 20);
-        const isSelected = selectedEffectIndex === index;
+            {/* ===== Unified Scrollable Timeline ===== */}
+            <div className="timeline-scroll">
+              {/* ===== Effects timeline (TOP) ===== */}
+              <div
+                className="effects-timeline"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedEffectIndex(null);
+                }}
+              >
+                <div
+                  className="flex items-center"
+                  style={{ width: `${totalDuration * 20}px`, position: 'relative' }}
+                >
+                  {effects.map((fx, index) => {
+                    const width = (fx.duration / totalDuration) * (totalDuration * 20);
+                    const left = (fx.startTime / totalDuration) * (totalDuration * 20);
+                    const isSelected = selectedEffectIndex === index;
 
-        return (
-          <div
-            key={fx.id}
-            draggable={!isSelected}
-            onDragStart={(e) => !isSelected && handleEffectDragStart(e, index)}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => handleEffectDrop(e, index)}
-            onClick={(e) => {
-              e.stopPropagation();
-              setSelectedEffectIndex(isSelected ? null : index);
-            }}
-            className={`effect-block ${isSelected ? 'selected' : ''}`}
+                    return (
+                      <div
+                        key={fx.id}
+                        draggable={!isSelected}
+                        onDragStart={(e) => !isSelected && handleEffectDragStart(e, index)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => handleEffectDrop(e, index)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedEffectIndex(isSelected ? null : index);
+                        }}
+                        className={`effect-block ${isSelected ? 'selected' : ''}`}
+
             style={{ width: `${width}px`, left: `${left}px` }}
           >
             {isSelected && (
@@ -1181,9 +1114,7 @@ const startMusicResize = (e, index, edge) => {
     </div>
   </div>
 </div>
-
-
-          </div>
+       </div>
         </div>
       </div>
     </AuthenticatedLayout>

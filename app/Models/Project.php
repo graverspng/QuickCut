@@ -15,13 +15,16 @@ class Project extends Model
         'media_files',
         'clips',
         'music_tracks',
+        'effects',
     ];
-
+    
     protected $casts = [
         'media_files' => 'array',
         'clips' => 'array',
         'music_tracks' => 'array',
+        'effects' => 'array',
     ];
+    
 
     public function user()
     {

@@ -16,6 +16,7 @@ return new class extends Migration
             $table->json('media_files')->nullable();
             $table->json('clips')->nullable();
             $table->json('music_tracks')->nullable();
+            $table->json('effects')->nullable();         
             $table->timestamps();
             $table->softDeletes();
         });
