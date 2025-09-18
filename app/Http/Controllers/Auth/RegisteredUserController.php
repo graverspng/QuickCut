@@ -38,16 +38,16 @@ class RegisteredUserController extends Controller
     {
         // Validē ievadītos datus: name, email un password
         $request->validate([
-            'name' => 'required|string|max:255',                            // Vārds ir obligāts, teksts, max 255 simboli
-            'email' => 'required|string|lowercase|email|max:255|unique:'.User::class,  // Epasts obligāts, email formāts, unikāls lietotāju tabulā
-            'password' => ['required', 'confirmed', Rules\Password::defaults()],  // Parole obligāta, jāatbilst noteikumiem, jāsakrīt ar apstiprinājumu
+            'name' => 'required|string|max:255',                            
+            'email' => 'required|string|lowercase|email|max:255|unique:'.User::class,  
+            'password' => ['required', 'confirmed', Rules\Password::defaults()],  
         ]);
 
-        // Izveido jaunu lietotāju ar noformētajiem datiem
+        // Izveido jaunu lietotāju ar šifrētu paroli
         $user = User::create([
-            'name' => $request->name,                                      // Lietotāja vārds
-            'email' => $request->email,                                    // Lietotāja e-pasts
-            'password' => Hash::make($request->password),                  // Paroles šifrēšana (hashēšana)
+            'name' => $request->name,
+            'email' => $request->email,                                    
+            'password' => Hash::make($request->password),                 
         ]);
 
         // Izsauc notikumu, ka lietotājs ir reģistrējies (var izmantot email apstiprināšanai, utt.)
