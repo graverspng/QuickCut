@@ -55,7 +55,7 @@ export default function Dashboard({ projects = [] }) {
                             <div
                                 key={project.id}
                                 className="project-card group slide-in"
-                                style={{ animationDelay: `${i * 120}ms` }} // stagger
+                                style={{ animationDelay: `${i * 120}ms` }}
                             >
                                 <div
                                     className="flex-1 cursor-pointer"

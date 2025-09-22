@@ -21,16 +21,16 @@ export default function AudioEditor({ project }) {
     const [currentTime, setCurrentTime] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
 
-    const [sessionLength, setSessionLength] = useState(120); // seconds
+    const [sessionLength, setSessionLength] = useState(120); 
 
     const audioRefs = useRef([]);
     const timelineRef = useRef(null);
     const [scrollLeft, setScrollLeft] = useState(0);
 
-    // === CONSTANTS for a stable layout like your video editor ===
-    const TIMELINE_PX = 1200; // fixed pixel width of the timeline area (matches Editor.jsx)
 
-    // === HELPERS ===
+    const TIMELINE_PX = 1200; 
+
+
     const normalizeTracks = (arr) =>
         arr.map((t) => ({
             ...t,
@@ -56,7 +56,7 @@ export default function AudioEditor({ project }) {
         );
     };
 
-    // === FILE UPLOAD to Media Library ===
+
     const handleFileUpload = async (e) => {
         const fileList = Array.from(e.target.files).filter(isAudioFile);
     
@@ -81,8 +81,8 @@ export default function AudioEditor({ project }) {
             )
         );
     
-        setMediaFiles((prev) => [...prev, ...files]);  // ✅ Add this
-    }; // ✅ close the function properly
+        setMediaFiles((prev) => [...prev, ...files]);  
+    }; 
     
 
     const getTimeFromEvent = (e) => {
@@ -91,11 +91,11 @@ export default function AudioEditor({ project }) {
         return snapToGrid(timeFromPx(Math.max(dropX, 0)), 1);
     };
 
-    // === Drag from Library to Timeline ===
+
     const handleDrop = (e) => {
         e.preventDefault();
         const index = parseInt(e.dataTransfer.getData('index'));
-        const file = mediaFiles[index];   // ✅ correct    
+        const file = mediaFiles[index];     
         if (!file || !isAudioFile(file)) return;
 
         const dropTime = getTimeFromEvent(e);
@@ -125,7 +125,7 @@ export default function AudioEditor({ project }) {
         });
     };
 
-    // === Save to DB ===
+
     const handleSave = () => {
         const tracksToSave = tracks.map(({ storageKey, source, ...rest }) => ({
             ...rest,
@@ -139,7 +139,7 @@ export default function AudioEditor({ project }) {
         });
     };
 
-    // === Reorder tracks vertically (layer order) ===
+
     const handleTrackDragStart = (e, index) => {
         e.dataTransfer.setData('trackIndex', index);
     };
@@ -158,7 +158,7 @@ export default function AudioEditor({ project }) {
         setSelectedTrackIndex(dropIndex);
     };
 
-    // === Load audio metadata for true durations and expand session length ===
+
     useEffect(() => {
         tracks.forEach((track, i) => {
             if (!track.source) return;
@@ -194,10 +194,10 @@ export default function AudioEditor({ project }) {
         return () => el.removeEventListener('scroll', onScroll);
     }, []);
 
-    // === Project length is fixed by sessionLength; playhead stops there ===
+
     const totalDuration = sessionLength;
 
-    // === Playback ===
+
     const togglePlay = () => {
         if (isPlaying) {
             setIsPlaying(false);
@@ -224,7 +224,7 @@ export default function AudioEditor({ project }) {
         });
     };
 
-    // Drive playhead + keep audio in sync
+
     useEffect(() => {
         let id;
         if (isPlaying) {
@@ -232,13 +232,11 @@ export default function AudioEditor({ project }) {
                 setCurrentTime((prev) => {
                     const next = prev + 0.1;
                     if (next >= totalDuration) {
-                        // stop at the end of session
                         setIsPlaying(false);
                         audioRefs.current.forEach((a) => a && a.pause());
                         return 0;
                     }
 
-                    // sync all tracks to new time
                     audioRefs.current.forEach((a, i) => {
                         const track = tracks[i];
                         if (!track || !a) return;
@@ -266,7 +264,6 @@ export default function AudioEditor({ project }) {
         return () => clearInterval(id);
     }, [isPlaying, totalDuration, tracks]);
 
-    // Spacebar toggle
     useEffect(() => {
         const onKey = (e) => {
             if (e.code === 'Space') {
@@ -276,10 +273,8 @@ export default function AudioEditor({ project }) {
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isPlaying, tracks, currentTime]);
 
-    // === Seek on timeline click ===
     const handleSeek = (e) => {
         const rect = timelineRef.current.getBoundingClientRect();
         const clickX = e.clientX - rect.left + timelineRef.current.scrollLeft - 80;
@@ -345,7 +340,6 @@ export default function AudioEditor({ project }) {
                 </div>
 
                 <div className="editor-main">
-                    {/* LEFT: Media Library (unchanged width, always visible) */}
                     <div className="media-library">
                         <h3>Audio Library</h3>
 

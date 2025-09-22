@@ -5,11 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\Project;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
-use Illuminate\Foundation\Auth\Access\AuthorizesRequests; // 👈 add this
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class ProjectController extends Controller
 {
-    use AuthorizesRequests; // 👈 add this
+    use AuthorizesRequests;
 
     public function index()
     {

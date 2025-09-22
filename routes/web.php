@@ -14,14 +14,14 @@ Route::get('/', function () {
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    // === VIDEO PROJECTS ===
+    // === MEDIJAS PROJEKTI ===
     Route::get('/dashboard', [ProjectController::class, 'index'])->name('dashboard');
     Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
     Route::put('/projects/{project}', [ProjectController::class, 'update'])->name('projects.update');
     Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])->name('projects.destroy');
     Route::get('/editor/{project}', [EditorController::class, 'show'])->name('editor');
 
-    // === AUDIO PROJECTS ===   
+    // === AUDIO PROJEKTI ===   
     Route::get('/audio-projects', [AudioProjectController::class, 'index'])->name('audio.projects');
     Route::post('/audio-projects', [AudioProjectController::class, 'store'])->name('audio.projects.store');
     Route::put('/audio-projects/{audioProject}', [AudioProjectController::class, 'update'])->name('audio.projects.update');

@@ -3,13 +3,13 @@ import { Head, router } from '@inertiajs/react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import '@/../css/Editor.css';
 
-// ====== Simple effect presets (drag from library) ======
+
 const EFFECT_PRESETS = [
   {
     key: 'glow',
     name: 'Glow',
     type: 'glow',
-    intensity: 0.8, // 0..1
+    intensity: 0.8, 
     color: 'rgba(60,207,101,0.9)',
     fadeIn: 0.5,
     fadeOut: 0.5,
@@ -19,7 +19,7 @@ const EFFECT_PRESETS = [
     key: 'blur',
     name: 'Blur',
     type: 'blur',
-    intensity: 0.5, // 0..1 maps to ~6px
+    intensity: 0.5,
     fadeIn: 0.3,
     fadeOut: 0.3,
     duration: 3,
@@ -28,7 +28,7 @@ const EFFECT_PRESETS = [
     key: 'brightness',
     name: 'Brightness',
     type: 'brightness',
-    intensity: 0.3, // 0..1 maps to 1..1.6
+    intensity: 0.3, 
     fadeIn: 0.4,
     fadeOut: 0.4,
     duration: 5,
@@ -38,7 +38,7 @@ const EFFECT_PRESETS = [
 
 
 export default function Editor({ project }) {
-  // ===== Rehydrate local-keys from localStorage safely =====
+
   const resolveLocal = (key, fallback = '') => {
     try {
       return localStorage.getItem(key) || fallback;
@@ -56,18 +56,18 @@ export default function Editor({ project }) {
         ? item.source
         : null);
   
-    // try localStorage
+
     if (storageKey) {
       const data = resolveLocal(storageKey, null);
       if (data) return { ...item, source: data, storageKey };
     }
   
-    // fallback stored in DB
+
     if (item.fallbackSource) {
       return { ...item, source: item.fallbackSource };
     }
   
-    // last resort placeholder
+
     return { ...item, source: "/placeholder.mp4", missing: true };
   };
   
@@ -76,16 +76,6 @@ export default function Editor({ project }) {
   const rehydrateItems = (items = []) =>
     items.map((item) => hydrateFromStorage(item)).filter(Boolean);
   
-/*************  ✨ Windsurf Command ⭐  *************/
-/**
- * Prepare an array of items to be saved to the server.
- * Maps through each item and returns a new object with the source
- * property replaced with either the storageKey (if it exists) or the
- * original source (if it's a string). If the source is a data URL,
- * also stores a fallbackSource property with the original value.
- * Returns an array of the new objects, filtered to remove any nulls.
- */
-/*******  bf7cc2ec-5c66-4f6f-9d2f-4fffbc5c2edd  *******/
   const prepareItemsForSave = (items = []) =>
     items
       .map((item) => {
@@ -96,9 +86,9 @@ export default function Editor({ project }) {
   
         if (storageKey) {
           payload.storageKey = storageKey;
-          payload.source = storageKey; // lightweight reference
+          payload.source = storageKey; 
   
-          // also store a fallback if it's a data URL
+
           if (source && source.startsWith("data:")) {
             payload.fallbackSource = source;
           }
@@ -112,15 +102,15 @@ export default function Editor({ project }) {
   
   
 
-  // ===== State (no duplicates) =====
+
   const [mediaFiles, setMediaFiles] = useState(() => rehydrateItems(project.media_files || []));
   const [clips, setClips] = useState(() => rehydrateItems(project.clips || []));
   const [musicTracks, setMusicTracks] = useState(() => rehydrateItems(project.music_tracks || []));
 
-  // Effects
+
   const [effects, setEffects] = useState(() => {
     if (Array.isArray(project.effects) && project.effects.length) return project.effects;
-    return []; // no default effects
+    return []; 
   });
   
 
@@ -135,12 +125,12 @@ export default function Editor({ project }) {
   const videoRef = useRef(null);
   const audioRefs = useRef([]);
 
-  // Resizing states
-  const [resizeState, setResizeState] = useState(null); // clips
-  const [resizeEffectState, setResizeEffectState] = useState(null); // effects
-  const [resizeMusicState, setResizeMusicState] = useState(null); // music
 
-  // ===== Helpers to normalize timeline =====
+  const [resizeState, setResizeState] = useState(null); 
+  const [resizeEffectState, setResizeEffectState] = useState(null); 
+  const [resizeMusicState, setResizeMusicState] = useState(null); 
+
+
   const normalizeClipsLocal = (clipsArr) => {
     let accumulated = 0;
     return clipsArr.map((clip) => {
@@ -167,7 +157,7 @@ export default function Editor({ project }) {
     else videoRef.current.pause();
   };
 
-  // --- MUSIC RESIZING ---
+
   const startMusicResize = (e, index, edge) => {
     e.stopPropagation();
     e.preventDefault();
@@ -187,7 +177,7 @@ export default function Editor({ project }) {
 
   const goBack = () => router.get(route('dashboard'));
 
-  // ===== Upload to localStorage and add to library =====
+
   const handleFileUpload = async (e) => {
     const uploads = Array.from(e.target.files || []);
     const files = await Promise.all(
@@ -201,7 +191,6 @@ export default function Editor({ project }) {
               try {
                 localStorage.setItem(key, dataUrl);
               } catch (_) {
-                // ignore quota errors
               }
               resolve({
                 name: file.name,
@@ -222,12 +211,12 @@ export default function Editor({ project }) {
     setMediaFiles((prev) => [...prev, ...files]);
   };
 
-  // Drag from media/effects libraries
+
   const handleDragStart = (e, payload) => {
     e.dataTransfer.setData('payload', JSON.stringify(payload));
   };
 
-  // ===== Drop onto timeline (media/effect) =====
+
   const handleDrop = (e) => {
     e.preventDefault();
     const data = e.dataTransfer.getData('payload');
@@ -253,7 +242,7 @@ export default function Editor({ project }) {
               startTime: prev.reduce((sum, c) => sum + (c.duration || 0), 0),
             },
           ]);
-          if (prev.length === 0) setActiveClipIndex(0); // ✅ select first clip automatically
+          if (prev.length === 0) setActiveClipIndex(0); 
           return newClips;
         });
       } else if (file.type === 'audio') {
@@ -278,7 +267,7 @@ export default function Editor({ project }) {
     }
   };
 
-  // ===== Save =====
+
   const handleSave = () => {
     const mediaToSave = prepareItemsForSave(mediaFiles);
     const clipsToSave = prepareItemsForSave(clips);
@@ -295,7 +284,7 @@ export default function Editor({ project }) {
   };
   
 
-  // ===== Cut handlers =====
+
   const handleCut = () => {
     if (selectedClipIndex !== null) {
       const targetIndex = selectedClipIndex;
@@ -380,7 +369,6 @@ export default function Editor({ project }) {
     }
   };
 
-  // ===== Reorder handlers =====
   const handleClipDragStart = (e, index) => e.dataTransfer.setData('clipIndex', index);
   const handleClipDrop = (e, dropIndex) => {
     e.preventDefault();
@@ -428,7 +416,7 @@ export default function Editor({ project }) {
     setSelectedEffectIndex(dropIndex);
   };
 
-  // ===== Clip resizing =====
+
   const startResize = (e, index, edge) => {
     e.stopPropagation();
     e.preventDefault();
@@ -446,7 +434,7 @@ export default function Editor({ project }) {
     });
   };
 
-  // ===== Effect resizing =====
+
   const startEffectResize = (e, index, edge) => {
     e.stopPropagation();
     e.preventDefault();
@@ -463,7 +451,7 @@ export default function Editor({ project }) {
     });
   };
 
-  // ===== Load metadata (video/audio) =====
+
   useEffect(() => {
     clips.forEach((clip, i) => {
       if (!clip.source) return;
@@ -512,7 +500,7 @@ export default function Editor({ project }) {
     });
   }, [clips, musicTracks]);
 
-  // ===== Music resize mouse events =====
+
   useEffect(() => {
     if (!resizeMusicState) return;
 
@@ -550,7 +538,7 @@ export default function Editor({ project }) {
     };
   }, [resizeMusicState]);
 
-  // ===== Total duration =====
+
   const totalDuration = useMemo(() => {
     const clipDur = clips.reduce((sum, c) => sum + (c.duration || 0), 0);
     const musicDur = musicTracks.reduce((max, t) => {
@@ -564,7 +552,7 @@ export default function Editor({ project }) {
     return Math.max(clipDur, musicDur, effectDur, globalDuration);
   }, [clips, musicTracks, effects, globalDuration]);
 
-  // ===== Clip resize mouse events =====
+
   useEffect(() => {
     if (!resizeState) return;
     const onMove = (e) => {
@@ -597,7 +585,7 @@ export default function Editor({ project }) {
     };
   }, [resizeState]);
 
-  // ===== Effect resize mouse events =====
+
   useEffect(() => {
     if (!resizeEffectState) return;
     const onMove = (e) => {
@@ -628,7 +616,7 @@ export default function Editor({ project }) {
     };
   }, [resizeEffectState]);
 
-  // ===== Compute CSS filters for current time =====
+
   const computeFilterForTime = (t) => {
     let filters = [];
     effects.forEach((fx) => {
@@ -665,7 +653,7 @@ export default function Editor({ project }) {
     return filters.join(' ');
   };
 
-  // ===== Main playback ticker =====
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -721,7 +709,7 @@ export default function Editor({ project }) {
         }
       }
 
-      // Sync audio tracks
+
       musicTracks.forEach((track, i) => {
         const audio = audioRefs.current[i];
         if (!audio) return;
@@ -751,14 +739,14 @@ export default function Editor({ project }) {
     return () => video.removeEventListener('timeupdate', onTimeUpdate);
   }, [clips, activeClipIndex, musicTracks, effects]);
 
-  // ===== Select first clip once clips exist (after rehydrate or add) =====
+
   useEffect(() => {
     if (clips.length > 0 && activeClipIndex === null) {
       setActiveClipIndex(0);
     }
   }, [clips, activeClipIndex]);
 
-  // ===== Seek handler =====
+
   const applyFilterAtTime = (t) => {
     const video = videoRef.current;
     if (!video) return;
@@ -768,7 +756,7 @@ export default function Editor({ project }) {
 
   const handleSeek = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const scrollX = e.currentTarget.parentElement.scrollLeft; // ✅ account for scroll
+    const scrollX = e.currentTarget.parentElement.scrollLeft;
     const clickX = e.clientX - rect.left + scrollX;
     const fullWidth = totalDuration * 20;
     const newGlobalTime = (clickX / fullWidth) * totalDuration;
@@ -800,12 +788,12 @@ export default function Editor({ project }) {
         else videoRef.current.pause();
       }
     } else {
-      // ✅ no video → black screen, but still allow audio playback
+
       setActiveClipIndex(null);
       if (videoRef.current) {
         videoRef.current.pause();
         videoRef.current.removeAttribute('src');
-        videoRef.current.load(); // clears → black screen
+        videoRef.current.load(); 
       }
     }
 
@@ -813,7 +801,7 @@ export default function Editor({ project }) {
     applyFilterAtTime(newGlobalTime);
   };
 
-  // ===== Global key handlers (delete, space) =====
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.code === 'Space') {
@@ -827,7 +815,7 @@ export default function Editor({ project }) {
           return updated;
         });
         setSelectedClipIndex(null);
-        setActiveClipIndex(null); // ✅ reset active clip after deletion
+        setActiveClipIndex(null); 
       }
 
       if ((e.code === 'Backspace' || e.code === 'Delete') && selectedMusicIndex !== null) {
@@ -848,7 +836,7 @@ export default function Editor({ project }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedClipIndex, selectedMusicIndex, selectedEffectIndex]);
 
-  // ===== Swap <video> source when activeClipIndex changes =====
+
   useEffect(() => {
     const video = videoRef.current;
     const seg = clips[activeClipIndex];
@@ -887,7 +875,6 @@ export default function Editor({ project }) {
         </div>
 
         <div className="editor-main">
-          {/* ===== Left Sidebar: Media + Effects Library ===== */}
           <div className="media-library">
             <h3>Media Library</h3>
 
@@ -910,7 +897,6 @@ export default function Editor({ project }) {
               />
             </div>
 
-            {/* --- Effects Library --- */}
             <div className="media-section effects-section">
               <h4>✨ Effects</h4>
               <div className="section-divider" />
@@ -926,8 +912,6 @@ export default function Editor({ project }) {
               ))}
               <p className="hint">Drag onto the timeline to apply.</p>
             </div>
-
-            {/* --- Video Section --- */}
             <div className="media-section video-section">
               <h4>📹 Video</h4>
               <div className="section-divider" />
@@ -943,7 +927,7 @@ export default function Editor({ project }) {
               ))}
             </div>
 
-            {/* --- Audio Section --- */}
+
             <div className="media-section audio-section">
               <h4>🎵 Audio</h4>
               <div className="section-divider" />
@@ -960,7 +944,7 @@ export default function Editor({ project }) {
             </div>
           </div>
 
-          {/* ===== Right: Player + Timelines ===== */}
+
           <div
             className="editor-area"
             onDrop={handleDrop}
@@ -974,9 +958,9 @@ export default function Editor({ project }) {
               </button>
             </div>
 
-            {/* ===== Unified Scrollable Timeline ===== */}
+
             <div className="timeline-scroll">
-              {/* ===== Effects timeline (TOP) ===== */}
+
               <div
                 className="effects-timeline"
                 onClick={(e) => {

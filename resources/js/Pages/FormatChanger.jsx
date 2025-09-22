@@ -85,7 +85,7 @@ export default function FormatChanger() {
         ...prev,
       ].slice(0, 5));
 
-      // Reset selection after conversion
+
       setSelectedFile(null);
       setCategory(null);
       setTargetFormat('');

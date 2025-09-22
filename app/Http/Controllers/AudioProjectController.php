@@ -5,11 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\AudioProject;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
-use Illuminate\Foundation\Auth\Access\AuthorizesRequests; // 👈 import
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests; 
 
 class AudioProjectController extends Controller
 {
-    use AuthorizesRequests; // 👈 use it
+    use AuthorizesRequests; 
 
     public function index()
     {

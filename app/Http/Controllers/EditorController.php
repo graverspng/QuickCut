@@ -10,7 +10,7 @@ class EditorController extends Controller
     public function show(Project $project)
     {
         if ($project->user_id !== auth()->id()) {
-            abort(403); // Forbidden
+            abort(403);
         }
     
         return Inertia::render('Editor', [
