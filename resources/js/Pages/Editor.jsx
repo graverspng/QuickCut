@@ -49,81 +49,67 @@ export default function Editor({ project }) {
 
   const hydrateFromStorage = (item) => {
     if (!item) return null;
-
+  
     const storageKey =
       item.storageKey ||
-      (typeof item.source === 'string' && item.source.startsWith('local-')
+      (typeof item.source === "string" && item.source.startsWith("local-")
         ? item.source
         : null);
-
-    if (!storageKey) {
-      return item;
+  
+    // try localStorage
+    if (storageKey) {
+      const data = resolveLocal(storageKey, null);
+      if (data) return { ...item, source: data, storageKey };
     }
-
-    let data = resolveLocal(storageKey, null);
-
-    // Fallback to any in-memory/base64 source we already have and re-cache it.
-    if (!data && typeof item.source === 'string' && item.source.startsWith('data:')) {
-      data = item.source;
-      try {
-        localStorage.setItem(storageKey, data);
-      } catch (_) {
-        // ignore quota issues – we still return the data we have
-      }
+  
+    // fallback stored in DB
+    if (item.fallbackSource) {
+      return { ...item, source: item.fallbackSource };
     }
-
-    if (!data) {
-      console.warn('⚠️ Missing local file in storage:', storageKey);
-      return { ...item, storageKey };
-    }
-
-    return { ...item, source: data, storageKey };
+  
+    // last resort placeholder
+    return { ...item, source: "/placeholder.mp4", missing: true };
   };
+  
+  
 
   const rehydrateItems = (items = []) =>
     items.map((item) => hydrateFromStorage(item)).filter(Boolean);
   
+/*************  ✨ Windsurf Command ⭐  *************/
+/**
+ * Prepare an array of items to be saved to the server.
+ * Maps through each item and returns a new object with the source
+ * property replaced with either the storageKey (if it exists) or the
+ * original source (if it's a string). If the source is a data URL,
+ * also stores a fallbackSource property with the original value.
+ * Returns an array of the new objects, filtered to remove any nulls.
+ */
+/*******  bf7cc2ec-5c66-4f6f-9d2f-4fffbc5c2edd  *******/
   const prepareItemsForSave = (items = []) =>
     items
       .map((item) => {
         if (!item) return null;
   
-        const { storageKey, source, ...rest } = item;
-        const key =
-          storageKey ||
-          (typeof source === "string" && source.startsWith("local-") ? source : null);
-  
+        const { storageKey, source, file, ...rest } = item;
         const payload = { ...rest };
   
-        if (key) {
-          payload.storageKey = key;
-        }
+        if (storageKey) {
+          payload.storageKey = storageKey;
+          payload.source = storageKey; // lightweight reference
   
-        let persistedSource = source;
-  
-        if (typeof source === "string" && source.startsWith("data:")) {
-          // keep data: URIs
-          persistedSource = source;
-        } else if (key) {
-          // look up from localStorage
-          const cached = resolveLocal(key, null);
-          if (cached) {
-            persistedSource = cached;
-          } else if (typeof source === "string") {
-            persistedSource = source;
-          } else {
-            console.warn("⚠️ Unable to locate media payload for", key);
-            persistedSource = null;
+          // also store a fallback if it's a data URL
+          if (source && source.startsWith("data:")) {
+            payload.fallbackSource = source;
           }
-        }
-  
-        if (persistedSource !== undefined && persistedSource !== null) {
-          payload.source = persistedSource;
+        } else if (typeof source === "string") {
+          payload.source = source;
         }
   
         return payload;
       })
       .filter(Boolean);
+  
   
 
   // ===== State (no duplicates) =====
@@ -134,11 +120,9 @@ export default function Editor({ project }) {
   // Effects
   const [effects, setEffects] = useState(() => {
     if (Array.isArray(project.effects) && project.effects.length) return project.effects;
-    return [
-      { id: crypto.randomUUID(), name: 'Glow', type: 'glow', color: 'rgba(60,207,101,0.9)', intensity: 0.8, startTime: 0, duration: 4, fadeIn: 0.5, fadeOut: 0.5 },
-      { id: crypto.randomUUID(), name: 'Blur', type: 'blur', intensity: 0.5, startTime: 4.5, duration: 3, fadeIn: 0.3, fadeOut: 0.3 },
-    ];
+    return []; // no default effects
   });
+  
 
   const [activeClipIndex, setActiveClipIndex] = useState(null);
   const [selectedClipIndex, setSelectedClipIndex] = useState(null);
@@ -296,13 +280,12 @@ export default function Editor({ project }) {
 
   // ===== Save =====
   const handleSave = () => {
-
     const mediaToSave = prepareItemsForSave(mediaFiles);
     const clipsToSave = prepareItemsForSave(clips);
     const tracksToSave = prepareItemsForSave(musicTracks);
-
+  
     const effectsToSave = effects.map((effect) => ({ ...effect }));
-
+  
     router.put(route('projects.update', project.id), {
       media_files: mediaToSave,
       clips: clipsToSave,
@@ -310,6 +293,7 @@ export default function Editor({ project }) {
       effects: effectsToSave,
     });
   };
+  
 
   // ===== Cut handlers =====
   const handleCut = () => {
