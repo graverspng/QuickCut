@@ -31,6 +31,7 @@ class ProjectController extends Controller
             'media_files' => [],
             'clips' => [],
             'music_tracks' => [],
+            'effects' => [],
         ]);
 
         return redirect()->route('editor', ['project' => $project->id]);
@@ -40,11 +41,29 @@ class ProjectController extends Controller
     {
         $this->authorize('update', $project);
 
-        $project->update([
-            'media_files'  => $request->media_files,
-            'clips'        => $request->clips,
-            'music_tracks' => $request->music_tracks,
+        $validated = $request->validate([
+            'name' => 'sometimes|string|max:255',
+            'description' => 'sometimes|nullable|string',
+            'media_files' => 'sometimes|array',
+            'clips' => 'sometimes|array',
+            'music_tracks' => 'sometimes|array',
+            'effects' => 'sometimes|array',
         ]);
+
+        $payload = [];
+
+        foreach (['name', 'media_files', 'clips', 'music_tracks', 'effects'] as $field) {
+            if (array_key_exists($field, $validated)) {
+                $payload[$field] = $validated[$field];
+            }
+        }
+
+        if (array_key_exists('description', $validated)) {
+            $payload['description'] = $validated['description'];
+        }
+
+        $project->update($payload);
+
 
         return back()->with('success', 'Project saved successfully!');
     }

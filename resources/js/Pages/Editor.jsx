@@ -2,7 +2,6 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router } from '@inertiajs/react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import '@/../css/Editor.css';
-import '@/../css/EditorMobile.css'; // 📱 mobile overrides
 
 // ====== Simple effect presets (drag from library) ======
 const EFFECT_PRESETS = [
@@ -36,6 +35,8 @@ const EFFECT_PRESETS = [
   },
 ];
 
+
+
 export default function Editor({ project }) {
   // ===== Rehydrate local-keys from localStorage safely =====
   const resolveLocal = (key, fallback = '') => {
@@ -46,20 +47,84 @@ export default function Editor({ project }) {
     }
   };
 
+  const hydrateFromStorage = (item) => {
+    if (!item) return null;
+
+    const storageKey =
+      item.storageKey ||
+      (typeof item.source === 'string' && item.source.startsWith('local-')
+        ? item.source
+        : null);
+
+    if (!storageKey) {
+      return item;
+    }
+
+    let data = resolveLocal(storageKey, null);
+
+    // Fallback to any in-memory/base64 source we already have and re-cache it.
+    if (!data && typeof item.source === 'string' && item.source.startsWith('data:')) {
+      data = item.source;
+      try {
+        localStorage.setItem(storageKey, data);
+      } catch (_) {
+        // ignore quota issues – we still return the data we have
+      }
+    }
+
+    if (!data) {
+      console.warn('⚠️ Missing local file in storage:', storageKey);
+      return { ...item, storageKey };
+    }
+
+    return { ...item, source: data, storageKey };
+  };
+
   const rehydrateItems = (items = []) =>
+    items.map((item) => hydrateFromStorage(item)).filter(Boolean);
+  
+  const prepareItemsForSave = (items = []) =>
     items
       .map((item) => {
-        if (item?.source?.startsWith?.('local-')) {
-          const data = resolveLocal(item.source, '');
-          if (!data) {
-            console.warn('⚠️ Missing local file in storage:', item.source);
-            return null; // drop missing entries to avoid black player
-          }
-          return { ...item, source: data, storageKey: item.source };
+        if (!item) return null;
+  
+        const { storageKey, source, ...rest } = item;
+        const key =
+          storageKey ||
+          (typeof source === "string" && source.startsWith("local-") ? source : null);
+  
+        const payload = { ...rest };
+  
+        if (key) {
+          payload.storageKey = key;
         }
-        return item;
+  
+        let persistedSource = source;
+  
+        if (typeof source === "string" && source.startsWith("data:")) {
+          // keep data: URIs
+          persistedSource = source;
+        } else if (key) {
+          // look up from localStorage
+          const cached = resolveLocal(key, null);
+          if (cached) {
+            persistedSource = cached;
+          } else if (typeof source === "string") {
+            persistedSource = source;
+          } else {
+            console.warn("⚠️ Unable to locate media payload for", key);
+            persistedSource = null;
+          }
+        }
+  
+        if (persistedSource !== undefined && persistedSource !== null) {
+          payload.source = persistedSource;
+        }
+  
+        return payload;
       })
       .filter(Boolean);
+  
 
   // ===== State (no duplicates) =====
   const [mediaFiles, setMediaFiles] = useState(() => rehydrateItems(project.media_files || []));
@@ -231,26 +296,18 @@ export default function Editor({ project }) {
 
   // ===== Save =====
   const handleSave = () => {
-    const mediaToSave = mediaFiles.map(({ storageKey, source, ...rest }) => ({
-      ...rest,
-      source: storageKey || source, // save the local key, not base64
-    }));
-    const clipsToSave = clips.map(({ storageKey, source, ...rest }) => ({
-      ...rest,
-      source: storageKey || source,
-    }));
-    const tracksToSave = musicTracks.map(({ storageKey, source, ...rest }) => ({
-      ...rest,
-      source: storageKey || source,
-    }));
 
-    const effectsToSave = effects.map((e) => ({ ...e })); // keep if your DB supports it
+    const mediaToSave = prepareItemsForSave(mediaFiles);
+    const clipsToSave = prepareItemsForSave(clips);
+    const tracksToSave = prepareItemsForSave(musicTracks);
+
+    const effectsToSave = effects.map((effect) => ({ ...effect }));
 
     router.put(route('projects.update', project.id), {
       media_files: mediaToSave,
       clips: clipsToSave,
       music_tracks: tracksToSave,
-      effects: effectsToSave, // remove this if your DB doesn't have an `effects` column
+      effects: effectsToSave,
     });
   };
 
