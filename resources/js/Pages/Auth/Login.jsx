@@ -4,9 +4,7 @@ import InputLabel from '@/Components/InputLabel';
 import TextInput from '@/Components/TextInput';
 import GuestLayout from '@/Layouts/GuestLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
-import '@/../css/login.css'; // keep this path if your css is in resources/css/login.css
-
-// Import your illustration
+import '@/../css/login.css';
 import QuickCutImg from '@/Pages/Auth/Img/QuickCut.png';
 
 export default function Login({ status, canResetPassword }) {
@@ -29,7 +27,6 @@ export default function Login({ status, canResetPassword }) {
 
             <div className="login-page">
                 <div className="login-wrapper">
-                    {/* Left illustration */}
                     <div className="login-left">
                         <img
                             src={QuickCutImg}
@@ -38,7 +35,6 @@ export default function Login({ status, canResetPassword }) {
                         />
                     </div>
 
-                    {/* Right form */}
                     <div className="login-right">
                         <div className="right-inner">
                             <div className="login-card">
@@ -102,17 +98,7 @@ export default function Login({ status, canResetPassword }) {
                                         </label>
                                     </div>
 
-                                    <div className="mt-6 flex items-center justify-between">
-                                        {canResetPassword && (
-                                            <Link
-                                                href={route('password.request')}
-                                                className="rounded-md text-sm text-gray-300 underline hover:text-white"
-                                            >
-                                                Forgot your password?
-                                            </Link>
-                                        )}
-
-                                        {/* Custom login button */}
+                                    <div className="mt-6 flex justify-center">
                                         <button
                                             type="submit"
                                             className="login-button"
