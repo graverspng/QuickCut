@@ -418,7 +418,6 @@ export default function AudioEditor({ project }) {
             <Head title={project.name} />
 
             <div className="editor-container audio-editor">
-                {/* Header (shared look) */}
                 <div className="editor-header">
                     <h2>{project.name} 🎵</h2>
                     <div>
@@ -487,7 +486,7 @@ export default function AudioEditor({ project }) {
                         </div>
                     </div>
 
-                    {/* RIGHT: Audio timeline area */}
+
                     <div className="editor-area">
                         <div className="audio-player-controls">
                             <button className="play-btn" onClick={togglePlay}>
@@ -502,7 +501,7 @@ export default function AudioEditor({ project }) {
                             </button>
                         </div>
 
-                        {/* Time ruler */}
+
                         <div className="audio-time-ruler">
                             <div
                                 className="audio-ruler-inner"
@@ -526,7 +525,6 @@ export default function AudioEditor({ project }) {
                             </div>
                         </div>
 
-                        {/* Scrollable timeline */}
                         <div
                             className="audio-timeline"
                             ref={timelineRef}
