@@ -7,7 +7,12 @@ use App\Http\Controllers\AboutUsController;
 use App\Http\Controllers\AudioProjectController;
 use App\Http\Controllers\FormatChangerController;
 use Illuminate\Support\Facades\Route;
+use App\Models\UserReport;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
+use App\Http\Controllers\UserReportController;
+
 
 Route::get('/', function () {
     return redirect()->route('login');
@@ -36,6 +41,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/about-us', [AboutUsController::class, 'index'])->name('about.us');
     Route::get('/audio-editor/{audioProject}', [AudioProjectController::class, 'show'])->name('audio.editor');
     Route::get('/format-changer', [FormatChangerController::class, 'index'])->name('format.changer');
+
+    // === USER REPORTS ===
+    Route::get('/report-issue', [UserReportController::class, 'create'])->name('reports.create');
+    Route::post('/report-issue', [UserReportController::class, 'store'])->name('reports.store');
     
     
 

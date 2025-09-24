@@ -2,13 +2,23 @@ import Dropdown from '@/Components/Dropdown';
 import NavLink from '@/Components/NavLink';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink';
 import { Link, usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import ReportIssue from '@/Pages/Auth/Img/ReportIssue.png';
 
 import QuickCutCutoutImg from '@/Pages/Auth/img/QuickCut_Cutout.png';
 
 export default function AuthenticatedLayout({ header, children, hideNavbar }) {
-    const user = usePage().props.auth.user;
+    const { auth, flash } = usePage().props;
+    const user = auth.user;
     const [showingNavigationDropdown, setShowingNavigationDropdown] = useState(false);
+    const [hasShownReportThanks, setHasShownReportThanks] = useState(false);
+
+    useEffect(() => {
+        if (flash?.reportSubmitted && !hasShownReportThanks) {
+            alert('Thank you for your report!');
+            setHasShownReportThanks(true);
+        }
+    }, [flash?.reportSubmitted, hasShownReportThanks]);
 
     return (
         <div className="min-h-screen bg-black text-[#FCFFFC]">
@@ -67,7 +77,18 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                             </div>
 
                             {/* User Dropdown */}
-                            <div className="hidden sm:ms-6 sm:flex sm:items-center">
+                            <div className="hidden sm:ml-6 sm:flex sm:items-center">
+    <Link
+        href={route('reports.create')}
+        className="mr-3 text-xl"
+        aria-label="Report an issue"
+    >
+        <img
+            src={ReportIssue}
+            alt="Illustration"
+            className="login-illustration w-8 h-8"
+        />
+                                </Link>
                                 <div className="relative ms-3">
                                     <Dropdown>
                                         <Dropdown.Trigger>
