@@ -1,18 +1,60 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router } from '@inertiajs/react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import '@/../css/Editor.css';
 import '@/../css/AudioEditor.css';
 
+const MIN_SESSION_LENGTH = 120;
+const PIXELS_PER_SECOND = 10;
+
+const toNumber = (value, fallback = 0) => {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const normalizeTracks = (arr = []) =>
+    arr.map((t) => {
+        const startTime = toNumber(t.startTime, 0);
+        const startOffset = toNumber(t.startOffset, 0);
+        const sourceDuration = toNumber(t.sourceDuration, 0);
+        const duration = toNumber(t.duration ?? sourceDuration, 0);
+        const volume = toNumber(t.volume ?? 1, 1);
+
+        return {
+            ...t,
+            startTime,
+            startOffset,
+            sourceDuration,
+            duration,
+            volume,
+            type: 'audio',
+        };
+    });
+
+const isAudioFile = (file) => {
+    if (!file) return false;
+    if (file.type && file.type.startsWith('audio')) return true;
+    const ext = file.name?.split('.').pop()?.toLowerCase();
+    return (
+        ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a'].includes(ext) ||
+        file.source?.startsWith('data:audio')
+    );
+};
+
 export default function AudioEditor({ project }) {
     const [tracks, setTracks] = useState(() =>
-        (project.tracks || []).map((t) => {
-            if (t.source?.startsWith('local-')) {
-                const data = localStorage.getItem(t.source);
-                return { ...t, source: data || '', storageKey: t.source };
-            }
-            return t;
-        })
+        normalizeTracks(
+            (project.tracks || []).map((t) => {
+                const storageKey = t.storageKey || (t.source?.startsWith('local-') ? t.source : null);
+                if (!storageKey) return t;
+
+                const data = localStorage.getItem(storageKey);
+                if (!data) return t;
+
+                return { ...t, source: data, storageKey };
+            })
+        )
     );
     const [mediaFiles, setMediaFiles] = useState([]);
     const [selectedTrackIndex, setSelectedTrackIndex] = useState(null);
@@ -21,45 +63,23 @@ export default function AudioEditor({ project }) {
     const [currentTime, setCurrentTime] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
 
-    const [sessionLength, setSessionLength] = useState(120); 
+    const [sessionLength, setSessionLength] = useState(MIN_SESSION_LENGTH);
 
     const audioRefs = useRef([]);
     const timelineRef = useRef(null);
     const [scrollLeft, setScrollLeft] = useState(0);
 
-
-    const TIMELINE_PX = 1200; 
-
-
-    const normalizeTracks = (arr) =>
-        arr.map((t) => ({
-            ...t,
-            startTime: t.startTime ?? 0,
-            startOffset: t.startOffset ?? 0,
-            sourceDuration: t.sourceDuration ?? 0,
-            duration: t.duration || t.sourceDuration || 0,
-            volume: t.volume ?? 1,
-            type: 'audio',
-        }));
-
-    const pxFromTime = (sec) => (sec / sessionLength) * TIMELINE_PX;
-    const timeFromPx = (px) => (px / TIMELINE_PX) * sessionLength;
+    const pxFromTime = (sec) => sec * PIXELS_PER_SECOND;
+    const timeFromPx = (px) => px / PIXELS_PER_SECOND;
+    const timelineWidth = useMemo(
+        () => Math.max(sessionLength, MIN_SESSION_LENGTH) * PIXELS_PER_SECOND,
+        [sessionLength]
+    );
     const snapToGrid = (time, step = 1) => Math.round(time / step) * step;
-
-    const isAudioFile = (file) => {
-        if (!file) return false;
-        if (file.type && file.type.startsWith('audio')) return true;
-        const ext = file.name?.split('.').pop()?.toLowerCase();
-        return (
-            ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a'].includes(ext) ||
-            file.source?.startsWith('data:audio')
-        );
-    };
-
 
     const handleFileUpload = async (e) => {
         const fileList = Array.from(e.target.files).filter(isAudioFile);
-    
+
         const files = await Promise.all(
             fileList.map(
                 (file) =>
@@ -80,10 +100,9 @@ export default function AudioEditor({ project }) {
                     })
             )
         );
-    
-        setMediaFiles((prev) => [...prev, ...files]);  
-    }; 
-    
+
+        setMediaFiles((prev) => [...prev, ...files]);
+    };
 
     const getTimeFromEvent = (e) => {
         const rect = timelineRef.current.getBoundingClientRect();
@@ -91,11 +110,10 @@ export default function AudioEditor({ project }) {
         return snapToGrid(timeFromPx(Math.max(dropX, 0)), 1);
     };
 
-
     const handleDrop = (e) => {
         e.preventDefault();
         const index = parseInt(e.dataTransfer.getData('index'));
-        const file = mediaFiles[index];     
+        const file = mediaFiles[index];
         if (!file || !isAudioFile(file)) return;
 
         const dropTime = getTimeFromEvent(e);
@@ -117,14 +135,14 @@ export default function AudioEditor({ project }) {
         e.preventDefault();
         const index = parseInt(e.dataTransfer.getData('index'));
         const file = mediaFiles[index];
-        if (!file || !isAudioFile(file)) return;
+               if (!file || !isAudioFile(file)) return;
+        const previewDuration = toNumber(file.duration || file.sourceDuration, 0) || 10;
         setGhostClip({
             name: file.name,
             startTime: getTimeFromEvent(e),
-            duration: 10,
+            duration: previewDuration,
         });
     };
-
 
     const handleSave = () => {
         const tracksToSave = tracks.map(({ storageKey, source, ...rest }) => ({
@@ -138,7 +156,6 @@ export default function AudioEditor({ project }) {
             tracks: tracksToSave,
         });
     };
-
 
     const handleTrackDragStart = (e, index) => {
         e.dataTransfer.setData('trackIndex', index);
@@ -158,6 +175,83 @@ export default function AudioEditor({ project }) {
         setSelectedTrackIndex(dropIndex);
     };
 
+    const handleSplitSelectedTrack = () => {
+        if (selectedTrackIndex === null) return;
+
+        const track = tracks[selectedTrackIndex];
+        if (!track) return;
+
+        const startTime = toNumber(track.startTime, 0);
+        const duration = toNumber(track.duration || track.sourceDuration, 0);
+        const relativeTime = currentTime - startTime;
+
+        if (relativeTime <= 0 || relativeTime >= duration) return;
+
+        const startOffset = toNumber(track.startOffset, 0);
+
+        const before = {
+            ...track,
+            startTime,
+            startOffset,
+            duration: relativeTime,
+        };
+
+        const after = {
+            ...track,
+            startTime: startTime + relativeTime,
+            startOffset: startOffset + relativeTime,
+            duration: duration - relativeTime,
+        };
+
+        setTracks((prev) => {
+            const updated = [
+                ...prev.slice(0, selectedTrackIndex),
+                before,
+                after,
+                ...prev.slice(selectedTrackIndex + 1),
+            ];
+            return normalizeTracks(updated);
+        });
+
+        setSelectedTrackIndex((prev) => (prev === null ? null : prev + 1));
+    };
+
+    const handleDeleteSelectedTrack = () => {
+        if (selectedTrackIndex === null) return;
+
+        setTracks((prev) => {
+            const trackToRemove = prev[selectedTrackIndex];
+            if (!trackToRemove) return prev;
+
+            const removedDuration = toNumber(
+                trackToRemove.duration || trackToRemove.sourceDuration,
+                0
+            );
+            const removedStart = toNumber(trackToRemove.startTime, 0);
+
+            const remaining = prev
+                .filter((_, i) => i !== selectedTrackIndex)
+                .map((track) => {
+                    const startTime = toNumber(track.startTime, 0);
+                    if (startTime > removedStart) {
+                        return {
+                            ...track,
+                            startTime: Math.max(0, startTime - removedDuration),
+                        };
+                    }
+                    return track;
+                });
+
+            return normalizeTracks(remaining);
+        });
+
+        const audio = audioRefs.current[selectedTrackIndex];
+        if (audio) {
+            audio.pause();
+        }
+        audioRefs.current.splice(selectedTrackIndex, 1);
+        setSelectedTrackIndex(null);
+    };
 
     useEffect(() => {
         tracks.forEach((track, i) => {
@@ -187,6 +281,18 @@ export default function AudioEditor({ project }) {
     }, [tracks]);
 
     useEffect(() => {
+        const longestEnd = tracks.reduce((max, track) => {
+            const start = toNumber(track.startTime, 0);
+            const duration = toNumber(track.duration || track.sourceDuration, 0);
+            return Math.max(max, start + duration);
+        }, 0);
+
+        const targetLength = Math.max(longestEnd, MIN_SESSION_LENGTH);
+
+        setSessionLength((prev) => (Math.abs(prev - targetLength) > 0.01 ? targetLength : prev));
+    }, [tracks]);
+
+    useEffect(() => {
         const el = timelineRef.current;
         if (!el) return;
         const onScroll = () => setScrollLeft(el.scrollLeft);
@@ -194,9 +300,7 @@ export default function AudioEditor({ project }) {
         return () => el.removeEventListener('scroll', onScroll);
     }, []);
 
-
     const totalDuration = sessionLength;
-
 
     const togglePlay = () => {
         if (isPlaying) {
@@ -223,7 +327,6 @@ export default function AudioEditor({ project }) {
             }
         });
     };
-
 
     useEffect(() => {
         let id;
@@ -270,10 +373,15 @@ export default function AudioEditor({ project }) {
                 e.preventDefault();
                 togglePlay();
             }
+
+            if ((e.code === 'Backspace' || e.code === 'Delete') && selectedTrackIndex !== null) {
+                e.preventDefault();
+                handleDeleteSelectedTrack();
+            }
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [isPlaying, tracks, currentTime]);
+    }, [isPlaying, tracks, currentTime, selectedTrackIndex]);
 
     const handleSeek = (e) => {
         const rect = timelineRef.current.getBoundingClientRect();
@@ -309,7 +417,7 @@ export default function AudioEditor({ project }) {
         <AuthenticatedLayout hideNavbar={true}>
             <Head title={project.name} />
 
-            <div className="editor-container">
+            <div className="editor-container audio-editor">
                 {/* Header (shared look) */}
                 <div className="editor-header">
                     <h2>{project.name} 🎵</h2>
@@ -385,14 +493,21 @@ export default function AudioEditor({ project }) {
                             <button className="play-btn" onClick={togglePlay}>
                                 {isPlaying ? 'Pause' : 'Play'}
                             </button>
+                            <button
+                                className="cut-btn"
+                                onClick={handleSplitSelectedTrack}
+                                disabled={selectedTrackIndex === null}
+                            >
+                                ✂️ Split
+                            </button>
                         </div>
 
                         {/* Time ruler */}
-                        <div className="time-ruler top">
+                        <div className="audio-time-ruler">
                             <div
-                                className="ruler-inner"
+                                className="audio-ruler-inner"
                                 style={{
-                                    width: `${TIMELINE_PX}px`,
+                                    width: `${timelineWidth}px`,
                                     transform: `translateX(-${scrollLeft}px)`,
                                 }}
                             >
@@ -401,7 +516,7 @@ export default function AudioEditor({ project }) {
                                     return (
                                         <div
                                             key={i}
-                                            className="time-tick"
+                                            className="audio-time-tick"
                                             style={{ left: `${pxFromTime(i)}px` }}
                                         >
                                             {Math.floor(i / 60)}:{String(i % 60).padStart(2, '0')}
@@ -413,25 +528,24 @@ export default function AudioEditor({ project }) {
 
                         {/* Scrollable timeline */}
                         <div
-                            className="timeline"
+                            className="audio-timeline"
                             ref={timelineRef}
                             onClick={handleSeek}
                             onDrop={handleDrop}
                             onDragOver={handleDragOverTimeline}
                         >
-                            <div className="layers-inner" style={{ width: `${TIMELINE_PX}px` }}>
+                            <div className="audio-layers" style={{ width: `${timelineWidth}px` }}>
                                 <div
-                                    className="playhead"
+                                    className="audio-playhead"
                                     style={{ left: `${pxFromTime(currentTime)}px` }}
                                 />
 
                                 {ghostClip && (
                                     <div
-                                        className="track ghost-track"
+                                        className="audio-track ghost"
                                         style={{
                                             left: `${pxFromTime(ghostClip.startTime)}px`,
                                             width: `${pxFromTime(ghostClip.duration)}px`,
-                                            top: '5px',
                                         }}
                                     >
                                         {ghostClip.name}
@@ -444,8 +558,8 @@ export default function AudioEditor({ project }) {
                                     const isSelected = selectedTrackIndex === index;
 
                                     return (
-                                        <div key={index} className="layer-row">
-                                            <span className="layer-label">Layer {index + 1}</span>
+                                        <div key={index} className="audio-layer-row">
+                                            <span className="audio-layer-label">Layer {index + 1}</span>
 
                                             <div
                                                 draggable
@@ -456,13 +570,13 @@ export default function AudioEditor({ project }) {
                                                     e.stopPropagation();
                                                     setSelectedTrackIndex(isSelected ? null : index);
                                                 }}
-                                                className={`track ${isSelected ? 'selected' : ''}`}
+                                                className={`audio-track${isSelected ? ' selected' : ''}`}
                                                 style={{
                                                     left: `${left}px`,
                                                     width: `${width}px`,
                                                 }}
                                             >
-                                                <span className="track-name">{track.name}</span>
+                                                <span className="audio-track-name">{track.name}</span>
                                                 <audio
                                                     ref={(el) => (audioRefs.current[index] = el)}
                                                     src={track.source}

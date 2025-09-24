@@ -1,15 +1,15 @@
 :root {
-    --dark: #000000;    /* background */
-    --muted: #1a1a1a;   /* panels */
-    --light: #FCFFFC;   /* text */
-    --green-1: #248232; /* deep green */
-    --green-2: #2BA84A; /* neon green */
-    --green-3: #3CCF65; /* glowing lime */
-    --cyan-1: #00bcd4;  /* effects lane color */
-    --blue-1: #3498db;  /* secondary accent */
+    --dark: #000000;    
+    --muted: #1a1a1a;   
+    --light: #FCFFFC;   
+    --green-1: #248232; 
+    --green-2: #2BA84A; 
+    --green-3: #3CCF65; 
+    --cyan-1: #00bcd4;  
+    --blue-1: #3498db;  
 }
 
-/* Container */
+
 .editor-container {
     display: flex;
     flex-direction: column;
@@ -20,9 +20,7 @@
     overflow: hidden;
 }
 
-/* ========================
-   Header
-   ======================== */
+
 .editor-header {
     display: flex;
     justify-content: space-between;
@@ -82,16 +80,14 @@
     background: #555;
 }
 
-/* ========================
-   Main Layout
-   ======================== */
+
 .editor-main {
     display: flex;
     flex: 1;
     overflow: hidden;
 }
 
-/* Media Library */
+
 .media-library {
     width: 280px;
     background: var(--muted);
@@ -142,7 +138,7 @@
     margin-top: 6px;
 }
 
-/* Editor Area */
+
 .editor-area {
     flex: 1;
     display: flex;
@@ -151,7 +147,7 @@
     animation: fadeIn 0.6s ease;
 }
 
-/* Video Player */
+
 .video-player {
     flex: 1;
     position: relative;
@@ -187,14 +183,9 @@
     box-shadow: 0 0 20px rgba(60,207,101,0.4);
 }
 
-/* ========================
-   Timelines
-   ======================== */
 
-/* NEW: Effects Timeline (top lane) */
-/* Effects Timeline */
 .effects-timeline {
-    height: 100px;              /* was 70px */
+    height: 100px;             
     background: #0b1111;
     border-top: 1px solid #19383b;
     border-bottom: 1px solid #132b2e;
@@ -205,10 +196,10 @@
     padding: 10px;
 }
 
-/* Effect block thickness */
+
 .effect-block {
     position: absolute;
-    height: 85%;    /* relative to timeline lane height */
+    height: 85%;  
     top: 7%;
     border-radius: 8px;
     display: flex;
@@ -227,23 +218,23 @@
 .effect-block {
     background: linear-gradient(
       to right,
-      rgba(0,188,212,0) 0%,               /* fade-in */
+      rgba(0,188,212,0) 0%,               
       rgba(0,188,212,0.35) 15%, 
       rgba(0,188,212,0.35) 85%, 
-      rgba(0,188,212,0) 100%              /* fade-out */
+      rgba(0,188,212,0) 100%             
     );
   }
 
   .timeline-scroll {
     overflow-x: auto;
-    overflow-y: hidden; /* only horizontal scroll */
+    overflow-y: hidden;
     white-space: nowrap;
     position: relative;
     display: flex;
     flex-direction: column;
   }
   
-  /* Make each timeline lane visible */
+
   .effects-timeline {
     height: 100px;
     background: #0a0f0f;
@@ -253,8 +244,8 @@
 
   .timeline {
     position: relative;
-    min-height: 40px;   /* enough height so empty background exists */
-    background: rgba(0,0,0,0.05); /* faint background so you see gaps */
+    min-height: 40px;  
+    background: rgba(0,0,0,0.05); 
     cursor: pointer;
   }
   .timeline .clip {
@@ -302,8 +293,8 @@
 
 .effect-block {
     position: absolute;
-    height: 85%;                 /* make block thicker */
-    top: 7%;                     /* center it vertically */
+    height: 85%;                 
+    top: 7%;                  
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -343,7 +334,7 @@
     letter-spacing: 0.5px;
 }
 
-/* Clips Timeline (middle) */
+
 .timeline {
     height: 100px;
     background: var(--muted);
@@ -356,7 +347,7 @@
     overflow-x: auto;
 }
 
-/* Clips */
+
 .clip {
     height: 100%;
     border-radius: 6px;
@@ -393,7 +384,7 @@
 .clip-handle.left { left: 0; }
 .clip-handle.right { right: 0; }
 
-/* Music Tracks (bottom) */
+
 .music-timeline {
     height: 70px;
     background: var(--dark);
@@ -430,7 +421,7 @@
     box-shadow: 0 0 15px rgba(230,126,34,0.5);
 }
 
-/* Playhead */
+
 .playhead {
     position: absolute;
     top: 0;
@@ -440,9 +431,7 @@
     box-shadow: 0 0 10px rgba(255,0,0,0.6);
 }
 
-/* ========================
-   Animations
-   ======================== */
+
 @keyframes slideDown {
     from { opacity: 0; transform: translateY(-20px); }
     to { opacity: 1; transform: translateY(0); }
@@ -456,23 +445,23 @@
     to { opacity: 1; }
 }
 
-/* Media Sections */
+
 .media-section {
     margin-bottom: 20px;
     padding: 10px;
     border-radius: 8px;
 }
 
-/* Divider line */
+
 .section-divider {
     height: 2px;
     margin: 6px 0 12px;
     border-radius: 2px;
 }
 
-/* Video section */
+
 .video-section {
-    background: rgba(36,130,50,0.15); /* faint green tint */
+    background: rgba(36,130,50,0.15); 
     border: 1px solid var(--green-1);
 }
 .video-section h4 {
@@ -484,9 +473,9 @@
     box-shadow: 0 0 6px rgba(43,168,74,0.6);
 }
 
-/* Audio section */
+
 .audio-section {
-    background: rgba(155,89,182,0.15); /* purple tint */
+    background: rgba(155,89,182,0.15);
     border: 1px solid #9b59b6;
 }
 .audio-section h4 {
@@ -498,7 +487,7 @@
     box-shadow: 0 0 6px rgba(155,89,182,0.6);
 }
 
-/* NEW: Effects section card in sidebar */
+
 .effects-section {
     background: rgba(0,188,212,0.08);
     border: 1px solid rgba(0,188,212,0.35);
@@ -513,9 +502,9 @@
     box-shadow: 0 0 6px rgba(0,188,212,0.7);
 }
 
-/* Upload Dropzone */
+
 .upload-dropzone {
-    background: rgba(43,168,74,0.08); /* faint neon green glow */
+    background: rgba(43,168,74,0.08); 
     border: 2px dashed var(--green-2);
     border-radius: 12px;
     padding: 20px;
@@ -541,7 +530,7 @@
     box-shadow: 0 0 25px rgba(60,207,101,0.6);
 }
 
-/* Effect intensity slider */
+
 .effect-slider {
     position: absolute;
     bottom: -22px;

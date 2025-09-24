@@ -6,7 +6,6 @@
     --green-2: #2BA84A;
 }
 
-/* Slide-in fade animation */
 @keyframes slideInUp {
     0% {
         opacity: 0;
@@ -19,14 +18,14 @@
 }
 
 
-/* Animate intro text */
+
 .dashboard-intro {
     opacity: 0;
     animation: slideInUp 0.8s ease-out forwards;
     animation-delay: 100ms;
 }
 
-/* Slide-in animation */
+
 @keyframes slideIn {
     from {
         opacity: 0;
@@ -43,7 +42,6 @@
     animation: slideIn 0.6s ease-out forwards;
 }
 
-/* Fade-in-up for text/modal */
 @keyframes fadeInUp {
     from {
         opacity: 0;
@@ -61,21 +59,21 @@
 }
 
 
-/* Animate each project card */
+
 .project-card {
     opacity: 0;
     transform: translateY(20px);
     animation: slideInUp 0.6s ease-out forwards;
 }
 
-/* Stagger animation */
+
 .project-card:nth-child(1) { animation-delay: 200ms; }
 .project-card:nth-child(2) { animation-delay: 350ms; }
 .project-card:nth-child(3) { animation-delay: 500ms; }
 .project-card:nth-child(4) { animation-delay: 650ms; }
 
 
-/* Page wrapper */
+
 .dashboard-page {
     min-height: 100vh;
     background: var(--dark);
@@ -87,7 +85,7 @@
     margin: 0 auto;
 }
 
-/* Project cards */
+
 .project-card {
     background: var(--muted);
     border-radius: 20px;
@@ -108,7 +106,7 @@
     background: #1f1f1f;
 }
 
-/* Create project card */
+
 .create-card {
     border: 2px dashed var(--green-2);
     display: flex;
@@ -125,7 +123,7 @@
     transform: translateY(-4px);
 }
 
-/* Delete button */
+
 .delete-btn {
     position: absolute;
     top: 12px;
@@ -146,7 +144,7 @@
     transform: scale(1.1);
 }
 
-/* Modal styles */
+
 .modal-card {
     background: #1f1f1f;
     border-radius: 16px;

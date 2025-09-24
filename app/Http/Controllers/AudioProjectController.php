@@ -26,14 +26,14 @@ class AudioProjectController extends Controller
             'name' => 'required|string|max:255',
         ]);
 
-        AudioProject::create([
+        $project = AudioProject::create([
             'user_id' => auth()->id(),
             'name' => $request->name,
             'description' => $request->description,
             'tracks' => [],
         ]);
 
-        return redirect()->route('audio.projects');
+        return redirect()->route('audio.editor', $project);
     }
 
     public function show(AudioProject $audioProject)

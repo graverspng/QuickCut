@@ -1,7 +1,4 @@
-@import './Editor.css';
-
-/* === Timeline === */
-.timeline {
+.audio-editor .audio-timeline {
   flex: 1;
   background: var(--muted);
   border-top: 1px solid #333;
@@ -13,21 +10,21 @@
   align-items: flex-start;
 }
 
-/* Top ruler */
-.time-ruler.top {
+.audio-editor .audio-time-ruler {
   position: relative;
   height: 24px;
   border-bottom: 1px solid #333;
   background: #111;
   overflow: hidden;
+  padding-left: 80px;
 }
 
-.time-ruler.top .ruler-inner {
+.audio-editor .audio-time-ruler .audio-ruler-inner {
   position: relative;
   height: 100%;
 }
 
-.time-ruler.top .time-tick {
+.audio-editor .audio-time-ruler .audio-time-tick {
   position: absolute;
   top: 4px;
   font-size: 11px;
@@ -36,8 +33,7 @@
   white-space: nowrap;
 }
 
-/* Grid lines */
-.timeline::before {
+.audio-editor .audio-timeline::before {
   content: '';
   position: absolute;
   top: 0; bottom: 0; left: 0; right: 0;
@@ -52,23 +48,23 @@
   z-index: 0;
 }
 
-/* === Rows === */
-.layers-inner {
+
+.audio-editor .audio-layers {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.layer-row {
+.audio-editor .audio-layer-row {
   position: relative;
   height: 50px;
   border-bottom: 1px solid #222;
   background: transparent;
 }
 
-/* Labels */
-.layer-label {
+
+.audio-editor .audio-layer-label {
   position: absolute;
   left: -70px;
   top: 15px;
@@ -80,8 +76,8 @@
   text-transform: uppercase;
 }
 
-/* Tracks */
-.track {
+
+.audio-editor .audio-track {
   position: absolute;
   top: 5px;
   height: 40px;
@@ -102,44 +98,49 @@
   z-index: 1;
 }
 
-.track:hover {
+.audio-editor .audio-track:hover {
   transform: scale(1.03);
   box-shadow: 0 0 10px rgba(155,89,182,0.5);
 }
 
-.track.selected {
+.audio-editor .audio-track.selected {
   border: 2px solid #ffcc00;
   background: linear-gradient(to right, #e67e22, #d35400);
   box-shadow: 0 0 12px rgba(230,126,34,0.5);
 }
 
-/* Volume control when a clip is selected */
-.volume-control {
+.audio-editor .audio-track-name {
+  pointer-events: none;
+}
+
+
+.audio-editor .volume-control {
   display: inline-flex;
   align-items: center;
   margin-right: 12px;
   font-size: 12px;
 }
 
-.volume-control input {
+.audio-editor .volume-control input {
   margin-left: 6px;
   width: 100px;
 }
 
-.volume-value {
+.audio-editor .volume-value {
   margin-left: 6px;
   width: 24px;
   text-align: right;
 }
 
-/* Ghost */
-.ghost-track {
+
+.audio-editor .audio-track.ghost {
   opacity: 0.5;
   border: 1px dashed #fff;
+  pointer-events: none;
 }
 
-/* Playhead */
-.playhead {
+
+.audio-editor .audio-playhead {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -150,17 +151,23 @@
   z-index: 10;
 }
 
-/* Controls */
-.audio-player-controls {
+
+.audio-editor .audio-player-controls {
   display: flex;
   justify-content: flex-start;
   padding: 10px;
   background: var(--muted);
   border-bottom: 1px solid #333;
+  gap: 10px;
 }
 
-/* Media library (sidebar) */
-.media-library {
+.audio-editor .cut-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+
+.audio-editor .media-library {
   flex: 0 0 220px;
   min-width: 220px;
   max-width: 260px;
@@ -170,7 +177,7 @@
   overflow-y: auto;
 }
 
-.editor-area {
+.audio-editor .editor-area {
   flex: 1;
   display: flex;
   flex-direction: column;
