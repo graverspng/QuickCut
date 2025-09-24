@@ -86,7 +86,7 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
         <img
             src={ReportIssue}
             alt="Illustration"
-            className="login-illustration w-8 h-8"
+            className="h-9 w-auto"
         />
                                 </Link>
                                 <div className="relative ms-3">
