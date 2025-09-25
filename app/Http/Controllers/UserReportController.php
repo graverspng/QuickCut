@@ -25,22 +25,31 @@ class UserReportController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'issue' => ['required', 'string', 'max:5000'],
+            'project' => ['nullable', 'string', 'max:255'], // ✅ added
+            'issue'   => ['required', 'string', 'max:5000'],
         ]);
 
         $user = $request->user();
 
+
         UserReport::create([
             'user_id' => $user->id,
-            'issue' => $data['issue'],
+            'project' => $data['project'] ?? null,
+            'issue'   => $data['issue'],
         ]);
 
-        Mail::raw(
-            "User report from {$user->name} (ID: {$user->id})\n\nIssue:\n{$data['issue']}",
-            function ($message) {
-                $message->to('quickcutweb@gmail.com')->subject('New User Report');
-            }
-        );
+
+        $emailBody = "User report from {$user->name} (ID: {$user->id})\n\n";
+
+        if (!empty($data['project'])) {
+            $emailBody .= "Project: {$data['project']}\n\n";
+        }
+
+        $emailBody .= "Issue:\n{$data['issue']}";
+
+        Mail::raw($emailBody, function ($message) {
+            $message->to('quickcutweb@gmail.com')->subject('New User Report');
+        });
 
         return redirect()
             ->route('dashboard')

@@ -1,24 +1,52 @@
-:root {
+/* =========================================================
+   Report Issue — Polished UI (keeps your existing theme)
+   ========================================================= */
+
+   :root {
     --dark: #000000;
     --muted: #1a1a1a;
     --light: #FCFFFC;
     --green-1: #248232;
     --green-2: #2BA84A;
-}
-
-/* === Background + floating logo === */
-.report-issue-background {
+  
+    /* Subtle supporting tones (stay within theme spirit) */
+    --ink-1: #0b0b0b;
+    --ink-2: #111111;
+    --ink-3: #161616;
+  
+    --ring: rgba(43,168,74,0.45);
+    --ring-soft: rgba(43,168,74,0.12);
+    --glow: rgba(43,168,74,0.35);
+  
+    --error: #ff6666;
+    --hint: rgba(252,255,252,0.65);
+  
+    --radius-lg: 18px;
+    --radius-md: 12px;
+  
+    --shadow-1: 0 10px 30px rgba(0,0,0,0.5);
+    --shadow-2: 0 20px 60px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.03) inset;
+  
+    --focus-outline: 2px solid var(--green-2);
+  }
+  
+  /* === Background + ambient orbs === */
+  .report-issue-background {
     min-height: 100vh;
-    background: var(--dark);
+    background: radial-gradient(1200px 800px at 10% 0%, rgba(36,130,50,0.12), transparent 60%),
+                radial-gradient(900px 600px at 90% 100%, rgba(43,168,74,0.08), transparent 60%),
+                var(--dark);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 48px 24px;
     position: relative;
     overflow: hidden;
-}
-
-.report-float {
+    isolation: isolate;
+  }
+  
+  /* floating logo (kept + refined) */
+  .report-float {
     position: absolute;
     bottom: -100px;
     right: -100px;
@@ -26,128 +54,335 @@
     height: 700px;
     opacity: 0.08;
     pointer-events: none;
-    z-index: -1;
+    z-index: 0;
+    filter: drop-shadow(0 0 40px rgba(43,168,74,0.25));
     animation: floatRotate 120s linear infinite;
-}
-
-@keyframes floatRotate {
-    0% { transform: rotate(0deg) translate(-20px, -20px); }
-    50% { transform: rotate(180deg) translate(20px, 20px); }
+  }
+  
+  @keyframes floatRotate {
+    0%   { transform: rotate(0deg) translate(-20px, -20px); }
+    50%  { transform: rotate(180deg) translate(20px, 20px); }
     100% { transform: rotate(360deg) translate(-20px, -20px); }
-}
-
-/* === Container === */
-.report-issue-container {
-    max-width: 700px;
+  }
+  
+  /* === Container with gradient border via mask === */
+  .report-issue-container {
+    max-width: 760px;
     width: 100%;
-    background: rgba(26, 26, 26, 0.85);
-    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(26,26,26,0.88), rgba(20,20,20,0.88));
+    border-radius: var(--radius-lg);
     padding: 32px;
     color: var(--light);
     backdrop-filter: blur(12px);
-    border: 1px solid rgba(255,255,255,0.05);
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    box-shadow: var(--shadow-1);
+    position: relative;
     opacity: 0;
     transform: translateY(25px);
     animation: fadeInUp 0.8s ease-out forwards;
-}
-
-/* === Title === */
-.report-title {
+    z-index: 1;
+  }
+  
+  /* gradient hairline around container */
+  .report-issue-container::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 1px; /* border thickness */
+    border-radius: inherit;
+    background: linear-gradient(120deg, rgba(255,255,255,0.06), rgba(43,168,74,0.22) 40%, rgba(255,255,255,0.06));
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    pointer-events: none;
+  }
+  
+  /* === Header === */
+  .report-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 10px;
+  }
+  
+  .report-title-icon {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--green-1), var(--green-2));
+    box-shadow: 0 8px 22px var(--ring);
+  }
+  
+  .report-title {
     font-size: 2.4rem;
     font-weight: 800;
-    margin-bottom: 1.5rem;
-    text-align: center;
     background: linear-gradient(90deg, var(--green-1), var(--green-2));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     letter-spacing: 1px;
-}
-
-/* === Form === */
-.report-label {
-    display: block;
-    font-size: 0.95rem;
-    font-weight: 500;
-    margin-bottom: 0.5rem;
+    margin: 0;
+  }
+  
+  .report-subtitle {
+    text-align: center;
+    color: var(--hint);
+    font-size: 0.98rem;
+    margin-bottom: 18px;
+  }
+  
+  /* Divider */
+  .report-divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+    margin: 18px 0 22px;
+  }
+  
+  /* === Form === */
+  .report-field {
+    margin-bottom: 18px;
+  }
+  
+  .report-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.96rem;
+    font-weight: 600;
+    margin-bottom: 0.55rem;
     color: rgba(252,255,252,0.9);
-}
-
-.report-textarea {
+  }
+  
+  .report-hint {
+    font-size: 0.85rem;
+    color: var(--hint);
+    margin-top: 6px;
+  }
+  
+  /* Inputs base */
+  .report-input,
+  .report-dropdown,
+  .report-textarea {
     width: 100%;
-    min-height: 180px;
-    border-radius: 12px;
-    background: var(--dark);
+    border-radius: var(--radius-md);
+    background: linear-gradient(180deg, var(--ink-2), var(--ink-3));
     border: 1px solid var(--muted);
-    padding: 14px;
+    padding: 12px 14px;
     font-size: 1rem;
     color: var(--light);
-    resize: vertical;
-    transition: border 0.2s, box-shadow 0.2s;
-}
-.report-textarea:focus {
-    border: 1px solid var(--green-2);
-    box-shadow: 0 0 8px rgba(43,168,74,0.4);
+    transition: border 0.2s ease, box-shadow 0.2s ease, transform 0.08s ease;
     outline: none;
-}
-
-.report-error {
-    margin-top: 0.5rem;
-    font-size: 0.9rem;
-    color: #ff6666;
-}
-
-/* === Submit Button === */
-.report-submit {
-    display: inline-block;
-    margin-top: 1.5rem;
+  }
+  
+  .report-input::placeholder,
+  .report-textarea::placeholder {
+    color: rgba(252,255,252,0.45);
+  }
+  
+  /* Focus ring */
+  .report-input:focus,
+  .report-dropdown:focus,
+  .report-textarea:focus {
+    border-color: var(--green-2);
+    box-shadow:
+      0 0 0 3px var(--ring-soft),
+      0 0 0 1px var(--green-2) inset;
+  }
+  
+  /* Dropdown with custom arrow */
+  .report-dropdown {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    padding-right: 42px;
+    background-image:
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='%232BA84A'><path d='M7 10l5 5 5-5z'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 18px 18px;
+  }
+  
+  /* Textarea */
+  .report-textarea {
+    min-height: 180px;
+    resize: vertical;
+  }
+  
+  /* Field footer: counter + status */
+  .report-field-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+  }
+  
+  .report-counter {
+    font-size: 0.85rem;
+    color: var(--hint);
+  }
+  
+  /* Progress meter */
+  .report-meter {
+    position: relative;
+    height: 6px;
+    width: 140px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 999px;
+    overflow: hidden;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
+  }
+  
+  .report-meter > span {
+    display: block;
+    height: 100%;
+    width: var(--progress, 0%);
     background: linear-gradient(90deg, var(--green-1), var(--green-2));
-    color: var(--light);
-    padding: 12px 24px;
-    border-radius: 10px;
-    font-weight: 600;
-    text-decoration: none;
-    transition: transform 150ms ease, box-shadow 250ms ease;
-    text-align: center;
-}
-.report-submit:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 12px 30px rgba(43,168,74,0.4);
-}
-.report-submit:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-/* === Animations === */
-@keyframes fadeInUp {
-    to { opacity: 1; transform: translateY(0); }
-}
-
-/* === Responsive === */
-@media (max-width: 768px) {
-    .report-issue-container { padding: 24px; }
-    .report-title { font-size: 1.9rem; }
-    .report-textarea { font-size: 0.95rem; }
-}
-
-.report-buttons {
-    margin-top: 1.5rem;
+    transition: width 140ms ease;
+  }
+  
+  /* Errors */
+  .report-error {
+    margin-top: 0.55rem;
+    font-size: 0.9rem;
+    color: var(--error);
+    animation: shake 0.32s ease;
+  }
+  
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-2px); }
+    50% { transform: translateX(2px); }
+    75% { transform: translateX(-1px); }
+  }
+  
+  /* === Buttons === */
+  .report-buttons {
+    margin-top: 1.2rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
-}
-
-.report-back {
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  
+  .report-back {
     background: transparent;
     color: var(--green-2);
     font-weight: 600;
     text-decoration: none;
     padding: 10px 18px;
     border-radius: 10px;
-    transition: color 200ms ease, transform 150ms ease;
-}
-.report-back:hover {
+    transition: color 200ms ease, transform 150ms ease, opacity 150ms ease;
+  }
+  .report-back:hover {
     color: var(--green-1);
     transform: translateX(-3px);
-}
+  }
+  
+  .report-submit {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(90deg, var(--green-1), var(--green-2));
+    color: var(--light);
+    padding: 12px 22px;
+    border-radius: 10px;
+    font-weight: 700;
+    text-decoration: none;
+    border: 0;
+    cursor: pointer;
+    transition: transform 150ms ease, box-shadow 250ms ease, filter 120ms ease;
+    box-shadow: 0 12px 30px rgba(43,168,74,0.35);
+  }
+  .report-submit:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 16px 40px rgba(43,168,74,0.42);
+  }
+  .report-submit:active {
+    transform: translateY(0);
+    filter: brightness(0.98);
+  }
+  .report-submit:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+  
+  /* inline spinner */
+  .btn-spinner {
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    border: 2px solid rgba(255,255,255,0.5);
+    border-top-color: var(--light);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  
+  /* Success toast */
+  .report-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: linear-gradient(180deg, rgba(26,26,26,0.95), rgba(20,20,20,0.95));
+    border: 1px solid rgba(255,255,255,0.06);
+    color: var(--light);
+    padding: 12px 14px;
+    border-radius: 12px;
+    box-shadow: var(--shadow-2);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 50;
+    opacity: 0;
+    transform: translateY(10px);
+    animation: toastIn 0.35s ease forwards;
+  }
+  
+  .report-toast .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--green-1), var(--green-2));
+    box-shadow: 0 0 12px var(--glow);
+  }
+  
+  @keyframes toastIn {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  
+  /* A11y helpers */
+  .visually-hidden {
+    position: absolute !important;
+    height: 1px; width: 1px;
+    overflow: hidden;
+    clip: rect(1px, 1px, 1px, 1px);
+    white-space: nowrap;
+  }
+  
+  /* Animations */
+  @keyframes fadeInUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  
+  /* Motion-reduced */
+  @media (prefers-reduced-motion: reduce) {
+    .report-float { animation: none; }
+    .report-issue-container { animation: none; opacity: 1; transform: none; }
+    .report-toast { animation: none; opacity: 1; transform: none; }
+  }
+  
+  /* Responsive */
+  @media (max-width: 768px) {
+    .report-issue-container { padding: 24px; }
+    .report-title { font-size: 2rem; }
+    .report-subtitle { font-size: 0.95rem; }
+    .report-meter { width: 120px; }
+  }
+  
