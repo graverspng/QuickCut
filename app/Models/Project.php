@@ -17,15 +17,16 @@ class Project extends Model
         'clips',
         'music_tracks',
         'effects',
+        'text_overlays',
     ];
-    
+
     protected $casts = [
-        'media_files' => 'array',
-        'clips' => 'array',
-        'music_tracks' => 'array',
-        'effects' => 'array',
+        'media_files'   => 'array',
+        'clips'         => 'array',
+        'music_tracks'  => 'array',
+        'effects'       => 'array',
+        'text_overlays' => 'array',
     ];
-    
 
     public function user()
     {
