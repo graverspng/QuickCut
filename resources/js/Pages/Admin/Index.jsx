@@ -15,9 +15,7 @@ export default function Index() {
     >
       <Head title="Admin Panel" />
 
-      {/* We reuse your About Us aesthetic to keep the style consistent */}
       <div className="about-us-background">
-        {/* floating shape (re-uses your class) */}
         <svg className="quickcut-float" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <defs>
             <linearGradient id="g" x1="0" x2="1">

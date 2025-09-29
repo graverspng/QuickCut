@@ -3,7 +3,6 @@
 namespace Database\Seeders;
 
 use App\Models\User;
-// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -13,13 +12,12 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
 
         User::firstOrCreate(
-            ['email' => 'test@example.com'], // search by unique column
+            ['email' => 'test@example.com'],
             [
                 'name' => 'Test User',
-                'password' => bcrypt('password'), // required if your model has a non-nullable password
+                'password' => bcrypt('password'), 
             ]
         );
         

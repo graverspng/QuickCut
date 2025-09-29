@@ -13,7 +13,7 @@ return new class extends Migration
             $table->unsignedBigInteger('user_id')->nullable();
             $table->string('name');
             $table->text('description')->nullable();
-            $table->json('tracks')->nullable(); // 🎵 stores audio track info
+            $table->json('tracks')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });

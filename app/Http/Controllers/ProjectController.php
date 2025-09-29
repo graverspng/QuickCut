@@ -73,7 +73,6 @@ class ProjectController extends Controller
     {
         Gate::authorize('update', $project);
 
-        // Allow 1..10 files; accept common video/audio/image types.
         $request->validate([
             'files'   => 'required|array|min:1|max:10',
             'files.*' => [
@@ -82,15 +81,15 @@ class ProjectController extends Controller
                     'mp4','mov','m4v','webm','ogv',
                     'mp3','wav','aac','m4a','flac','ogg',
                     'jpg','jpeg','png','webp','gif','tiff'
-                ])->min(10)      // KB
-                  ->max(1024*1024) // 1 GB ceiling; adjust if you want smaller/larger
+                ])->min(10)
+                  ->max(1024*1024)
             ],
         ]);
 
         $disk = 'public';
         $dir  = "projects/{$project->id}/media";
 
-        // Make sure folder exists
+
         if (!Storage::disk($disk)->exists($dir)) {
             Storage::disk($disk)->makeDirectory($dir);
         }
@@ -101,19 +100,19 @@ class ProjectController extends Controller
             $ext  = strtolower($file->getClientOriginalExtension());
             $safe = str()->slug($name) . '-' . uniqid() . '.' . $ext;
 
-            // Store
+
             $path = $file->storeAs($dir, $safe, $disk);
 
-            // Build response payload
+
             $mime = $file->getClientMimeType();
             $kind = str_starts_with($mime, 'video/') ? 'video'
                   : (str_starts_with($mime, 'audio/') ? 'audio' : 'image');
 
             $assets[] = [
-                'id'   => md5($path), // stable id for UI
+                'id'   => md5($path), 
                 'name' => $file->getClientOriginalName(),
                 'path' => $path,
-                'url'  => Storage::disk($disk)->url($path), // e.g. /storage/projects/...
+                'url'  => Storage::disk($disk)->url($path),
                 'mime' => $mime,
                 'kind' => $kind,
                 'size' => $file->getSize(),

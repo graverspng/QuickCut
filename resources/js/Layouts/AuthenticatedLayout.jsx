@@ -25,7 +25,6 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                 <nav className="border-b border-gray-800 bg-[#1a1a1a]">
                     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                         <div className="flex h-16 justify-between">
-                            {/* Logo */}
                             <div className="flex items-center">
                                 <Link href="/">
                                     <img
@@ -36,7 +35,6 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                 </Link>
                             </div>
 
-                            {/* Nav Links (Desktop) */}
                             <div className="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
                                 <NavLink
                                     href={route('dashboard')}
@@ -46,7 +44,7 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                     Media Projects
                                 </NavLink>
 
-                                {/* New Audio Projects link */}
+
                                 <NavLink
                                     href={route('audio.projects')}
                                     active={route().current('audio.projects')}
@@ -72,7 +70,7 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                 </NavLink>
                             </div>
 
-                            {/* User Dropdown */}
+
                             <div className="hidden sm:ml-6 sm:flex sm:items-center">
                                 <Link
                                     href={route('reports.create')}
@@ -110,7 +108,6 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                             </span>
                                         </Dropdown.Trigger>
 
-                                        {/* Dark dropdown menu */}
                                         <Dropdown.Content className="bg-[#1a1a1a] border border-gray-700 rounded-lg shadow-lg">
                                             <Dropdown.Link
                                                 href={route('profile.edit')}
@@ -119,7 +116,6 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                                 Profile
                                             </Dropdown.Link>
 
-                                            {/* Add Admin Panel link for admins */}
                                             {Boolean(user?.is_admin) && (
                                                 <Dropdown.Link
                                                     href={route('admin.index')}
@@ -142,7 +138,6 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                 </div>
                             </div>
 
-                            {/* Mobile Menu Button */}
                             <div className="-me-2 flex items-center sm:hidden">
                                 <button
                                     onClick={() => setShowingNavigationDropdown((prev) => !prev)}
@@ -169,7 +164,6 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                         </div>
                     </div>
 
-                    {/* Mobile Dropdown */}
                     <div className={(showingNavigationDropdown ? 'block' : 'hidden') + ' sm:hidden'}>
                         <div className="space-y-1 pb-3 pt-2 bg-[#1a1a1a]">
                             <ResponsiveNavLink
@@ -219,7 +213,6 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                     Profile
                                 </ResponsiveNavLink>
 
-                                {/* Show Admin Panel link for admins in mobile as well */}
                                 {user.is_admin && (
                                     <ResponsiveNavLink
                                         href={route('admin.index')}

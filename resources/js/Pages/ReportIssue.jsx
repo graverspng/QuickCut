@@ -32,21 +32,20 @@ export default function ReportIssue() {
       preserveScroll: true,
       onSuccess: () => {
         setShowToast(true);
-        // Reset form after success
         reset();
         setSelectedProject('');
       },
     });
   };
 
-  // Auto-dismiss toast
+
   useEffect(() => {
     if (!showToast) return;
     const t = setTimeout(() => setShowToast(false), 3800);
     return () => clearTimeout(t);
   }, [showToast]);
 
-  // Keyboard: Cmd/Ctrl + Enter to submit
+
   const onKeyDownTextarea = (e) => {
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
     if ((isMac && e.metaKey && e.key === 'Enter') || (!isMac && e.ctrlKey && e.key === 'Enter')) {
@@ -54,7 +53,7 @@ export default function ReportIssue() {
     }
   };
 
-  // Dynamic label
+
   const getIssueLabel = () => {
     if (!selectedProject) return 'Describe the issue';
     if (selectedProject === 'Somewhere else') return 'What was the issue?';

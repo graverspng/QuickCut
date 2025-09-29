@@ -25,7 +25,7 @@ class UserReportController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'project' => ['nullable', 'string', 'max:255'], // ✅ added
+            'project' => ['nullable', 'string', 'max:255'], 
             'issue'   => ['required', 'string', 'max:5000'],
         ]);
 
