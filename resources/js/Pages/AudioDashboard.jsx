@@ -95,12 +95,6 @@ export default function AudioDashboard({ projects = [] }) {
               <p className="mt-2 text-gray-300">New Audio Project</p>
             </div>
 
-            {projects.length === 0 && (
-              <div className="empty-card col-span-2 md:col-span-3 lg:col-span-4 slide-in">
-                No audio projects yet. Create your first one.
-              </div>
-            )}
-
             {projects.map((project, i) => (
               <div
                 key={project.id}
