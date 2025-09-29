@@ -4,7 +4,6 @@ import ResponsiveNavLink from '@/Components/ResponsiveNavLink';
 import { Link, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 import ReportIssue from '@/Pages/Auth/Img/ReportIssue.png';
-
 import QuickCutCutoutImg from '@/Pages/Auth/img/QuickCut_Cutout.png';
 
 export default function AuthenticatedLayout({ header, children, hideNavbar }) {
@@ -47,7 +46,7 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                     Media Projects
                                 </NavLink>
 
-                                {/* 🔹 New Audio Projects link */}
+                                {/* New Audio Projects link */}
                                 <NavLink
                                     href={route('audio.projects')}
                                     active={route().current('audio.projects')}
@@ -55,7 +54,7 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                 >
                                     Audio Projects
                                 </NavLink>
-                                {console.log('Format changer route:', route('format.changer'))}
+
                                 <NavLink
                                     href={route('format.changer')}
                                     active={route().current('format.changer')}
@@ -63,9 +62,6 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                 >
                                     Format Changer
                                 </NavLink>
-
-
-
 
                                 <NavLink
                                     href={route('about.us')}
@@ -78,16 +74,16 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
 
                             {/* User Dropdown */}
                             <div className="hidden sm:ml-6 sm:flex sm:items-center">
-    <Link
-        href={route('reports.create')}
-        className="mr-3 text-xl"
-        aria-label="Report an issue"
-    >
-        <img
-            src={ReportIssue}
-            alt="Illustration"
-            className="h-9 w-auto"
-        />
+                                <Link
+                                    href={route('reports.create')}
+                                    className="mr-3 text-xl"
+                                    aria-label="Report an issue"
+                                >
+                                    <img
+                                        src={ReportIssue}
+                                        alt="Illustration"
+                                        className="h-9 w-auto"
+                                    />
                                 </Link>
                                 <div className="relative ms-3">
                                     <Dropdown>
@@ -114,7 +110,7 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                             </span>
                                         </Dropdown.Trigger>
 
-                                        {/* 🔹 Dark dropdown menu */}
+                                        {/* Dark dropdown menu */}
                                         <Dropdown.Content className="bg-[#1a1a1a] border border-gray-700 rounded-lg shadow-lg">
                                             <Dropdown.Link
                                                 href={route('profile.edit')}
@@ -122,6 +118,17 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                             >
                                                 Profile
                                             </Dropdown.Link>
+
+                                            {/* Add Admin Panel link for admins */}
+                                            {Boolean(user?.is_admin) && (
+                                                <Dropdown.Link
+                                                    href={route('admin.index')}
+                                                    className="text-[#2BA84A] hover:text-[#248232] font-semibold"
+                                                >
+                                                    Admin Panel
+                                                </Dropdown.Link>
+                                            )}
+
                                             <Dropdown.Link
                                                 href={route('logout')}
                                                 method="post"
@@ -173,7 +180,6 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                 Projects
                             </ResponsiveNavLink>
 
-                            {/* 🔹 New Audio Projects link for mobile */}
                             <ResponsiveNavLink
                                 href={route('audio.projects')}
                                 active={route().current('audio.projects')}
@@ -181,23 +187,22 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                             >
                                 Audio Projects
                             </ResponsiveNavLink>
+
                             <ResponsiveNavLink
-    href={route('format.changer')}
-    active={route().current('format.changer')}
-    className="text-[#2BA84A] hover:text-[#248232] font-semibold"
->
-    Format Changer
-</ResponsiveNavLink>
+                                href={route('format.changer')}
+                                active={route().current('format.changer')}
+                                className="text-[#2BA84A] hover:text-[#248232] font-semibold"
+                            >
+                                Format Changer
+                            </ResponsiveNavLink>
 
-<ResponsiveNavLink
-    href={route('about.us')}
-    active={route().current('about.us')}
-    className="text-[#2BA84A] hover:text-[#248232] font-semibold"
->
-    About Us
-</ResponsiveNavLink>
-
-
+                            <ResponsiveNavLink
+                                href={route('about.us')}
+                                active={route().current('about.us')}
+                                className="text-[#2BA84A] hover:text-[#248232] font-semibold"
+                            >
+                                About Us
+                            </ResponsiveNavLink>
                         </div>
 
                         <div className="border-t border-gray-700 pb-1 pt-4 bg-[#1a1a1a]">
@@ -213,6 +218,17 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                 >
                                     Profile
                                 </ResponsiveNavLink>
+
+                                {/* Show Admin Panel link for admins in mobile as well */}
+                                {user.is_admin && (
+                                    <ResponsiveNavLink
+                                        href={route('admin.index')}
+                                        className="text-[#2BA84A] hover:text-[#248232] font-semibold"
+                                    >
+                                        Admin Panel
+                                    </ResponsiveNavLink>
+                                )}
+
                                 <ResponsiveNavLink
                                     method="post"
                                     href={route('logout')}

@@ -346,6 +346,7 @@
   z-index: 3;
 }
 
+
 .upload-dropzone {
   background: rgba(43,168,74,0.08);
   border: 2px dashed var(--green-2);
