@@ -72,17 +72,25 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
 
 
                             <div className="hidden sm:ml-6 sm:flex sm:items-center">
-                                <Link
-                                    href={route('reports.create')}
-                                    className="mr-3 text-xl"
-                                    aria-label="Report an issue"
-                                >
-                                    <img
-                                        src={ReportIssue}
-                                        alt="Illustration"
-                                        className="h-9 w-auto"
-                                    />
-                                </Link>
+                            <Link
+  href={route('reports.create')}
+  className="mr-3 text-xl group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2BA84A] focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1a1a] rounded-full"
+  aria-label="Report an issue"
+>
+  <img
+    src={ReportIssue}
+    alt="Illustration"
+    className="
+      h-9 w-auto
+      transition
+      transform
+      group-hover:scale-105
+      drop-shadow-[0_0_4px_rgba(43,168,74,0.35)]
+      group-hover:drop-shadow-[0_0_14px_rgba(43,168,74,0.9)]
+    "
+  />
+</Link>
+
                                 <div className="relative ms-3">
                                     <Dropdown>
                                         <Dropdown.Trigger>

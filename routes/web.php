@@ -45,9 +45,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/report-issue', [UserReportController::class, 'store'])->name('reports.store');
 
     // -.- Admin Panel (admin-only) -.-
-    Route::get('/admin', [AdminController::class, 'index'])
-        ->middleware('admin')
-        ->name('admin.index');
+    Route::middleware('admin')->group(function () {
+    Route::get('/admin', [AdminController::class, 'index'])->name('admin.index');
+    Route::delete('/admin/reports/bulk', [AdminController::class, 'destroyMany'])
+        ->name('admin.reports.bulkDelete');
+    });
+
+
+        
 });
 
 require __DIR__.'/auth.php';
