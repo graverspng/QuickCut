@@ -29,6 +29,7 @@ class ProjectController extends Controller
             'music_tracks'  => [],
             'effects'       => [],
             'text_overlays' => [],
+            'transitions'   => [],
         ]);
 
         return redirect()->route('editor', ['project' => $project->id]);
@@ -46,10 +47,11 @@ class ProjectController extends Controller
             'music_tracks'  => 'sometimes|array',
             'effects'       => 'sometimes|array',
             'text_overlays' => 'sometimes|array',
+            'transitions'   => 'sometimes|array',
         ]);
 
         $payload = [];
-        foreach (['name','description','media_files','clips','music_tracks','effects','text_overlays'] as $f) {
+        foreach (['name','description','media_files','clips','music_tracks','effects','text_overlays','transitions'] as $f) {
             if (array_key_exists($f, $validated)) $payload[$f] = $validated[$f];
         }
 

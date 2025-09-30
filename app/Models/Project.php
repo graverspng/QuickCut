@@ -18,6 +18,7 @@ class Project extends Model
         'music_tracks',
         'effects',
         'text_overlays',
+        'transitions',
     ];
 
     protected $casts = [
@@ -26,6 +27,7 @@ class Project extends Model
         'music_tracks'  => 'array',
         'effects'       => 'array',
         'text_overlays' => 'array',
+        'transitions' => 'array',
     ];
 
     public function user()

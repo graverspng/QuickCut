@@ -1,6 +1,6 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router } from '@inertiajs/react';
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import '@/../css/Editor.css';
 
 const EFFECT_PRESETS = [
@@ -9,11 +9,73 @@ const EFFECT_PRESETS = [
   { key: 'brightness', name: 'Brightness', type: 'brightness', intensity: 0.3, fadeIn: 0.4, fadeOut: 0.4, duration: 5 }
 ];
 
+const TRANSITION_TYPES = [
+  { value: 'fade', label: 'Fade' },
+  { value: 'dip-black', label: 'Dip to Black' },
+  { value: 'dip-white', label: 'Dip to White' }
+];
+
+const getTransitionLabel = (type) => TRANSITION_TYPES.find((t) => t.value === type)?.label || 'Fade';
+
 export default function Editor({ project }) {
   const PX_PER_SEC = 20;
 
+  const makeId = (prefix) => `${prefix}-${globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`}`;
+
   const resolveLocal = (key, fallback = '') => {
     try { return localStorage.getItem(key) || fallback; } catch (_) { return fallback; }
+  };
+
+  const normalizeClipsLocal = (clipsArr = []) => {
+    let accumulated = 0;
+    return (clipsArr || []).map((clip) => {
+      if (!clip) return clip;
+      const c = { ...clip };
+      if (!c._localId) c._localId = c.id || makeId('clip');
+      c.startTime = accumulated;
+      accumulated += c.duration || 0;
+      return c;
+    });
+  };
+
+  const rehydrateTransitions = (list = [], clipsWithIds = []) => {
+    if (!Array.isArray(list) || list.length === 0) return [];
+    const lookup = new Map();
+    clipsWithIds.forEach((clip, index) => {
+      if (!clip) return;
+      if (clip._localId) lookup.set(String(clip._localId), clip._localId);
+      if (clip.id != null) lookup.set(String(clip.id), clip._localId);
+      lookup.set(`index-${index}`, clip._localId);
+      if (clip.storageKey) lookup.set(String(clip.storageKey), clip._localId);
+    });
+
+    return list
+      .map((transition) => {
+        if (!transition) return null;
+        const fromLocal =
+          lookup.get(String(transition.from_clip_local_id)) ||
+          lookup.get(String(transition.fromClipLocalId)) ||
+          lookup.get(String(transition.from_clip_id)) ||
+          lookup.get(String(transition.fromClipId)) ||
+          lookup.get(`index-${transition.from_clip_index}`) ||
+          lookup.get(`index-${transition.fromClipIndex}`);
+        const toLocal =
+          lookup.get(String(transition.to_clip_local_id)) ||
+          lookup.get(String(transition.toClipLocalId)) ||
+          lookup.get(String(transition.to_clip_id)) ||
+          lookup.get(String(transition.toClipId)) ||
+          lookup.get(`index-${transition.to_clip_index}`) ||
+          lookup.get(`index-${transition.toClipIndex}`);
+        if (!fromLocal || !toLocal) return null;
+        return {
+          id: transition.id || makeId('transition'),
+          type: transition.type || 'fade',
+          duration: typeof transition.duration === 'number' ? transition.duration : 0.5,
+          fromClipLocalId: fromLocal,
+          toClipLocalId: toLocal
+        };
+      })
+      .filter(Boolean);
   };
 
   const hydrateFromStorage = (item) => {
@@ -32,7 +94,7 @@ export default function Editor({ project }) {
     items
       .map((item) => {
         if (!item) return null;
-        const { storageKey, source, file, ...rest } = item;
+        const { storageKey, source, file, _localId, ...rest } = item;
         const payload = { ...rest };
         if (storageKey) {
           payload.storageKey = storageKey;
@@ -45,17 +107,22 @@ export default function Editor({ project }) {
       })
       .filter(Boolean);
 
+      const initialClips = useMemo(() => normalizeClipsLocal(rehydrateItems(project.clips || [])), [project]);
+      const initialTransitions = useMemo(() => rehydrateTransitions(project.transitions || [], initialClips), [project, initialClips]);
+
   const [mediaFiles, setMediaFiles] = useState(() => rehydrateItems(project.media_files || []));
-  const [clips, setClips] = useState(() => rehydrateItems(project.clips || []));
+  const [clips, setClips] = useState(initialClips);
   const [musicTracks, setMusicTracks] = useState(() => rehydrateItems(project.music_tracks || []));
   const [effects, setEffects] = useState(() => (Array.isArray(project.effects) && project.effects.length ? project.effects : []));
   const [textOverlays, setTextOverlays] = useState(() => (Array.isArray(project.text_overlays) ? project.text_overlays : []));
 
+  const [transitions, setTransitions] = useState(initialTransitions);
   const [activeClipIndex, setActiveClipIndex] = useState(null);
   const [selectedClipIndex, setSelectedClipIndex] = useState(null);
   const [selectedMusicIndex, setSelectedMusicIndex] = useState(null);
   const [selectedEffectIndex, setSelectedEffectIndex] = useState(null);
   const [selectedTextIndex, setSelectedTextIndex] = useState(null);
+  const [selectedTransitionId, setSelectedTransitionId] = useState(null);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [globalDuration, setGlobalDuration] = useState(60);
@@ -63,6 +130,7 @@ export default function Editor({ project }) {
   const videoRef = useRef(null);
   const audioRefs = useRef([]);
   const stageRef = useRef(null);
+  const transitionOverlayRef = useRef(null);
 
   const [resizeState, setResizeState] = useState(null);
   const [resizeEffectState, setResizeEffectState] = useState(null);
@@ -86,26 +154,34 @@ export default function Editor({ project }) {
     return Math.max(clipDur, musicDur, effectDur, textDur, globalDuration);
   }, [clipTotal, musicTracks, effects, textOverlays, globalDuration]);
 
-  const normalizeClipsLocal = (clipsArr) => {
-    let accumulated = 0;
-    return clipsArr.map((clip) => {
-      const c = { ...clip };
-      c.startTime = accumulated;
-      accumulated += c.duration || 0;
-      return c;
+  const transitionLookup = useMemo(() => {
+    const map = new Map();
+    transitions.forEach((transition) => {
+      if (transition?.fromClipLocalId && transition?.toClipLocalId) {
+        map.set(`${transition.fromClipLocalId}->${transition.toClipLocalId}`, transition);
+      }
     });
-  };
+  return map;
+}, [transitions]);
 
   const clearSelection = () => {
     setSelectedClipIndex(null);
     setSelectedMusicIndex(null);
     setSelectedEffectIndex(null);
     setSelectedTextIndex(null);
+    setSelectedTransitionId(null);
   };
-  const selectClip = (i) => { setSelectedClipIndex(i); setSelectedMusicIndex(null); setSelectedEffectIndex(null); setSelectedTextIndex(null); };
-  const selectMusic = (i) => { setSelectedMusicIndex(i); setSelectedClipIndex(null); setSelectedEffectIndex(null); setSelectedTextIndex(null); };
-  const selectEffect = (i) => { setSelectedEffectIndex(i); setSelectedClipIndex(null); setSelectedMusicIndex(null); setSelectedTextIndex(null); };
-  const selectText = (i) => { setSelectedTextIndex(i); setSelectedClipIndex(null); setSelectedMusicIndex(null); setSelectedEffectIndex(null); };
+  const selectClip = (i) => { setSelectedClipIndex(i); setSelectedMusicIndex(null); setSelectedEffectIndex(null); setSelectedTextIndex(null); setSelectedTransitionId(null); };
+  const selectMusic = (i) => { setSelectedMusicIndex(i); setSelectedClipIndex(null); setSelectedEffectIndex(null); setSelectedTextIndex(null); setSelectedTransitionId(null); };
+  const selectEffect = (i) => { setSelectedEffectIndex(i); setSelectedClipIndex(null); setSelectedMusicIndex(null); setSelectedTextIndex(null); setSelectedTransitionId(null); };
+  const selectText = (i) => { setSelectedTextIndex(i); setSelectedClipIndex(null); setSelectedMusicIndex(null); setSelectedEffectIndex(null); setSelectedTransitionId(null); };
+  const selectTransition = (id) => {
+    setSelectedTransitionId(id);
+    setSelectedClipIndex(null);
+    setSelectedMusicIndex(null);
+    setSelectedEffectIndex(null);
+    setSelectedTextIndex(null);
+  };
 
   const togglePlay = () => {
     if (!videoRef.current) return;
@@ -226,12 +302,33 @@ export default function Editor({ project }) {
     const tracksToSave = prepareItemsForSave(musicTracks);
     const effectsToSave = effects.map((effect) => ({ ...effect }));
     const textsToSave = textOverlays.map((t) => ({ ...t }));
+    const transitionsToSave = transitions
+    .map((transition) => {
+      const fromIndex = clips.findIndex((clip) => clip._localId === transition.fromClipLocalId);
+      const toIndex = clips.findIndex((clip) => clip._localId === transition.toClipLocalId);
+      if (fromIndex === -1 || toIndex === -1) return null;
+      const fromClip = clips[fromIndex];
+      const toClip = clips[toIndex];
+      return {
+        id: transition.id,
+        type: transition.type,
+        duration: transition.duration,
+        from_clip_index: fromIndex,
+        to_clip_index: toIndex,
+        from_clip_id: fromClip?.id ?? null,
+        to_clip_id: toClip?.id ?? null,
+        from_clip_local_id: transition.fromClipLocalId,
+        to_clip_local_id: transition.toClipLocalId
+      };
+    })
+    .filter(Boolean);
     router.put(route('projects.update', project.id), {
       media_files: mediaToSave,
       clips: clipsToSave,
       music_tracks: tracksToSave,
       effects: effectsToSave,
-      text_overlays: textsToSave
+      text_overlays: textsToSave,
+      transitions: transitionsToSave
     });
   };
 
@@ -245,8 +342,8 @@ export default function Editor({ project }) {
       const relativeTime = currentTime - (clip.startTime || 0);
       if (relativeTime <= 0 || relativeTime >= (clip.duration || 0)) return;
 
-      const before = { ...clip, startOffset: clip.startOffset || 0, startTime: clip.startTime, duration: relativeTime };
-      const after = { ...clip, startOffset: (clip.startOffset || 0) + relativeTime, startTime: (clip.startTime || 0) + relativeTime, duration: (clip.duration || 0) - relativeTime };
+      const before = { ...clip, _localId: makeId('clip'), startOffset: clip.startOffset || 0, startTime: clip.startTime, duration: relativeTime };
+      const after = { ...clip, _localId: makeId('clip'), startOffset: (clip.startOffset || 0) + relativeTime, startTime: (clip.startTime || 0) + relativeTime, duration: (clip.duration || 0) - relativeTime };
 
       setClips((prev) => normalizeClipsLocal([...prev.slice(0, targetIndex), before, after, ...prev.slice(targetIndex + 1)]));
       setSelectedClipIndex(targetIndex + 1);
@@ -314,6 +411,37 @@ export default function Editor({ project }) {
       return normalizeClipsLocal(updated);
     });
     selectClip(dropIndex);
+  };
+
+  const addTransitionBetween = (fromIndex) => {
+    const fromClip = clips[fromIndex];
+    const toClip = clips[fromIndex + 1];
+    if (!fromClip || !toClip) return;
+    const existing = transitions.find((transition) => transition.fromClipLocalId === fromClip._localId && transition.toClipLocalId === toClip._localId);
+    if (existing) {
+      selectTransition(existing.id);
+      return;
+    }
+    const maxDuration = Math.max(0.2, Math.min(fromClip.duration || 0, toClip.duration || 0));
+    if (!isFinite(maxDuration) || maxDuration <= 0) return;
+    const newTransition = {
+      id: makeId('transition'),
+      type: 'fade',
+      duration: Math.min(1.5, maxDuration),
+      fromClipLocalId: fromClip._localId,
+      toClipLocalId: toClip._localId
+    };
+    setTransitions((prev) => [...prev, newTransition]);
+    selectTransition(newTransition.id);
+  };
+
+  const updateTransition = (id, updates) => {
+    setTransitions((prev) => prev.map((transition) => (transition.id === id ? { ...transition, ...updates } : transition)));
+  };
+
+  const removeTransition = (id) => {
+    setTransitions((prev) => prev.filter((transition) => transition.id !== id));
+    if (selectedTransitionId === id) setSelectedTransitionId(null);
   };
 
   const handleTrackDragStart = (e, index) => e.dataTransfer.setData('trackIndex', index);
@@ -422,6 +550,117 @@ export default function Editor({ project }) {
   };
 
   useEffect(() => {
+    setTransitions((prev) => {
+      let changed = false;
+      const updated = [];
+      prev.forEach((transition) => {
+        const fromIndex = clips.findIndex((clip) => clip._localId === transition.fromClipLocalId);
+        if (fromIndex === -1) { changed = true; return; }
+        const fromClip = clips[fromIndex];
+        const toClip = clips[fromIndex + 1];
+        if (!toClip || toClip._localId !== transition.toClipLocalId) { changed = true; return; }
+        const maxDuration = Math.max(0.2, Math.min(fromClip.duration || 0, toClip.duration || 0));
+        if (!isFinite(maxDuration) || maxDuration <= 0) { changed = true; return; }
+        const desiredDuration = Math.max(0.2, Math.min(transition.duration || 0.5, maxDuration));
+        if (Math.abs(desiredDuration - (transition.duration || 0)) > 1e-6) {
+          updated.push({ ...transition, duration: desiredDuration });
+          changed = true;
+        } else {
+          updated.push(transition);
+        }
+      });
+      if (!changed && updated.length === prev.length && updated.every((item, idx) => item === prev[idx])) return prev;
+      return updated;
+    });
+  }, [clips]);
+
+  useEffect(() => {
+    if (selectedTransitionId && !transitions.some((transition) => transition.id === selectedTransitionId)) {
+      setSelectedTransitionId(null);
+    }
+  }, [selectedTransitionId, transitions]);
+
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.style.transition = 'opacity 0.12s linear';
+    if (transitionOverlayRef.current) transitionOverlayRef.current.style.transition = 'opacity 0.12s linear';
+  }, []);
+
+  const applyTransitionVisuals = useCallback(
+    (globalTime, clipIndex) => {
+      const video = videoRef.current;
+      const overlay = transitionOverlayRef.current;
+      if (!video) return;
+
+      let videoOpacity = 1;
+      let overlayOpacity = 0;
+      let overlayColor = 'transparent';
+
+      const applyOverlay = (color, opacity) => {
+        if (opacity > overlayOpacity) {
+          overlayOpacity = opacity;
+          overlayColor = color;
+        }
+      };
+
+      const handlePhase = (transition, progress, direction) => {
+        if (!transition || !transition.duration) return;
+        const clamped = Math.max(0, Math.min(1, progress));
+        switch (transition.type) {
+          case 'dip-white':
+            applyOverlay('rgba(255,255,255,1)', direction === 'out' ? clamped : 1 - clamped);
+            break;
+          case 'dip-black':
+            applyOverlay('rgba(0,0,0,1)', direction === 'out' ? clamped : 1 - clamped);
+            break;
+          default: {
+            if (direction === 'out') {
+              videoOpacity = Math.min(videoOpacity, 1 - clamped);
+              applyOverlay('rgba(0,0,0,1)', clamped * 0.6);
+            } else {
+              videoOpacity = Math.min(videoOpacity, clamped);
+              applyOverlay('rgba(0,0,0,1)', (1 - clamped) * 0.6);
+            }
+            break;
+          }
+        }
+      };
+
+      const index = clipIndex != null && clipIndex >= 0 ? clipIndex : null;
+      if (index !== null) {
+        const currentClip = clips[index];
+        if (currentClip) {
+          if (index > 0) {
+            const prevClip = clips[index - 1];
+            const incoming = prevClip ? transitionLookup.get(`${prevClip._localId}->${currentClip._localId}`) : null;
+            if (incoming && (incoming.duration || 0) > 0) {
+              const start = currentClip.startTime || 0;
+              const rel = (globalTime - start) / (incoming.duration || 1);
+              if (rel >= 0 && rel <= 1) handlePhase(incoming, rel, 'in');
+            }
+          }
+
+          if (index < clips.length - 1) {
+            const nextClip = clips[index + 1];
+            const outgoing = nextClip ? transitionLookup.get(`${currentClip._localId}->${nextClip._localId}`) : null;
+            if (outgoing && (outgoing.duration || 0) > 0) {
+              const start = (currentClip.startTime || 0) + (currentClip.duration || 0) - (outgoing.duration || 0);
+              const rel = (globalTime - start) / (outgoing.duration || 1);
+              if (rel >= 0 && rel <= 1) handlePhase(outgoing, rel, 'out');
+            }
+          }
+        }
+      }
+
+      video.style.opacity = `${Math.max(0, Math.min(1, videoOpacity))}`;
+      if (overlay) {
+        overlay.style.opacity = overlayOpacity;
+        overlay.style.background = overlayOpacity > 0 ? overlayColor : 'transparent';
+      }
+    },
+    [clips, transitionLookup]
+  );
+
+  useEffect(() => {
     clips.forEach((clip, i) => {
       if (!clip.source) return;
       if (!clip.sourceDuration || !clip.duration) {
@@ -444,6 +683,7 @@ export default function Editor({ project }) {
         };
       }
     });
+    
 
     musicTracks.forEach((track, i) => {
       if (!track.source) return;
@@ -710,6 +950,7 @@ export default function Editor({ project }) {
 
       const wrapper = video.parentElement;
       if (wrapper) wrapper.style.filter = seg ? computeFilterForTime(globalTime) : '';
+      applyTransitionVisuals(globalTime, activeClipIndex);
 
       if (seg && (video.currentTime || 0) >= (seg.startOffset || 0) + (seg.duration || 0) - 0.05) {
         if (activeClipIndex < clips.length - 1) {
@@ -760,11 +1001,15 @@ export default function Editor({ project }) {
 
     video.addEventListener('timeupdate', onTimeUpdate);
     return () => video.removeEventListener('timeupdate', onTimeUpdate);
-  }, [clips, activeClipIndex, musicTracks, effects]);
+  }, [clips, activeClipIndex, musicTracks, effects, applyTransitionVisuals]);
 
   useEffect(() => {
     if (clips.length > 0 && activeClipIndex === null) setActiveClipIndex(0);
   }, [clips, activeClipIndex]);
+
+  useEffect(() => {
+    applyTransitionVisuals(currentTime, activeClipIndex != null ? activeClipIndex : -1);
+  }, [applyTransitionVisuals, currentTime, activeClipIndex]);
 
   const seekTo = (newGlobalTime, keepPlaying) => {
     const video = videoRef.current;
@@ -796,6 +1041,7 @@ export default function Editor({ project }) {
     setCurrentTime(newGlobalTime);
     const wrapper = video.parentElement;
     if (wrapper) wrapper.style.filter = computeFilterForTime(newGlobalTime);
+    applyTransitionVisuals(newGlobalTime, newIndex);
 
     musicTracks.forEach((track, i) => {
       const audio = audioRefs.current[i];
@@ -823,7 +1069,7 @@ export default function Editor({ project }) {
   };
 
   const handleSeekMouseDownCapture = (e) => {
-    if (e.target.closest('.clip, .track, .effect-block, .text-block, .clip-handle, .effect-slider')) return;
+    if (e.target.closest('.clip, .track, .effect-block, .text-block, .clip-handle, .effect-slider, .transition-block, .transition-add-button, .transition-toolbar, .transition-type, .transition-slider')) return;
     const wasPlaying = videoRef.current && !videoRef.current.paused;
     const t = getClickTimeFromEvent(e);
     seekTo(t, wasPlaying);
@@ -871,11 +1117,15 @@ export default function Editor({ project }) {
         setTextOverlays((prev) => prev.filter((_, i) => i !== selectedTextIndex));
         setSelectedTextIndex(null);
       }
+      if ((k === 'backspace' || k === 'delete') && selectedTransitionId) {
+        setTransitions((prev) => prev.filter((transition) => transition.id !== selectedTransitionId));
+        setSelectedTransitionId(null);
+      }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [currentTime, totalDuration, selectedClipIndex, selectedMusicIndex, selectedEffectIndex, selectedTextIndex]);
+  }, [currentTime, totalDuration, selectedClipIndex, selectedMusicIndex, selectedEffectIndex, selectedTextIndex, selectedTransitionId]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -940,6 +1190,18 @@ export default function Editor({ project }) {
 
   const selectedEffect = selectedEffectIndex != null ? effects[selectedEffectIndex] : null;
   const selectedEffectValue100 = selectedEffect ? Math.round((selectedEffect.intensity ?? 0.5) * 100) : 50;
+  const selectedTransition = useMemo(() => transitions.find((transition) => transition.id === selectedTransitionId) || null, [transitions, selectedTransitionId]);
+  const selectedTransitionContext = useMemo(() => {
+    if (!selectedTransition) return null;
+    const fromIndex = clips.findIndex((clip) => clip._localId === selectedTransition.fromClipLocalId);
+    if (fromIndex === -1) return null;
+    const toClip = clips[fromIndex + 1];
+    if (!toClip || toClip._localId !== selectedTransition.toClipLocalId) return null;
+    const fromClip = clips[fromIndex];
+    const maxDuration = Math.max(0.2, Math.min(fromClip.duration || 0, toClip.duration || 0));
+    if (!isFinite(maxDuration) || maxDuration <= 0) return null;
+    return { fromClip, toClip, maxDuration };
+  }, [selectedTransition, clips]);
 
   return (
     <AuthenticatedLayout hideNavbar={true}>
@@ -975,6 +1237,53 @@ export default function Editor({ project }) {
                   }}
                   style={{ width: 64, background: '#222', border: '1px solid #333', color: '#FCFFFC', borderRadius: 6, padding: '6px 8px' }}
                 />
+              </div>
+            )}
+                        {selectedTransition && selectedTransitionContext && (
+              <div className="transition-toolbar" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ color: '#9ca3af', fontSize: 12 }}>Transition</span>
+                <select
+                  className="transition-type"
+                  value={selectedTransition.type}
+                  onChange={(e) => updateTransition(selectedTransition.id, { type: e.target.value })}
+                  style={{ background: '#222', border: '1px solid #333', color: '#FCFFFC', borderRadius: 6, padding: '6px 8px' }}
+                >
+                  {TRANSITION_TYPES.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                <input
+                  type="range"
+                  min="0.2"
+                  max={Math.max(0.2, selectedTransitionContext.maxDuration).toFixed(1)}
+                  step="0.1"
+                  value={Math.max(0.2, Math.min(selectedTransitionContext.maxDuration, selectedTransition.duration || 0.5))}
+                  onChange={(e) => {
+                    const val = Math.max(0.2, Math.min(selectedTransitionContext.maxDuration, parseFloat(e.target.value || '0.5')));
+                    updateTransition(selectedTransition.id, { duration: val });
+                  }}
+                  className="transition-slider"
+                />
+                <input
+                  type="number"
+                  min="0.2"
+                  max={Math.max(0.2, selectedTransitionContext.maxDuration).toFixed(1)}
+                  step="0.1"
+                  value={Math.max(0.2, Math.min(selectedTransitionContext.maxDuration, selectedTransition.duration || 0.5)).toFixed(1)}
+                  onChange={(e) => {
+                    const raw = parseFloat(e.target.value || '0.5');
+                    if (Number.isNaN(raw)) return;
+                    const val = Math.max(0.2, Math.min(selectedTransitionContext.maxDuration, raw));
+                    updateTransition(selectedTransition.id, { duration: val });
+                  }}
+                  style={{ width: 60, background: '#222', border: '1px solid #333', color: '#FCFFFC', borderRadius: 6, padding: '6px 8px' }}
+                />
+                <button
+                  onClick={() => removeTransition(selectedTransition.id)}
+                  style={{ padding: '6px 12px', borderRadius: 6, background: '#7f1d1d', color: '#fca5a5', border: '1px solid #b91c1c' }}
+                >
+                  Remove
+                </button>
               </div>
             )}
             <button onClick={handleCut} className="cut-btn">✂️ Cut</button>
@@ -1081,6 +1390,11 @@ export default function Editor({ project }) {
           <div className="editor-area" onDrop={handleDrop} onDragOver={(e) => e.preventDefault()}>
             <div className="video-player" onClick={(e) => e.stopPropagation()}>
               <video ref={videoRef} />
+              <div
+                ref={transitionOverlayRef}
+                className="transition-overlay-layer"
+                style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'transparent', opacity: 0, zIndex: 2 }}
+              />
               <div className="overlay-stage" ref={stageRef} onMouseDown={() => setSelectedTextIndex(null)}>
                 {activeTexts.map((t) => (
                   <div
@@ -1190,7 +1504,7 @@ export default function Editor({ project }) {
                     const isSelected = selectedClipIndex === index;
                     return (
                       <div
-                        key={index}
+                      key={clip._localId || index}
                         draggable={!isSelected}
                         onDragStart={(e) => handleClipDragStart(e, index)}
                         onDragOver={(e) => e.preventDefault()}
@@ -1207,6 +1521,48 @@ export default function Editor({ project }) {
                           </>
                         )}
                       </div>
+                    );
+                  })}
+                                    {clips.map((clip, index) => {
+                    if (index >= clips.length - 1) return null;
+                    const nextClip = clips[index + 1];
+                    if (!nextClip) return null;
+                    const transition = transitionLookup.get(`${clip._localId}->${nextClip._localId}`);
+                    const seamTime = (clip.startTime || 0) + (clip.duration || 0);
+                    if (transition) {
+                      const safeDuration = Number(transition.duration || 0);
+                      const startTime = Math.max(0, seamTime - safeDuration);
+                      const width = Math.max(18, safeDuration * PX_PER_SEC);
+                      const left = Math.max(0, startTime * PX_PER_SEC);
+                      const isSelected = selectedTransitionId === transition.id;
+                      const durationLabel = safeDuration.toFixed(1);
+                      return (
+                        <div
+                          key={`transition-${transition.id}`}
+                          className={`transition-block ${isSelected ? 'selected' : ''}`}
+                          style={{ width: `${width}px`, left: `${left}px` }}
+                          onClick={(e) => { e.stopPropagation(); selectTransition(transition.id); }}
+                          title={`${getTransitionLabel(transition.type)} · ${durationLabel}s`}
+                        >
+                          <span className="transition-label">{getTransitionLabel(transition.type)}</span>
+                          <span className="transition-duration">{durationLabel}s</span>
+                        </div>
+                      );
+                    }
+
+                    const canAdd = (clip.duration || 0) > 0 && (nextClip.duration || 0) > 0;
+                    if (!canAdd) return null;
+                    const buttonLeft = Math.max(0, seamTime * PX_PER_SEC);
+                    return (
+                      <button
+                        key={`add-transition-${clip._localId}`}
+                        className="transition-add-button"
+                        style={{ left: `${buttonLeft}px` }}
+                        onClick={(e) => { e.stopPropagation(); addTransitionBetween(index); }}
+                        title="Add transition"
+                      >
+                        +
+                      </button>
                     );
                   })}
                   <div className="playhead" style={{ left: `${currentTime * PX_PER_SEC}px` }} />
