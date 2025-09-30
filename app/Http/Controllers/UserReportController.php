@@ -11,17 +11,12 @@ use Inertia\Response;
 
 class UserReportController extends Controller
 {
-    /**
-     * Show the report submission form.
-     */
+
     public function create(Request $request): Response
     {
         return Inertia::render('ReportIssue');
     }
 
-    /**
-     * Store a newly submitted report.
-     */
     public function store(Request $request): RedirectResponse
     {
         $data = $request->validate([

@@ -67,10 +67,7 @@ class ProjectController extends Controller
         return redirect()->route('dashboard');
     }
 
-    /**
-     * Handle drag/drop or picker uploads.
-     * Saves to storage/app/public/projects/{id}/media and returns JSON list of assets.
-     */
+
     public function uploadMedia(Request $request, Project $project)
     {
         Gate::authorize('update', $project);
