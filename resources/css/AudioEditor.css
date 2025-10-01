@@ -33,27 +33,21 @@
   white-space: nowrap;
 }
 
-.audio-editor .audio-timeline::before {
-  content: '';
-  position: absolute;
-  top: 0; bottom: 0; left: 0; right: 0;
-  background-image: repeating-linear-gradient(
-    to right,
-    rgba(255,255,255,0.05) 0px,
-    rgba(255,255,255,0.05) 1px,
-    transparent 1px,
-    transparent 100px
-  );
-  pointer-events: none;
-  z-index: 0;
-}
-
 
 .audio-editor .audio-layers {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  background-image: repeating-linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.05) 0px,
+    rgba(255, 255, 255, 0.05) 1px,
+    transparent 1px,
+    transparent 100px
+  );
+  background-attachment: local;
+  background-size: 100px 100%;
 }
 
 .audio-editor .audio-layer-row {
@@ -98,8 +92,10 @@
   z-index: 1;
 }
 
+
+
 .audio-editor .audio-track:hover {
-  transform: scale(1.03);
+  transform: scale(1.01);
   box-shadow: 0 0 10px rgba(155,89,182,0.5);
 }
 
@@ -161,9 +157,40 @@
   gap: 10px;
 }
 
+
+.audio-editor .cut-btn {
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: bold;
+  color: #fff;
+  background-color:#999;
+  border: none;
+  cursor: pointer;
+  transition: all 0.25s ease-in-out;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.audio-editor .cut-btn:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 6px 16px rgba(89, 88, 88, 0.5);
+  background-color: #333;
+}
+
+.audio-editor .cut-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+
 .audio-editor .cut-btn:disabled {
-  opacity: 0.5;
+  background: #444;
+  color: #999;
   cursor: not-allowed;
+  opacity: 0.6;
 }
 
 
