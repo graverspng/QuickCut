@@ -63,6 +63,17 @@ export default function AudioDashboard({ projects = [] }) {
     });
   };
 
+  const toggleFavorite = (project) => {
+    const next = !project.favorited_project;
+    router.put(route('audio.projects.update', project.id), {
+      favorited_project: next
+    }, {
+      preserveScroll: true,
+      preserveState: true,
+      onSuccess: () => setToastMsg(next ? 'Audio project added to favorites' : 'Audio project removed from favorites')
+    });
+  };
+
   const onOverlayMouseDown = (e) => {
     if (e.target === e.currentTarget) closeModal();
   };
@@ -98,9 +109,21 @@ export default function AudioDashboard({ projects = [] }) {
             {projects.map((project, i) => (
               <div
                 key={project.id}
-                className="project-card group slide-in"
+                className={`project-card group slide-in${project.favorited_project ? ' favorited' : ''}`}
                 style={{ animationDelay: `${i * 120}ms` }}
               >
+                                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleFavorite(project);
+                  }}
+                  className={`favorite-btn ${project.favorited_project ? 'is-active' : 'opacity-0 group-hover:opacity-100'}`}
+                  aria-label={`${project.favorited_project ? 'Remove from' : 'Add to'} favorites`}
+                  title={project.favorited_project ? 'Favorited project' : 'Favorite project'}
+                >
+                  {project.favorited_project ? '★' : '☆'}
+                </button>
                 <div
                   className="flex-1 cursor-pointer"
                   onClick={() => router.get(route('audio.editor', project.id))}

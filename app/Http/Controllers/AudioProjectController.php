@@ -13,7 +13,11 @@ class AudioProjectController extends Controller
 
     public function index()
     {
-        $projects = AudioProject::where('user_id', auth()->id())->get();
+        $projects = AudioProject::where('user_id', auth()->id())
+            ->orderByDesc('favorited_project')
+            ->orderByDesc('updated_at')
+            ->orderBy('name')
+            ->get();
 
         return Inertia::render('AudioDashboard', [
             'projects' => $projects,
@@ -30,6 +34,7 @@ class AudioProjectController extends Controller
             'user_id' => auth()->id(),
             'name' => $request->name,
             'description' => $request->description,
+            'favorited_project' => false,
             'tracks' => [],
         ]);
 
@@ -49,11 +54,23 @@ class AudioProjectController extends Controller
     {
         $this->authorize('update', $audioProject);
 
-        $audioProject->update([
-            'name' => $request->name,
-            'description' => $request->description,
-            'tracks' => $request->tracks,
+        $validated = $request->validate([
+            'name' => 'sometimes|string|max:255',
+            'description' => 'sometimes|nullable|string',
+            'tracks' => 'sometimes|array',
+            'favorited_project' => 'sometimes|boolean',
         ]);
+
+        $payload = [];
+        foreach (['name', 'description', 'tracks', 'favorited_project'] as $field) {
+            if (array_key_exists($field, $validated)) {
+                $payload[$field] = $validated[$field];
+            }
+        }
+
+        if ($payload) {
+            $audioProject->update($payload);
+        }
 
         return back()->with('success', 'Audio project updated successfully!');
     }

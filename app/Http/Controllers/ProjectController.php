@@ -13,7 +13,11 @@ class ProjectController extends Controller
 {
     public function index()
     {
-        $projects = Project::where('user_id', auth()->id())->get();
+        $projects = Project::where('user_id', auth()->id())
+            ->orderByDesc('favorited_project')
+            ->orderByDesc('updated_at')
+            ->orderBy('name')
+            ->get();
         return Inertia::render('Dashboard', ['projects' => $projects]);
     }
 
@@ -24,6 +28,7 @@ class ProjectController extends Controller
         $project = Project::create([
             'user_id'       => auth()->id(),
             'name'          => $request->name,
+            'favorited_project' => false,
             'media_files'   => [],
             'clips'         => [],
             'music_tracks'  => [],
@@ -42,6 +47,7 @@ class ProjectController extends Controller
         $validated = $request->validate([
             'name'          => 'sometimes|string|max:255',
             'description'   => 'sometimes|nullable|string',
+            'favorited_project' => 'sometimes|boolean',
             'media_files'   => 'sometimes|array',
             'clips'         => 'sometimes|array',
             'music_tracks'  => 'sometimes|array',
@@ -51,7 +57,7 @@ class ProjectController extends Controller
         ]);
 
         $payload = [];
-        foreach (['name','description','media_files','clips','music_tracks','effects','text_overlays','transitions'] as $f) {
+        foreach (['name','description','favorited_project','media_files','clips','music_tracks','effects','text_overlays','transitions'] as $f) {
             if (array_key_exists($f, $validated)) $payload[$f] = $validated[$f];
         }
 

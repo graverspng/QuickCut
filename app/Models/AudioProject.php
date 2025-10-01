@@ -13,11 +13,13 @@ class AudioProject extends Model
         'user_id',
         'name',
         'description',
+        'favorited_project',
         'tracks',
     ];
 
     protected $casts = [
         'tracks' => 'array',
+        'favorited_project' => 'boolean',
     ];
 
     public function user()

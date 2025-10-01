@@ -13,6 +13,7 @@ class Project extends Model
         'user_id',
         'name',
         'description',
+        'favorited_project',
         'media_files',
         'clips',
         'music_tracks',
@@ -27,7 +28,8 @@ class Project extends Model
         'music_tracks'  => 'array',
         'effects'       => 'array',
         'text_overlays' => 'array',
-        'transitions' => 'array',
+        'transitions'   => 'array',
+        'favorited_project' => 'boolean',
     ];
 
     public function user()
