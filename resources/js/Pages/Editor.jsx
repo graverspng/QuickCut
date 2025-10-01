@@ -1,5 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, router } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import '@/../css/Editor.css';
 
@@ -1289,6 +1289,7 @@ export default function Editor({ project }) {
             <button onClick={handleCut} className="cut-btn">✂️ Cut</button>
             <button onClick={goBack} className="back-btn">Back</button>
             <button onClick={handleSave} className="save-btn">Save</button>
+            <Link href={route('projects.export', project.id)} className="export-btn">Export</Link>
           </div>
         </div>
 

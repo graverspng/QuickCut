@@ -8,6 +8,7 @@ use App\Http\Controllers\AudioProjectController;
 use App\Http\Controllers\FormatChangerController;
 use App\Http\Controllers\UserReportController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\ProjectExportController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -21,6 +22,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::put('/projects/{project}', [ProjectController::class, 'update'])->name('projects.update');
     Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])->name('projects.destroy');
     Route::get('/editor/{project}', [EditorController::class, 'show'])->name('editor');
+    Route::get('/projects/{project}/export', [ProjectExportController::class, 'show'])->name('projects.export');
+    Route::get('/projects/{project}/export/download', [ProjectExportController::class, 'download'])->name('projects.export.download');
 
     // -.- Audio Projects -.-
     Route::get('/audio-projects', [AudioProjectController::class, 'index'])->name('audio.projects');

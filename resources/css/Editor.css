@@ -55,7 +55,8 @@
   letter-spacing: .5px;
 }
 .header-actions { display: inline-flex; gap: 10px; }
-.editor-header button {
+.editor-header button,
+.editor-header .export-btn {
   background: #1f1f1f;
   border: 1px solid rgba(255,255,255,0.08);
   padding: 8px 14px;
@@ -64,10 +65,14 @@
   font-size: 14px;
   cursor: pointer;
   transition: transform .2s ease, box-shadow .25s ease, filter .12s ease;
+  text-decoration: none;
 }
-.editor-header button:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(0,0,0,0.45); }
+.editor-header button:hover,
+.editor-header .export-btn:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(0,0,0,0.45); }
 .save-btn { background: linear-gradient(90deg, var(--green-1), var(--green-2)); border: 0; box-shadow: 0 10px 24px rgba(43,168,74,0.32); font-weight: 800; }
 .save-btn:hover { box-shadow: 0 16px 36px rgba(43,168,74,0.4); }
+.export-btn { background: transparent; border: 1px solid rgba(252,255,252,0.22); color: #fcfffc; font-weight: 700; box-shadow: none; }
+.export-btn:hover { border-color: rgba(43,168,74,0.55); color: #79f7a5; }
 .cut-btn { background: linear-gradient(90deg, #3498db, #2980b9); border: 0; }
 .back-btn { background: #2a2a2a; }
 
