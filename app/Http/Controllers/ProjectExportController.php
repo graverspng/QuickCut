@@ -103,10 +103,137 @@ class ProjectExportController extends Controller
         return ['path' => $path, 'mime' => $mime];
     }
 
-    protected function gatherClipSources(Project $project, string $directory): array
+    protected function resolveMediaPath(array $item, $mediaById, string $directory, string $prefix, array &$cleanup): ?string
     {
-        $sources = [];
+        $storageKey = Arr::get($item, 'storageKey')
+            ?: Arr::get($item, 'path')
+            ?: Arr::get($item, 'source');
+        $sourceId = Arr::get($item, 'mediaId') ?: Arr::get($item, 'id');
+        $fallbackSource = Arr::get($item, 'fallbackSource');
+
+        if ($storageKey && Storage::disk('public')->exists($storageKey)) {
+            return Storage::disk('public')->path($storageKey);
+        }
+
+        if ($sourceId && $mediaById && $mediaById->has($sourceId)) {
+            $candidate = Arr::get($mediaById[$sourceId], 'path') ?: Arr::get($mediaById[$sourceId], 'source');
+            if ($candidate && Storage::disk('public')->exists($candidate)) {
+                return Storage::disk('public')->path($candidate);
+            }
+        }
+
+        if ($fallbackSource) {
+            $decoded = $this->decodeDataUrl($fallbackSource, $prefix . '_' . Str::random(6), $directory);
+            if ($decoded) {
+                $cleanup[] = $decoded['path'];
+                return $decoded['path'];
+            }
+        }
+
+        return null;
+    }
+
+    protected function runProcess(array $arguments): bool
+    {
+        $process = new Process($arguments);
+        $process->setTimeout(300);
+        $process->run();
+
+        if ($process->isSuccessful()) {
+            return true;
+        }
+
+        Log::warning('FFmpeg command failed during export.', [
+            'command' => $process->getCommandLine(),
+            'output' => $process->getErrorOutput(),
+        ]);
+
+        return false;
+    }
+
+    protected function trimClipSegment(string $sourcePath, string $outputPath, float $startOffset, float $duration): bool
+    {
+        $args = ['ffmpeg', '-y'];
+        if ($startOffset > 0) {
+            $args = array_merge($args, ['-ss', sprintf('%.3f', max(0, $startOffset))]);
+        }
+
+        $args = array_merge($args, ['-i', $sourcePath]);
+
+        if ($duration > 0) {
+            $args = array_merge($args, ['-t', sprintf('%.3f', max(0, $duration))]);
+        }
+
+        $args = array_merge($args, [
+            '-c:v', 'libx264',
+            '-preset', 'veryfast',
+            '-crf', '20',
+            '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            '-movflags', '+faststart',
+            $outputPath,
+        ]);
+
+        return $this->runProcess($args);
+    }
+
+    protected function hasAudioStream(string $path): bool
+    {
+        $process = new Process([
+            'ffprobe',
+            '-v', 'error',
+            '-select_streams', 'a',
+            '-show_entries', 'stream=codec_type',
+            '-of', 'csv=p=0',
+            $path,
+        ]);
+        $process->setTimeout(30);
+        $process->run();
+
+        if (!$process->isSuccessful()) {
+            return false;
+        }
+
+        return trim($process->getOutput()) !== '';
+    }
+
+    protected function ensureAudioTrack(string $inputPath, float $duration): bool
+    {
+        if ($this->hasAudioStream($inputPath)) {
+            return true;
+        }
+
+        $tempPath = $inputPath . '.tmpaudio.mp4';
+        $args = [
+            'ffmpeg',
+            '-y',
+            '-i', $inputPath,
+            '-f', 'lavfi',
+            '-t', sprintf('%.3f', max(0.1, $duration)),
+            '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000',
+            '-shortest',
+            '-c:v', 'copy',
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            $tempPath,
+        ];
+
+        if (!$this->runProcess($args)) {
+            @unlink($tempPath);
+            return false;
+        }
+
+        @unlink($inputPath);
+        return rename($tempPath, $inputPath);
+    }
+
+    protected function prepareClipSegments(Project $project, string $directory): array
+    {
         $cleanup = [];
+        $segments = [];
+        $rawSources = [];
+        $hadFailures = false;
 
         $mediaFiles = collect($project->media_files ?? [])
             ->map(fn ($item) => is_array($item) ? $item : [])
@@ -115,110 +242,462 @@ class ProjectExportController extends Controller
 
         $mediaById = $mediaFiles->mapWithKeys(function ($item) {
             $id = Arr::get($item, 'id');
-            if (!$id) {
-                return [];
-            }
 
-            return [$id => $item];
+            return $id ? [$id => $item] : [];
         });
+        $runningStart = 0.0;
 
         foreach (($project->clips ?? []) as $index => $clip) {
             if (!is_array($clip)) {
                 continue;
             }
 
-            $storageKey = Arr::get($clip, 'storageKey') ?: Arr::get($clip, 'path');
-            $sourceId = Arr::get($clip, 'mediaId') ?: Arr::get($clip, 'id');
-            $fallbackSource = Arr::get($clip, 'fallbackSource');
-
-            $mediaPath = null;
-            if ($storageKey && Storage::disk('public')->exists($storageKey)) {
-                $mediaPath = Storage::disk('public')->path($storageKey);
+            $sourcePath = $this->resolveMediaPath($clip, $mediaById, $directory, 'clip_' . $index, $cleanup);
+            if (!$sourcePath) {
+                $hadFailures = true;
+                continue;
             }
 
-            if (!$mediaPath && $sourceId && $mediaById->has($sourceId)) {
-                $candidate = Arr::get($mediaById[$sourceId], 'path');
-                if ($candidate && Storage::disk('public')->exists($candidate)) {
-                    $mediaPath = Storage::disk('public')->path($candidate);
-                }
+            $rawSources[] = $sourcePath;
+
+            $duration = (float) Arr::get($clip, 'duration', 0);
+            if ($duration <= 0) {
+                continue;
             }
 
-            if (!$mediaPath) {
-                $decoded = $this->decodeDataUrl($fallbackSource, 'clip_' . $index . '_' . Str::random(6), $directory);
-                if ($decoded) {
-                    $mediaPath = $decoded['path'];
-                    $cleanup[] = $mediaPath;
-                }
+            $startOffset = max(0.0, (float) Arr::get($clip, 'startOffset', 0));
+            $segmentPath = $directory . DIRECTORY_SEPARATOR . 'segment_' . $index . '_' . Str::random(8) . '.mp4';
+
+            if (!$this->trimClipSegment($sourcePath, $segmentPath, $startOffset, $duration)) {
+                @unlink($segmentPath);
+                $hadFailures = true;
+                continue;
             }
 
-            if ($mediaPath) {
-                $sources[] = $mediaPath;
+            if (!$this->ensureAudioTrack($segmentPath, $duration)) {
+                @unlink($segmentPath);
+                $hadFailures = true;
+                continue;
             }
+
+            $segments[] = [
+                'path' => $segmentPath,
+                'duration' => $duration,
+                'start' => $runningStart,
+            ];
+
+            $cleanup[] = $segmentPath;
+            $runningStart += $duration;
         }
 
-        return ['paths' => $sources, 'cleanup' => $cleanup];
+        return [
+            'segments' => $segments,
+            'cleanup' => $cleanup,
+            'total_duration' => $runningStart,
+            'raw_sources' => $rawSources,
+            'had_failures' => $hadFailures,
+        ];
     }
 
-    protected function combineVideoSegments(array $paths, string $outputPath): bool
+    protected function buildTransitionMap(Project $project): array
     {
-        if (empty($paths)) {
-            return false;
+        $map = [];
+        foreach (($project->transitions ?? []) as $transition) {
+            if (!is_array($transition)) {
+                continue;
+            }
+
+            $fromIndex = Arr::get($transition, 'from_clip_index');
+            $toIndex = Arr::get($transition, 'to_clip_index');
+            if (!is_numeric($fromIndex) || !is_numeric($toIndex)) {
+                continue;
+            }
+
+            $fromIndex = (int) $fromIndex;
+            $toIndex = (int) $toIndex;
+            if ($toIndex !== $fromIndex + 1) {
+                continue;
+            }
+
+            $map[$fromIndex] = [
+                'type' => Arr::get($transition, 'type', 'fade'),
+                'duration' => max(0.1, (float) Arr::get($transition, 'duration', 0.5)),
+            ];
+        }
+
+        return $map;
+    }
+
+    protected function combineSegmentsWithTransitions(array $segments, array $transitionMap, string $directory): array
+    {
+        if (empty($segments)) {
+            return ['path' => null, 'cleanup' => [], 'duration' => 0.0];
+        }
+
+        $currentPath = $segments[0]['path'];
+        $currentDuration = (float) $segments[0]['duration'];
+        $cleanup = [];
+
+        for ($i = 1; $i < count($segments); $i++) {
+            $next = $segments[$i];
+            $transition = $transitionMap[$i - 1] ?? null;
+            $outputPath = $directory . DIRECTORY_SEPARATOR . 'merged_' . $i . '_' . Str::random(8) . '.mp4';
+
+            if ($transition) {
+                $transitionDuration = min($transition['duration'], $currentDuration, (float) $next['duration']);
+                $offset = max(0.0, $currentDuration - $transitionDuration);
+                $xfadeType = match ($transition['type']) {
+                    'dip-black' => 'fadeblack',
+                    'dip-white' => 'fadewhite',
+                    default => 'fade',
+                };
+
+                $args = [
+                    'ffmpeg',
+                    '-y',
+                    '-i', $currentPath,
+                    '-i', $next['path'],
+                    '-filter_complex',
+                    sprintf(
+                        '[0:v][1:v]xfade=transition=%s:duration=%.3f:offset=%.3f[v];[0:a][1:a]acrossfade=d=%.3f[a]',
+                        $xfadeType,
+                        $transitionDuration,
+                        $offset,
+                        $transitionDuration
+                    ),
+                    '-map', '[v]',
+                    '-map', '[a]',
+                    '-c:v', 'libx264',
+                    '-preset', 'veryfast',
+                    '-crf', '20',
+                    '-pix_fmt', 'yuv420p',
+                    '-c:a', 'aac',
+                    '-b:a', '192k',
+                    '-movflags', '+faststart',
+                    $outputPath,
+                ];
+
+                if (!$this->runProcess($args)) {
+                    @unlink($outputPath);
+                    throw new \RuntimeException('Unable to combine clips with transition.');
+                }
+                $currentDuration = $currentDuration + (float) $next['duration'] - $transitionDuration;
+            } else {
+                $args = [
+                    'ffmpeg',
+                    '-y',
+                    '-i', $currentPath,
+                    '-i', $next['path'],
+                    '-filter_complex',
+                    '[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]',
+                    '-map', '[v]',
+                    '-map', '[a]',
+                    '-c:v', 'libx264',
+                    '-preset', 'veryfast',
+                    '-crf', '20',
+                    '-pix_fmt', 'yuv420p',
+                    '-c:a', 'aac',
+                    '-b:a', '192k',
+                    '-movflags', '+faststart',
+                    $outputPath,
+                ];
+
+                if (!$this->runProcess($args)) {
+                    @unlink($outputPath);
+                    throw new \RuntimeException('Unable to concatenate clips for export.');
+                }
+
+                $currentDuration += (float) $next['duration'];
+            }
+
+            if ($currentPath !== $segments[0]['path']) {
+                $cleanup[] = $currentPath;
+            }
+            $currentPath = $outputPath;
+        }
+
+        return ['path' => $currentPath, 'cleanup' => $cleanup, 'duration' => $currentDuration];
+    }
+
+    protected function gatherMusicSources(Project $project, string $directory): array
+    {
+        $cleanup = [];
+        $tracks = [];
+
+        $mediaFiles = collect($project->media_files ?? [])
+            ->map(fn ($item) => is_array($item) ? $item : [])
+            ->filter()
+            ->values();
+
+        $mediaById = $mediaFiles->mapWithKeys(function ($item) {
+            $id = Arr::get($item, 'id');
+            return $id ? [$id => $item] : [];
+        });
+
+        foreach (($project->music_tracks ?? []) as $index => $track) {
+            if (!is_array($track)) {
+                continue;
+            }
+
+            $path = $this->resolveMediaPath($track, $mediaById, $directory, 'music_' . $index, $cleanup);
+            if (!$path) {
+                continue;
+            }
+
+            $duration = max(0.1, (float) Arr::get($track, 'duration', 0));
+            $startOffset = max(0.0, (float) Arr::get($track, 'startOffset', 0));
+            $startTime = max(0.0, (float) Arr::get($track, 'startTime', 0));
+
+            $tracks[] = [
+                'path' => $path,
+                'duration' => $duration,
+                'start_offset' => $startOffset,
+                'start_time' => $startTime,
+            ];
+        }
+
+        return ['tracks' => $tracks, 'cleanup' => $cleanup];
+    }
+
+    protected function buildEffectFilters(array $effects): array
+    {
+        if (empty($effects)) {
+            return [];
+        }
+
+        $filters = [];
+        $currentLabel = 'v0';
+        $filters[] = '[0:v]format=yuv420p[' . $currentLabel . ']';
+        $counter = 1;
+
+        foreach ($effects as $effect) {
+            if (!is_array($effect)) {
+                continue;
+            }
+
+            $start = max(0.0, (float) Arr::get($effect, 'startTime', 0));
+            $duration = max(0.0, (float) Arr::get($effect, 'duration', 0));
+            if ($duration <= 0) {
+                continue;
+            }
+
+            $end = $start + $duration;
+            $enable = sprintf('between(t,%.3f,%.3f)', $start, $end);
+            $type = Arr::get($effect, 'type', '');
+            $intensity = max(0.0, min(1.0, (float) Arr::get($effect, 'intensity', 0.5)));
+
+            $nextLabel = 'v' . $counter++;
+
+            switch ($type) {
+                case 'blur':
+                    $radius = max(1, (int) round(8 * $intensity));
+                    $filters[] = sprintf('[%s]boxblur=luma_radius=%d:luma_power=2:enable=%s[%s]', $currentLabel, $radius, $enable, $nextLabel);
+                    break;
+                case 'brightness':
+                    $brightness = max(-1, min(1, 0.6 * $intensity));
+                    $filters[] = sprintf('[%s]eq=brightness=%0.3f:enable=%s[%s]', $currentLabel, $brightness, $enable, $nextLabel);
+                    break;
+                case 'glow':
+                    $blurLabel = 'v' . $counter++ . 'b';
+                    $glowLabel = 'v' . $counter++ . 'g';
+                    $baseLabel = 'v' . $counter++ . 'base';
+                    $opacity = max(0.1, min(1.0, $intensity));
+                    $filters[] = sprintf('[%s]split=2[%s][%s]', $currentLabel, $baseLabel, $blurLabel);
+                    $filters[] = sprintf('[%s]boxblur=luma_radius=20:luma_power=2:enable=%s[%s]', $blurLabel, $enable, $glowLabel);
+                    $filters[] = sprintf('[%s][%s]blend=all_mode=screen:all_opacity=%0.3f:enable=%s[%s]', $baseLabel, $glowLabel, $opacity, $enable, $nextLabel);
+                    break;
+                default:
+                    $nextLabel = $currentLabel;
+                    break;
+            }
+
+            $currentLabel = $nextLabel;
+        }
+
+        $filters[] = '[' . $currentLabel . ']format=yuv420p[v_out]';
+
+        return $filters;
+    }
+
+    protected function buildTextFilters(array $textOverlays): array
+    {
+        if (empty($textOverlays)) {
+            return [];
+        }
+
+        $filters = [];
+        $currentLabel = 'v_out';
+        $counter = 0;
+
+        foreach ($textOverlays as $overlay) {
+            if (!is_array($overlay)) {
+                continue;
+            }
+
+            $start = max(0.0, (float) Arr::get($overlay, 'startTime', 0));
+            $duration = max(0.0, (float) Arr::get($overlay, 'duration', 0));
+            if ($duration <= 0) {
+                continue;
+            }
+
+            $end = $start + $duration;
+            $enable = sprintf('between(t,%.3f,%.3f)', $start, $end);
+            $text = Arr::get($overlay, 'content', '');
+            if ($text === '') {
+                continue;
+            }
+
+            $safeText = str_replace(['\\', "'"], ['\\\\', "\\'"], $text);
+            $color = ltrim((string) Arr::get($overlay, 'color', '#FCFFFC'), '#');
+            if (!preg_match('/^[0-9a-fA-F]{6}$/', $color)) {
+                $color = 'FCFFFC';
+            }
+            $fontSize = max(10, (int) Arr::get($overlay, 'fontSize', 32));
+            $xPercent = max(0, min(100, (float) Arr::get($overlay, 'x', 50)));
+            $yPercent = max(0, min(100, (float) Arr::get($overlay, 'y', 50)));
+
+            $xExpr = sprintf('(W-w)*%0.4f', $xPercent / 100);
+            $yExpr = sprintf('(H-h)*%0.4f', $yPercent / 100);
+
+            $nextLabel = 'v_text_' . $counter++;
+            $filters[] = sprintf(
+                '[%s]drawtext=text=%s:fontcolor=0x%s:fontsize=%d:x=%s:y=%s:enable=%s[%s]',
+                $currentLabel,
+                $safeText,
+                strtoupper($color),
+                $fontSize,
+                $xExpr,
+                $yExpr,
+                $enable,
+                $nextLabel
+            );
+            $currentLabel = $nextLabel;
+        }
+
+        $filters[] = '[' . $currentLabel . ']format=yuv420p[video_export]';
+
+        return $filters;
+    }
+
+    protected function applyTimelineOverlays(
+        string $inputPath,
+        string $outputPath,
+        array $effects,
+        array $textOverlays,
+        array $musicTracks,
+        bool $hasBaseAudio
+    ): bool {
+        $needsEffects = !empty($effects);
+        $needsText = !empty($textOverlays);
+        $needsMusic = !empty($musicTracks);
+
+        if (!$needsEffects && !$needsText && !$needsMusic) {
+            return copy($inputPath, $outputPath);
+        }
+
+        $args = ['ffmpeg', '-y', '-i', $inputPath];
+        foreach ($musicTracks as $track) {
+            $args[] = '-i';
+            $args[] = $track['path'];
+        }
+
+        $filterLines = [];
+
+        $effectFilters = $this->buildEffectFilters($effects);
+        if (!empty($effectFilters)) {
+            $filterLines = array_merge($filterLines, $effectFilters);
+        } else {
+            $filterLines[] = '[0:v]format=yuv420p[v_out]';
         }
         
-        $args = ['ffmpeg', '-y'];
-        $listPath = null;
 
-        if (count($paths) === 1) {
-            $args = array_merge($args, ['-i', $paths[0]]);
+        $textFilters = $this->buildTextFilters($textOverlays);
+        if (!empty($textFilters)) {
+            $filterLines = array_merge($filterLines, $textFilters);
         } else {
-            $listPath = tempnam(dirname($outputPath), 'concat_');
-            $escaped = collect($paths)->map(function ($path) {
-                $escapedPath = str_replace("'", "'\\''", $path);
-                return "file '$escapedPath'";
-            })->implode(PHP_EOL);
-            file_put_contents($listPath, $escaped);
+            $filterLines[] = '[v_out]format=yuv420p[video_export]';
+        }
 
-            $args = array_merge($args, [
-                '-f', 'concat',
-                '-safe', '0',
-                '-i', $listPath,
-            ]);
+        $audioFilters = [];
+        $audioLabels = [];
+        $audioOutputLabel = null;
+        if ($needsMusic || $hasBaseAudio) {
+            if ($hasBaseAudio) {
+                $audioFilters[] = '[0:a]aresample=async=1,apad[a_base]';
+                $audioLabels[] = 'a_base';
+            }
+
+            foreach ($musicTracks as $index => $track) {
+                $inputIndex = $index + 1;
+                $startOffset = max(0.0, (float) $track['start_offset']);
+                $startTime = max(0.0, (float) $track['start_time']);
+                $duration = max(0.0, (float) $track['duration']);
+                if ($duration <= 0) {
+                    continue;
+                }
+
+                $endOffset = $startOffset + $duration;
+                $delayMs = (int) round($startTime * 1000);
+                $label = 'a_track_' . $index;
+
+                $audioFilters[] = sprintf(
+                    '[%d:a]atrim=start=%0.3f:end=%0.3f,asetpts=PTS-STARTPTS,adelay=%d|%d,apad[%s]',
+                    $inputIndex,
+                    $startOffset,
+                    $endOffset,
+                    $delayMs,
+                    $delayMs,
+                    $label
+                );
+                $audioLabels[] = $label;
+            }
+
+            if (!empty($audioLabels)) {
+                $audioOutputLabel = 'audio_mix';
+                $audioFilters[] = implode('', array_map(fn ($label) => '[' . $label . ']', $audioLabels))
+                    . 'amix=inputs=' . count($audioLabels) . ':normalize=0[' . $audioOutputLabel . ']';
+            }
+        }
+        if (!empty($audioFilters)) {
+            $filterLines = array_merge($filterLines, $audioFilters);
+        }
+
+        if (!empty($filterLines)) {
+            $args[] = '-filter_complex';
+            $args[] = implode(';', $filterLines);
+        }
+
+        $args[] = '-map';
+        $args[] = '[video_export]';
+
+        if ($audioOutputLabel) {
+            $args[] = '-map';
+            $args[] = '[' . $audioOutputLabel . ']';
+        } elseif ($hasBaseAudio && !$needsMusic) {
+            $args[] = '-map';
+            $args[] = '0:a';
+        } else {
+            $args[] = '-an';
         }
 
 
         $args = array_merge($args, [
             '-c:v', 'libx264',
             '-preset', 'veryfast',
-            '-crf', '23',
+            '-crf', '20',
             '-pix_fmt', 'yuv420p',
-            '-c:a', 'aac',
-            '-b:a', '192k',
-            '-movflags', '+faststart',  
-            $outputPath,
         ]);
-        $process = new Process($args);
-        $process->setTimeout(300);
-        $process->run();
 
-        if ($listPath) {
-            @unlink($listPath);
+        if ($audioOutputLabel || ($hasBaseAudio && !$needsMusic)) {
+            $args = array_merge($args, ['-c:a', 'aac', '-b:a', '192k']);
         }
 
-        if (!$process->isSuccessful()) {
-            Log::warning('FFmpeg export failed during project export.', [
-                'output' => $process->getErrorOutput(),
-                'command' => $process->getCommandLine(),
-            ]);
+        $args[] = '-movflags';
+        $args[] = '+faststart';
+        $args[] = '-shortest';
+        $args[] = $outputPath;
 
-            $firstPath = $paths[0];
-            if (strtolower(pathinfo($firstPath, PATHINFO_EXTENSION)) === 'mp4') {
-                return copy($firstPath, $outputPath);
-            }
-
-            return false;
-        }
-
-        return file_exists($outputPath);
+        return $this->runProcess($args);
     }
 
     public function download(Request $request, Project $project)
@@ -244,25 +723,63 @@ class ProjectExportController extends Controller
             : "quickcut-project-{$timestamp}-{$exportId}.mp4";
         $videoPath = $directory . DIRECTORY_SEPARATOR . $videoFileName;
 
-        $gathered = $this->gatherClipSources($project, $directory);
-        $paths = $gathered['paths'];
+        $prepared = $this->prepareClipSegments($project, $directory);
+        $segments = $prepared['segments'];
 
+        if (empty($segments)) {
+            $rawSources = $prepared['raw_sources'] ?? [];
+            if (!empty($rawSources)) {
+                $source = $rawSources[0];
+                if (!@copy($source, $videoPath)) {
+                    abort(500, 'Unable to build video export.');
+                }
 
-        if (empty($paths)) {
+                $downloadName = $fileSafeName ? $fileSafeName . '-quickcut-export.mp4' : 'quickcut-export.mp4';
+
+                return response()->download($videoPath, $downloadName, [
+                    'Content-Type' => 'video/mp4',
+                ])->deleteFileAfterSend(true);
+            }
+
             abort(422, 'This project does not contain any video clips to export.');
         }
+        $transitionMap = $this->buildTransitionMap($project);
+
+        $cleanup = $prepared['cleanup'] ?? [];
+        $intermediate = null;
+        $hasBaseAudio = true;
 
         try {
-            $success = $this->combineVideoSegments($paths, $videoPath);
+            $combined = $this->combineSegmentsWithTransitions($segments, $transitionMap, $directory);
+            $intermediate = $combined['path'];
+            $cleanup = array_merge($cleanup, $combined['cleanup']);
+            $hasBaseAudio = $intermediate ? $this->hasAudioStream($intermediate) : false;
+
+            $music = $this->gatherMusicSources($project, $directory);
+            $cleanup = array_merge($cleanup, $music['cleanup']);
+
+            if (!$intermediate || !$this->applyTimelineOverlays(
+                $intermediate,
+                $videoPath,
+                is_array($project->effects) ? $project->effects : [],
+                is_array($project->text_overlays) ? $project->text_overlays : [],
+                $music['tracks'] ?? [],
+                $hasBaseAudio
+            )) {
+                abort(500, 'Unable to build video export.');
+            }
         } finally {
-            foreach ($gathered['cleanup'] ?? [] as $tempPath) {
-                if (is_string($tempPath)) {
+            foreach ($cleanup as $tempPath) {
+                if (is_string($tempPath) && $tempPath && file_exists($tempPath)) {
                     @unlink($tempPath);
                 }
             }
+            if ($intermediate && file_exists($intermediate) && $intermediate !== $videoPath) {
+                @unlink($intermediate);
+            }
         }
 
-        if (!$success || !file_exists($videoPath)) {
+        if (!file_exists($videoPath)) {
             abort(500, 'Unable to build video export.');
         }
 
