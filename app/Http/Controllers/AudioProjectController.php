@@ -14,6 +14,7 @@ class AudioProjectController extends Controller
     public function index()
     {
         $projects = AudioProject::where('user_id', auth()->id())
+        ->select(['id', 'user_id', 'name', 'description', 'favorited_project', 'created_at', 'updated_at'])
             ->orderByDesc('favorited_project')
             ->orderByDesc('updated_at')
             ->orderBy('name')

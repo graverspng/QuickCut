@@ -6,6 +6,7 @@ use App\Models\Project;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -163,37 +164,58 @@ class ProjectExportController extends Controller
         if (empty($paths)) {
             return false;
         }
+        
+        $args = ['ffmpeg', '-y'];
+        $listPath = null;
 
         if (count($paths) === 1) {
-            return copy($paths[0], $outputPath);
+            $args = array_merge($args, ['-i', $paths[0]]);
+        } else {
+            $listPath = tempnam(dirname($outputPath), 'concat_');
+            $escaped = collect($paths)->map(function ($path) {
+                $escapedPath = str_replace("'", "'\\''", $path);
+                return "file '$escapedPath'";
+            })->implode(PHP_EOL);
+            file_put_contents($listPath, $escaped);
+
+            $args = array_merge($args, [
+                '-f', 'concat',
+                '-safe', '0',
+                '-i', $listPath,
+            ]);
         }
 
-        $listPath = tempnam(dirname($outputPath), 'concat_');
-        $escaped = collect($paths)->map(function ($path) {
-            $escapedPath = str_replace("'", "'\\''", $path);
-            return "file '$escapedPath'";
-        })->implode(PHP_EOL);
-        file_put_contents($listPath, $escaped);
 
-        $process = new Process([
-            'ffmpeg',
-            '-y',
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', $listPath,
-            '-c', 'copy',
+        $args = array_merge($args, [
+            '-c:v', 'libx264',
+            '-preset', 'veryfast',
+            '-crf', '23',
+            '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            '-movflags', '+faststart',  
             $outputPath,
         ]);
-        $process->setTimeout(120);
+        $process = new Process($args);
+        $process->setTimeout(300);
         $process->run();
-        @unlink($listPath);
+
+        if ($listPath) {
+            @unlink($listPath);
+        }
 
         if (!$process->isSuccessful()) {
-            Log::warning('FFmpeg concat failed during export.', [
+            Log::warning('FFmpeg export failed during project export.', [
                 'output' => $process->getErrorOutput(),
+                'command' => $process->getCommandLine(),
             ]);
 
-            return copy($paths[0], $outputPath);
+            $firstPath = $paths[0];
+            if (strtolower(pathinfo($firstPath, PATHINFO_EXTENSION)) === 'mp4') {
+                return copy($firstPath, $outputPath);
+            }
+
+            return false;
         }
 
         return file_exists($outputPath);
@@ -217,14 +239,15 @@ class ProjectExportController extends Controller
 
         $fileSafeName = Str::slug($project->name ?: 'quickcut-project');
         $timestamp = now()->format('Ymd_His');
-        $videoFileName = $fileSafeName ? $fileSafeName . "-{$timestamp}-{$exportId}.mp4" : "quickcut-project-{$timestamp}-{$exportId}.mp4";
+        $videoFileName = $fileSafeName
+            ? $fileSafeName . "-{$timestamp}-{$exportId}.mp4"
+            : "quickcut-project-{$timestamp}-{$exportId}.mp4";
         $videoPath = $directory . DIRECTORY_SEPARATOR . $videoFileName;
 
         $gathered = $this->gatherClipSources($project, $directory);
         $paths = $gathered['paths'];
 
 
-        $zip = new ZipArchive();
         if (empty($paths)) {
             abort(422, 'This project does not contain any video clips to export.');
         }
