@@ -178,48 +178,7 @@
   }
 
 
-  .favorite-btn {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    background: rgba(43,168,74,0.16);
-    color: rgba(255,255,255,0.85);
-    border: none;
-    border-radius: 50%;
-    width: 32px;
-    height: 32px;
-    font-size: 1rem;
-    cursor: pointer;
-    transition: background 200ms ease, transform 200ms ease, opacity 200ms ease, box-shadow 200ms ease;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-  }
 
-  .favorite-btn:hover {
-    background: rgba(43,168,74,0.26);
-    transform: scale(1.06);
-    box-shadow: 0 10px 24px rgba(43,168,74,0.25);
-  }
-
-  .favorite-btn:focus-visible {
-    outline: 2px solid rgba(43,168,74,0.45);
-    outline-offset: 2px;
-    pointer-events: auto;
-  }
-
-  .favorite-btn.is-active {
-    opacity: 1 !important;
-    pointer-events: auto;
-    background: rgba(43,168,74,0.3);
-    color: var(--green-2);
-    box-shadow: 0 8px 20px rgba(43,168,74,0.26);
-  }
-
-  .project-card:hover .favorite-btn {
-    pointer-events: auto;
-  }
   
   .create-card {
     border: 2px dashed var(--green-2);
@@ -241,8 +200,8 @@
 
   .favorite-btn {
     position: absolute;
-    bottom: 12px;
-    right: 12px;
+    top: 12px;
+    right: 56px;
     background: rgba(43,168,74,0.16);
     color: rgba(255,255,255,0.85);
     border: none;
