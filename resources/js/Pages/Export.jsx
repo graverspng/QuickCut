@@ -106,7 +106,7 @@ export default function Export({ project, exportWindow }) {
       const link = document.createElement('a');
       link.href = url;
       const headerName = parseDispositionFilename(response.headers.get('Content-Disposition'));
-      const fallback = `${slugify(project?.name ?? 'quickcut-project')}-quickcut-export.zip`;
+      const fallback = `${slugify(project?.name ?? 'quickcut-project')}-quickcut-export.mp4`;
       link.download = headerName || fallback;
       document.body.appendChild(link);
       link.click();
@@ -157,7 +157,7 @@ export default function Export({ project, exportWindow }) {
               onClick={handleDownload}
               disabled={!isAllowed || downloading}
             >
-              {downloading ? 'Preparing…' : 'Download Export'}
+              {downloading ? 'Rendering…' : 'Download Video'}
             </button>
           </div>
         </div>
@@ -198,16 +198,11 @@ export default function Export({ project, exportWindow }) {
           <h2>What&apos;s Included</h2>
           <ul className="export-includes">
             <li>
-              <strong>project.json</strong> — full timeline structure, including clips, layers, and transitions.
-            </li>
-            <li>
-              <strong>manifest.json</strong> — quick reference to all assets plus export metadata.
-            </li>
-            <li>
-              <strong>media/</strong> — copies of media that are still stored in QuickCut when exporting.
+            <strong>MP4 Video</strong> — a rendered export of your timeline, ready to share or archive.
             </li>
             <li>
               <strong>README.txt</strong> — instructions for restoring your project elsewhere.
+              <strong>Clips &amp; Audio</strong> — combined in the exported video based on your project timeline.
             </li>
           </ul>
           <p className="export-note">

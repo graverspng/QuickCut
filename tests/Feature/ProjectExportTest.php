@@ -66,7 +66,7 @@ class ProjectExportTest extends TestCase
             ]);
     }
 
-    public function test_successful_export_returns_zip_package(): void
+    public function test_successful_export_returns_video_file(): void
     {
         config(['quickcut.export.recent_window_seconds' => 60]);
 
@@ -85,29 +85,23 @@ class ProjectExportTest extends TestCase
                 'size' => 128,
                 'kind' => 'video',
             ]],
+            'clips' => [[
+                'id' => 'clip-1',
+                'name' => 'Sample Clip.mp4',
+                'storageKey' => $mediaPath,
+                'duration' => 1.23,
+            ]],
         ]);
         $project->touch();
 
         $response = $this->actingAs($user)->get(route('projects.export.download', $project));
 
         $response->assertOk();
-        $response->assertHeader('content-type', 'application/zip');
+        $response->assertHeader('content-type', 'video/mp4');
 
         $binary = $response->baseResponse;
         $this->assertInstanceOf(\Symfony\Component\HttpFoundation\BinaryFileResponse::class, $binary);
         $tempPath = $binary->getFile()->getPathname();
         $this->assertFileExists($tempPath);
-
-        $zip = new \ZipArchive();
-        $this->assertTrue($zip->open($tempPath));
-        $this->assertNotFalse($zip->locateName('project.json'));
-        $this->assertNotFalse($zip->locateName('manifest.json'));
-        $manifestData = json_decode($zip->getFromName('manifest.json'), true);
-        $zip->close();
-        @unlink($tempPath);
-
-        $this->assertIsArray($manifestData);
-        $this->assertEquals('Demo Project', $manifestData['project']['name']);
-        $this->assertCount(1, $manifestData['media']);
     }
 }
