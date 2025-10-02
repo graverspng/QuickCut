@@ -31,6 +31,7 @@ export default function Export({ project, exportWindow }) {
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [progress, setProgress] = useState(null);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [isAllowed, setIsAllowed] = useState(Boolean(exportWindow?.allowed));
 
@@ -76,6 +77,7 @@ export default function Export({ project, exportWindow }) {
     }
 
     setDownloading(true);
+    setProgress(0);
     try {
       const response = await fetch(route('projects.export.download', project.id), {
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
@@ -101,7 +103,34 @@ export default function Export({ project, exportWindow }) {
         throw new Error(message);
       }
 
-      const blob = await response.blob();
+      const contentType = response.headers.get('Content-Type') || 'video/mp4';
+      const contentLengthHeader = response.headers.get('Content-Length');
+      const totalBytes = contentLengthHeader ? Number.parseInt(contentLengthHeader, 10) : Number.NaN;
+      let blob;
+
+      if (response.body && Number.isFinite(totalBytes) && totalBytes > 0) {
+        const reader = response.body.getReader();
+        const chunks = [];
+        let received = 0;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            chunks.push(value);
+            received += value.length;
+            const percent = Math.min(100, Math.max(0, Math.round((received / totalBytes) * 100)));
+            setProgress(percent);
+          }
+        }
+
+        blob = new Blob(chunks, { type: contentType });
+        setProgress(100);
+      } else {
+        setProgress(null);
+        blob = await response.blob();
+        setProgress(100);
+      }
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -115,8 +144,10 @@ export default function Export({ project, exportWindow }) {
       setSuccess('Export ready! Your download should begin automatically.');
     } catch (err) {
       setError(err.message || 'Export failed.');
+      setProgress(null);
     } finally {
       setDownloading(false);
+      setTimeout(() => setProgress(null), 800);
     }
   };
 
@@ -159,6 +190,30 @@ export default function Export({ project, exportWindow }) {
             >
               {downloading ? 'Rendering…' : 'Download Video'}
             </button>
+            {(downloading || progress !== null) && (
+              <div
+                className="export-progress"
+                role="status"
+                aria-live="polite"
+                aria-label="Export progress"
+              >
+                <div
+                  className="export-progress-ring"
+                  style={{ '--progress': progress ?? 0 }}
+                  data-indeterminate={progress === null}
+                >
+                  <span className="export-progress-value">
+                    {progress === null ? '•••' : `${progress}%`}
+                  </span>
+                </div>
+                <div className="export-progress-copy">
+                  <span className="export-progress-title">Rendering export…</span>
+                  <span className="export-progress-subtitle">
+                    {progress === null ? 'Preparing your download' : `${progress}% complete`}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

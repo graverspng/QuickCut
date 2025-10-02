@@ -67,6 +67,37 @@ class ProjectExportController extends Controller
         ]);
     }
 
+    protected function resolveDefaultFontPath(): ?string
+    {
+        static $cached = null;
+
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $configured = config('quickcut.export.default_font_path');
+        if (is_string($configured) && $configured !== '' && file_exists($configured)) {
+            return $cached = $configured;
+        }
+
+        $fallback = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+
+        return $cached = (file_exists($fallback) ? $fallback : null);
+    }
+
+    protected function escapeFilterValue(string $value): string
+    {
+        return strtr($value, [
+            '\\' => '\\\\',
+            ':' => '\\:',
+            "'" => "\\'",
+            '[' => '\\[',
+            ']' => '\\]',
+            ',' => '\\,',
+            ';' => '\\;',
+        ]);
+    }
+
     protected function ensureOutputDirectory(string $directory): void
     {
         if (!is_dir($directory)) {
@@ -528,6 +559,10 @@ class ProjectExportController extends Controller
         $filters = [];
         $currentLabel = 'v_out';
         $counter = 0;
+        $fontPath = $this->resolveDefaultFontPath();
+        $fontDirective = $fontPath
+            ? 'fontfile=' . $this->escapeFilterValue($fontPath)
+            : 'font=DejaVuSans';
 
         foreach ($textOverlays as $overlay) {
             if (!is_array($overlay)) {
@@ -547,7 +582,7 @@ class ProjectExportController extends Controller
                 continue;
             }
 
-            $safeText = str_replace(['\\', "'"], ['\\\\', "\\'"], $text);
+            $safeText = $this->escapeFilterValue($text);
             $color = ltrim((string) Arr::get($overlay, 'color', '#FCFFFC'), '#');
             if (!preg_match('/^[0-9a-fA-F]{6}$/', $color)) {
                 $color = 'FCFFFC';
@@ -560,15 +595,19 @@ class ProjectExportController extends Controller
             $yExpr = sprintf('(H-h)*%0.4f', $yPercent / 100);
 
             $nextLabel = 'v_text_' . $counter++;
+            $drawtextOptions = [
+                'text=' . $safeText,
+                $fontDirective,
+                'fontcolor=0x' . strtoupper($color),
+                'fontsize=' . $fontSize,
+                'x=' . $xExpr,
+                'y=' . $yExpr,
+                'enable=' . $enable,
+            ];
             $filters[] = sprintf(
-                '[%s]drawtext=text=%s:fontcolor=0x%s:fontsize=%d:x=%s:y=%s:enable=%s[%s]',
+                '[%s]drawtext=%s[%s]',
                 $currentLabel,
-                $safeText,
-                strtoupper($color),
-                $fontSize,
-                $xExpr,
-                $yExpr,
-                $enable,
+                implode(':', $drawtextOptions),
                 $nextLabel
             );
             $currentLabel = $nextLabel;
@@ -725,41 +764,40 @@ class ProjectExportController extends Controller
 
         $prepared = $this->prepareClipSegments($project, $directory);
         $segments = $prepared['segments'];
+        $rawSources = $prepared['raw_sources'] ?? [];
 
-        if (empty($segments)) {
-            $rawSources = $prepared['raw_sources'] ?? [];
-            if (!empty($rawSources)) {
-                $source = $rawSources[0];
-                if (!@copy($source, $videoPath)) {
-                    abort(500, 'Unable to build video export.');
-                }
-
-                $downloadName = $fileSafeName ? $fileSafeName . '-quickcut-export.mp4' : 'quickcut-export.mp4';
-
-                return response()->download($videoPath, $downloadName, [
-                    'Content-Type' => 'video/mp4',
-                ])->deleteFileAfterSend(true);
-            }
+        if (empty($segments) && empty($rawSources)) {
 
             abort(422, 'This project does not contain any video clips to export.');
         }
-        $transitionMap = $this->buildTransitionMap($project);
 
         $cleanup = $prepared['cleanup'] ?? [];
         $intermediate = null;
-        $hasBaseAudio = true;
+        $basePath = null;
+        $hasBaseAudio = false;
 
         try {
-            $combined = $this->combineSegmentsWithTransitions($segments, $transitionMap, $directory);
-            $intermediate = $combined['path'];
-            $cleanup = array_merge($cleanup, $combined['cleanup']);
-            $hasBaseAudio = $intermediate ? $this->hasAudioStream($intermediate) : false;
+            if (!empty($segments)) {
+                $transitionMap = $this->buildTransitionMap($project);
+                $combined = $this->combineSegmentsWithTransitions($segments, $transitionMap, $directory);
+                $intermediate = $combined['path'];
+                $cleanup = array_merge($cleanup, $combined['cleanup']);
+                $basePath = $intermediate;
+            } else {
+                $basePath = $rawSources[0];
+            }
+
+            if (!$basePath || !file_exists($basePath)) {
+                abort(500, 'Unable to build video export.');
+            }
+
+            $hasBaseAudio = $this->hasAudioStream($basePath);
 
             $music = $this->gatherMusicSources($project, $directory);
             $cleanup = array_merge($cleanup, $music['cleanup']);
 
-            if (!$intermediate || !$this->applyTimelineOverlays(
-                $intermediate,
+            if (!$this->applyTimelineOverlays(
+                $basePath,
                 $videoPath,
                 is_array($project->effects) ? $project->effects : [],
                 is_array($project->text_overlays) ? $project->text_overlays : [],

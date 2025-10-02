@@ -45,15 +45,110 @@
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
+    align-items: stretch;
   }
   
   @media (min-width: 640px) {
     .export-header-actions {
       flex-direction: row;
       align-items: center;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.85rem;
     }
   }
-  
+  .export-progress {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.75rem 1rem;
+    border-radius: 18px;
+    background: rgba(27, 215, 96, 0.12);
+    border: 1px solid rgba(27, 215, 96, 0.32);
+    box-shadow: 0 18px 40px rgba(10, 32, 18, 0.45);
+    width: 100%;
+    color: #b8ffd1;
+    flex: 1 1 240px;
+  }
+
+  @media (min-width: 640px) {
+    .export-progress {
+      max-width: 340px;
+    }
+  }
+
+  .export-progress-ring {
+    position: relative;
+    width: 52px;
+    height: 52px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    background: conic-gradient(
+      #1bd760 calc(var(--progress, 0) * 3.6deg),
+      rgba(27, 215, 96, 0.18) calc(var(--progress, 0) * 3.6deg)
+    );
+    box-shadow: inset 0 0 0 1px rgba(27, 215, 96, 0.4);
+    transition: background 0.3s ease;
+  }
+
+  .export-progress-ring::before {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    border-radius: 999px;
+    background: rgba(6, 16, 9, 0.95);
+    box-shadow: inset 0 8px 24px rgba(0, 0, 0, 0.45);
+  }
+
+  .export-progress-ring[data-indeterminate='true'] {
+    background: conic-gradient(
+      rgba(27, 215, 96, 0.55) 0 120deg,
+      rgba(27, 215, 96, 0.12) 120deg 360deg
+    );
+    animation: export-progress-spin 1.15s linear infinite;
+  }
+
+  .export-progress-value {
+    position: relative;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #0b1f10;
+    text-shadow: 0 0 12px rgba(248, 255, 248, 0.6);
+  }
+
+  .export-progress-ring[data-indeterminate='true'] .export-progress-value {
+    color: #b8ffd1;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+  }
+
+  .export-progress-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .export-progress-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #ebffee;
+  }
+
+  .export-progress-subtitle {
+    font-size: 0.85rem;
+    color: rgba(184, 255, 209, 0.75);
+  }
+
+  @keyframes export-progress-spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
   .export-primary,
   .export-secondary {
     display: inline-flex;
