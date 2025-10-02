@@ -112,7 +112,26 @@ export default function Dashboard({ projects = [] }) {
                 className={`project-card group slide-in${project.favorited_project ? ' favorited' : ''}`}
                 style={{ animationDelay: `${i * 120}ms` }}
               >
-                                <button
+                {/* DELETE moved to the left */}
+                <button
+                  onClick={() => deleteProject(project.id)}
+                  className="delete-btn opacity-0 group-hover:opacity-100"
+                  aria-label={`Delete ${project.name}`}
+                  title="Delete"
+                >
+                  ✕
+                </button>
+
+                <div
+                  className="flex-1 cursor-pointer"
+                  onClick={() => router.get(route('editor', project.id))}
+                >
+                  <h3 className="project-card-title">{project.name}</h3>
+                  <p className="project-card-sub">Click to edit</p>
+                </div>
+
+                {/* FAVORITE moved to the right */}
+                <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -123,21 +142,6 @@ export default function Dashboard({ projects = [] }) {
                   title={project.favorited_project ? 'Favorited project' : 'Favorite project'}
                 >
                   {project.favorited_project ? '★' : '☆'}
-                </button>
-                <div
-                  className="flex-1 cursor-pointer"
-                  onClick={() => router.get(route('editor', project.id))}
-                >
-                  <h3 className="project-card-title">{project.name}</h3>
-                  <p className="project-card-sub">Click to edit</p>
-                </div>
-                <button
-                  onClick={() => deleteProject(project.id)}
-                  className="delete-btn opacity-0 group-hover:opacity-100"
-                  aria-label={`Delete ${project.name}`}
-                  title="Delete"
-                >
-                  ✕
                 </button>
               </div>
             ))}
