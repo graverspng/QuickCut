@@ -219,6 +219,9 @@
   z-index: 2;          
 }
 
+.project-card:hover .favorite-btn { pointer-events: auto; }
+
+
 .favorite-btn:hover {
   background: rgba(43,168,74,0.26);
   transform: scale(1.06);
