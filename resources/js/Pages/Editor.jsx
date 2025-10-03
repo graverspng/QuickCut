@@ -132,6 +132,34 @@ export default function Editor({ project }) {
   const stageRef = useRef(null);
   const transitionOverlayRef = useRef(null);
 
+  const applyStageDimensions = useCallback((overlays) => {
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (!rect || !Array.isArray(overlays)) return overlays;
+    const width = rect.width;
+    const height = rect.height;
+
+    return overlays.map((overlay) => {
+      if (!overlay || typeof overlay !== 'object') return overlay;
+      if (overlay.canvasWidth === width && overlay.canvasHeight === height) {
+        return overlay;
+      }
+
+      return {
+        ...overlay,
+        canvasWidth: width,
+        canvasHeight: height
+      };
+    });
+  }, []);
+
+  const updateTextOverlays = useCallback((updater) => {
+    setTextOverlays((prev) => {
+      const base = Array.isArray(prev) ? prev : [];
+      const next = updater(base);
+      return applyStageDimensions(Array.isArray(next) ? next : base);
+    });
+  }, [applyStageDimensions]);
+
   const [resizeState, setResizeState] = useState(null);
   const [resizeEffectState, setResizeEffectState] = useState(null);
   const [resizeMusicState, setResizeMusicState] = useState(null);
@@ -289,7 +317,7 @@ export default function Editor({ project }) {
         }
       ]);
     } else if (payload.kind === 'text') {
-      setTextOverlays((prev) => [
+      updateTextOverlays((prev) => [
         ...prev,
         { id: crypto.randomUUID(), content: newText || 'New Text', startTime: dropTime, duration: 5, x: 50, y: 50, color: newTextColor, fontSize: newTextSize }
       ]);
@@ -392,7 +420,11 @@ export default function Editor({ project }) {
       if (relativeTime <= 0 || relativeTime >= (tx.duration || 0)) return;
       const before = { ...tx, startTime: tx.startTime, duration: relativeTime };
       const after = { ...tx, startTime: (tx.startTime || 0) + relativeTime, duration: (tx.duration || 0) - relativeTime };
-      setTextOverlays((prev) => { const arr = [...prev]; arr.splice(idx, 1, before, after); return arr; });
+      updateTextOverlays((prev) => {
+        const arr = [...prev];
+        arr.splice(idx, 1, before, after);
+        return arr;
+      });
       setSelectedTextIndex(idx + 1);
       seekTo(currentTime, wasPlaying);
       return;
@@ -849,7 +881,7 @@ export default function Editor({ project }) {
   useEffect(() => {
     if (!resizeTextState) return;
     const onMove = (e) => {
-      setTextOverlays((prev) => {
+      updateTextOverlays((prev) => {
         const arr = [...prev];
         const tx = { ...arr[resizeTextState.index] };
         const deltaTime = (e.clientX - resizeTextState.startX) / resizeTextState.pxPerSec;
@@ -879,7 +911,7 @@ export default function Editor({ project }) {
   useEffect(() => {
     if (!dragTextState) return;
     const onMove = (e) => {
-      setTextOverlays((prev) => {
+      updateTextOverlays((prev) => {
         const arr = [...prev];
         const tx = { ...arr[dragTextState.index] };
         const deltaTime = (e.clientX - dragTextState.startX) / dragTextState.pxPerSec;
@@ -1114,7 +1146,7 @@ export default function Editor({ project }) {
         setSelectedEffectIndex(null);
       }
       if ((k === 'backspace' || k === 'delete') && selectedTextIndex !== null) {
-        setTextOverlays((prev) => prev.filter((_, i) => i !== selectedTextIndex));
+        updateTextOverlays((prev) => prev.filter((_, i) => i !== selectedTextIndex));
         setSelectedTextIndex(null);
       }
       if ((k === 'backspace' || k === 'delete') && selectedTransitionId) {
@@ -1142,7 +1174,7 @@ export default function Editor({ project }) {
   }, [activeClipIndex, clips]);
 
   const addTextAtPlayhead = () => {
-    setTextOverlays((prev) => [
+    updateTextOverlays((prev) => [
       ...prev,
       { id: crypto.randomUUID(), content: newText || 'New Text', startTime: currentTime, duration: 5, x: 50, y: 50, color: newTextColor, fontSize: newTextSize }
     ]);
@@ -1160,7 +1192,7 @@ export default function Editor({ project }) {
   useEffect(() => {
     if (!dragTextStageState) return;
     const onMove = (e) => {
-      setTextOverlays((prev) => {
+      updateTextOverlays((prev) => {
         const arr = [...prev];
         const tx = { ...arr[dragTextStageState.index] };
         const dx = ((e.clientX - dragTextStageState.startX) / dragTextStageState.rectW) * 100;
@@ -1337,7 +1369,11 @@ export default function Editor({ project }) {
                     value={textOverlays[selectedTextIndex].content}
                     onChange={(e) => {
                       const v = e.target.value;
-                      setTextOverlays((prev) => { const arr = [...prev]; arr[selectedTextIndex] = { ...arr[selectedTextIndex], content: v }; return arr; });
+                      updateTextOverlays((prev) => {
+                        const arr = [...prev];
+                        arr[selectedTextIndex] = { ...arr[selectedTextIndex], content: v };
+                        return arr;
+                      });
                     }}
                     style={{ background: '#222', border: '1px solid #333', color: '#FCFFFC', borderRadius: 6, padding: '8px 10px' }}
                   />
@@ -1349,7 +1385,11 @@ export default function Editor({ project }) {
                     value={textOverlays[selectedTextIndex].fontSize || 32}
                     onChange={(e) => {
                       const v = Math.max(12, Math.min(96, parseInt(e.target.value || 32)));
-                      setTextOverlays((prev) => { const arr = [...prev]; arr[selectedTextIndex] = { ...arr[selectedTextIndex], fontSize: v }; return arr; });
+                      updateTextOverlays((prev) => {
+                        const arr = [...prev];
+                        arr[selectedTextIndex] = { ...arr[selectedTextIndex], fontSize: v };
+                        return arr;
+                      });
                     }}
                     style={{ background: '#222', border: '1px solid #333', color: '#FCFFFC', borderRadius: 6, padding: '8px 10px' }}
                   />
@@ -1359,7 +1399,11 @@ export default function Editor({ project }) {
                     value={textOverlays[selectedTextIndex].color || '#FCFFFC'}
                     onChange={(e) => {
                       const v = e.target.value;
-                      setTextOverlays((prev) => { const arr = [...prev]; arr[selectedTextIndex] = { ...arr[selectedTextIndex], color: v }; return arr; });
+                      updateTextOverlays((prev) => {
+                        const arr = [...prev];
+                        arr[selectedTextIndex] = { ...arr[selectedTextIndex], color: v };
+                        return arr;
+                      });
                     }}
                     style={{ height: 36, borderRadius: 6, border: '1px solid #333' }}
                   />

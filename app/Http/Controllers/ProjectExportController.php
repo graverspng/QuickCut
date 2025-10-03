@@ -80,6 +80,11 @@ class ProjectExportController extends Controller
             return $cached = $configured;
         }
 
+        $projectFont = public_path('fonts/suisse/fonnts.com-Suisse_Intl_Regular.ttf');
+        if ($projectFont && file_exists($projectFont)) {
+            return $cached = $projectFont;
+        }
+
         $fallback = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
 
         return $cached = (file_exists($fallback) ? $fallback : null);
@@ -231,6 +236,45 @@ class ProjectExportController extends Controller
         }
 
         return trim($process->getOutput()) !== '';
+    }
+
+    protected function probeVideoDimensions(string $path): ?array
+    {
+        static $cache = [];
+
+        if (isset($cache[$path])) {
+            return $cache[$path];
+        }
+
+        $process = new Process([
+            'ffprobe',
+            '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=width,height',
+            '-of', 'json',
+            $path,
+        ]);
+        $process->setTimeout(10);
+        $process->run();
+
+        if (!$process->isSuccessful()) {
+            return $cache[$path] = null;
+        }
+
+        $data = json_decode($process->getOutput(), true);
+        if (!is_array($data)) {
+            return $cache[$path] = null;
+        }
+
+        $stream = $data['streams'][0] ?? null;
+        $width = (int) ($stream['width'] ?? 0);
+        $height = (int) ($stream['height'] ?? 0);
+
+        if ($width > 0 && $height > 0) {
+            return $cache[$path] = ['width' => $width, 'height' => $height];
+        }
+
+        return $cache[$path] = null;
     }
 
     protected function ensureAudioTrack(string $inputPath, float $duration): bool
@@ -530,7 +574,34 @@ class ProjectExportController extends Controller
                     break;
                 case 'brightness':
                     $brightness = max(-1, min(1, 0.6 * $intensity));
-                    $filters[] = sprintf('[%s]eq=brightness=%0.3f:enable=%s[%s]', $currentLabel, $brightness, $enable, $nextLabel);
+                    $fadeIn = max(0.0, (float) Arr::get($effect, 'fadeIn', 0));
+                    $fadeOut = max(0.0, (float) Arr::get($effect, 'fadeOut', 0));
+
+                    $baseLabel = 'v' . $counter++ . 'bbase';
+                    $brightLabel = 'v' . $counter++ . 'bbright';
+                    $brightAppliedLabel = 'v' . $counter++ . 'bapply';
+
+                    $filters[] = sprintf('[%s]split[%s][%s]', $currentLabel, $baseLabel, $brightLabel);
+                    $filters[] = sprintf('[%s]eq=brightness=%0.3f[%s]', $brightLabel, $brightness, $brightAppliedLabel);
+
+                    $alphaSegments = [sprintf('between(T,%0.3f,%0.3f)', $start, $end)];
+                    if ($fadeIn > 0.0) {
+                        $alphaSegments[] = sprintf('min(1,max(0,(T-%0.3f)/%0.3f))', $start, max($fadeIn, 0.001));
+                    }
+                    if ($fadeOut > 0.0) {
+                        $alphaSegments[] = sprintf('min(1,max(0,(%0.3f-T)/%0.3f))', $end, max($fadeOut, 0.001));
+                    }
+                    $alphaExpr = implode('*', $alphaSegments);
+                    $blendExpr = $this->escapeFilterValue(sprintf('A*(1-(%1$s))+B*(%1$s)', $alphaExpr));
+
+                    $filters[] = sprintf(
+                        '[%s][%s]blend=all_expr=%s:enable=%s[%s]',
+                        $baseLabel,
+                        $brightAppliedLabel,
+                        $blendExpr,
+                        $enable,
+                        $nextLabel
+                    );
                     break;
                 case 'glow':
                     $blurLabel = 'v' . $counter++ . 'b';
@@ -595,8 +666,8 @@ class ProjectExportController extends Controller
             $xPercent = max(0, min(100, (float) Arr::get($overlay, 'x', 50)));
             $yPercent = max(0, min(100, (float) Arr::get($overlay, 'y', 50)));
 
-            $xExpr = sprintf('(W-w)*%0.4f', $xPercent / 100);
-            $yExpr = sprintf('(H-h)*%0.4f', $yPercent / 100);
+            $xExpr = sprintf('max(0,min(w-text_w,(w*%0.4f)-(text_w/2)))', $xPercent / 100);
+            $yExpr = sprintf('max(0,min(h-text_h,(h*%0.4f)-(text_h/2)))', $yPercent / 100);
 
             $nextLabel = 'v_text_' . $counter++;
             $drawtextOptions = [
@@ -604,8 +675,8 @@ class ProjectExportController extends Controller
                 $fontDirective,
                 'fontcolor=0x' . strtoupper($color),
                 'fontsize=' . $fontSize,
-                'x=' . $xExpr,
-                'y=' . $yExpr,
+                'x=' . $this->escapeFilterValue($xExpr),
+                'y=' . $this->escapeFilterValue($yExpr),
                 'enable=' . $enable,
             ];
             $filters[] = sprintf(
@@ -745,6 +816,11 @@ class ProjectExportController extends Controller
 
     public function download(Request $request, Project $project)
     {
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(0);
+        }
+        @ini_set('max_execution_time', '0');
+
         $this->ensureOwner($project);
 
         $window = $this->buildWindowData($project);
