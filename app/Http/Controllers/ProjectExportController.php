@@ -87,7 +87,7 @@ class ProjectExportController extends Controller
 
     protected function escapeFilterValue(string $value): string
     {
-        return strtr($value, [
+        $escaped = strtr($value, [
             '\\' => '\\\\',
             ':' => '\\:',
             "'" => "\\'",
@@ -95,7 +95,11 @@ class ProjectExportController extends Controller
             ']' => '\\]',
             ',' => '\\,',
             ';' => '\\;',
+            '%' => '\\%',
         ]);
+        $escaped = str_replace(["\r\n", "\r"], "\n", $escaped);
+
+        return str_replace("\n", '\\n', $escaped);
     }
 
     protected function ensureOutputDirectory(string $directory): void
@@ -513,7 +517,7 @@ class ProjectExportController extends Controller
             }
 
             $end = $start + $duration;
-            $enable = sprintf('between(t,%.3f,%.3f)', $start, $end);
+            $enable = $this->escapeFilterValue(sprintf('between(t,%.3f,%.3f)', $start, $end));
             $type = Arr::get($effect, 'type', '');
             $intensity = max(0.0, min(1.0, (float) Arr::get($effect, 'intensity', 0.5)));
 
@@ -576,7 +580,7 @@ class ProjectExportController extends Controller
             }
 
             $end = $start + $duration;
-            $enable = sprintf('between(t,%.3f,%.3f)', $start, $end);
+            $enable = $this->escapeFilterValue(sprintf('between(t,%.3f,%.3f)', $start, $end));
             $text = Arr::get($overlay, 'content', '');
             if ($text === '') {
                 continue;
