@@ -625,7 +625,7 @@ class ProjectExportController extends Controller
         return $filters;
     }
 
-    protected function buildTextFilters(array $textOverlays): array
+    protected function buildTextFilters(array $textOverlays, ?array $videoDimensions = null): array
     {
         if (empty($textOverlays)) {
             return [];
@@ -639,7 +639,7 @@ class ProjectExportController extends Controller
             ? 'fontfile=' . $this->escapeFilterValue($fontPath)
             : 'font=DejaVuSans';
 
-        foreach ($textOverlays as $overlay) {
+        foreach ($textOverlays as $index => $overlay) {
             if (!is_array($overlay)) {
                 continue;
             }
@@ -662,12 +662,57 @@ class ProjectExportController extends Controller
             if (!preg_match('/^[0-9a-fA-F]{6}$/', $color)) {
                 $color = 'FCFFFC';
             }
-            $fontSize = max(10, (int) Arr::get($overlay, 'fontSize', 32));
+            $fontSize = (float) Arr::get($overlay, 'fontSize', 32);
+            $canvasHeight = (float) Arr::get($overlay, 'canvasHeight', 0);
+            $canvasWidth = (float) Arr::get($overlay, 'canvasWidth', 0);
+            $displayVideoWidth = (float) Arr::get($overlay, 'displayVideoWidth', $canvasWidth);
+            $displayVideoHeight = (float) Arr::get($overlay, 'displayVideoHeight', $canvasHeight);
+            $displayOffsetX = (float) Arr::get($overlay, 'displayVideoOffsetX', max(0.0, ($canvasWidth - $displayVideoWidth) / 2));
+            $displayOffsetY = (float) Arr::get($overlay, 'displayVideoOffsetY', max(0.0, ($canvasHeight - $displayVideoHeight) / 2));
+
+            $scaleApplied = null;
+            if (is_array($videoDimensions)) {
+                $videoWidth = (float) ($videoDimensions['width'] ?? 0);
+                $videoHeight = (float) ($videoDimensions['height'] ?? 0);
+
+                if ($displayVideoHeight > 0 && $videoHeight > 0) {
+                    $fontSize *= $videoHeight / $displayVideoHeight;
+                    $scaleApplied = 'height';
+                } elseif ($displayVideoWidth > 0 && $videoWidth > 0) {
+                    $fontSize *= $videoWidth / $displayVideoWidth;
+                    $scaleApplied = 'width';
+                }
+            }
+
+            if ($displayVideoHeight <= 0 && $displayVideoWidth <= 0 && is_array($videoDimensions)) {
+                $fallbackHeight = (float) ($videoDimensions['height'] ?? 0);
+                if ($fallbackHeight > 0) {
+                    $fontSize *= max(1.0, $fallbackHeight / 720.0);
+                    $scaleApplied = 'fallback';
+                }
+            }
+
+            $fontSize = max(10, (int) round($fontSize));
             $xPercent = max(0, min(100, (float) Arr::get($overlay, 'x', 50)));
             $yPercent = max(0, min(100, (float) Arr::get($overlay, 'y', 50)));
 
-            $xExpr = sprintf('max(0,min(w-text_w,(w*%0.4f)-(text_w/2)))', $xPercent / 100);
-            $yExpr = sprintf('max(0,min(h-text_h,(h*%0.4f)-(text_h/2)))', $yPercent / 100);
+            $stageWidth = $canvasWidth > 0 ? $canvasWidth : max($displayVideoWidth, 1);
+            $stageHeight = $canvasHeight > 0 ? $canvasHeight : max($displayVideoHeight, 1);
+
+            $stageX = ($xPercent / 100) * $stageWidth;
+            $stageY = ($yPercent / 100) * $stageHeight;
+
+            $videoCoordinateX = $stageX - $displayOffsetX;
+            $videoCoordinateY = $stageY - $displayOffsetY;
+
+            $displayWidthSafe = $displayVideoWidth > 0 ? $displayVideoWidth : $stageWidth;
+            $displayHeightSafe = $displayVideoHeight > 0 ? $displayVideoHeight : $stageHeight;
+
+            $videoRatioX = $displayWidthSafe > 0 ? $videoCoordinateX / $displayWidthSafe : $xPercent / 100;
+            $videoRatioY = $displayHeightSafe > 0 ? $videoCoordinateY / $displayHeightSafe : $yPercent / 100;
+
+            $xExpr = sprintf('(w*%0.6f)-(text_w/2)', $videoRatioX);
+            $yExpr = sprintf('(h*%0.6f)-(text_h/2)', $videoRatioY);
 
             $nextLabel = 'v_text_' . $counter++;
             $drawtextOptions = [
@@ -686,6 +731,21 @@ class ProjectExportController extends Controller
                 $nextLabel
             );
             $currentLabel = $nextLabel;
+
+            Log::debug('Export text overlay', [
+                'overlay_index' => $index,
+                'content_preview' => Str::limit($text, 40),
+                'font_size_final' => $fontSize,
+                'scale_applied' => $scaleApplied,
+                'canvas_width' => $canvasWidth,
+                'canvas_height' => $canvasHeight,
+                'display_video_width' => $displayVideoWidth,
+                'display_video_height' => $displayVideoHeight,
+                'display_video_offset_x' => $displayOffsetX,
+                'display_video_offset_y' => $displayOffsetY,
+                'video_dimensions' => $videoDimensions,
+                'position_percent' => ['x' => $xPercent, 'y' => $yPercent],
+            ]);
         }
 
         $filters[] = '[' . $currentLabel . ']format=yuv420p[video_export]';
@@ -716,6 +776,7 @@ class ProjectExportController extends Controller
         }
 
         $filterLines = [];
+        $videoDimensions = $this->probeVideoDimensions($inputPath);
 
         $effectFilters = $this->buildEffectFilters($effects);
         if (!empty($effectFilters)) {
@@ -723,9 +784,9 @@ class ProjectExportController extends Controller
         } else {
             $filterLines[] = '[0:v]format=yuv420p[v_out]';
         }
-        
 
-        $textFilters = $this->buildTextFilters($textOverlays);
+
+        $textFilters = $this->buildTextFilters($textOverlays, $videoDimensions);
         if (!empty($textFilters)) {
             $filterLines = array_merge($filterLines, $textFilters);
         } else {
@@ -902,9 +963,35 @@ class ProjectExportController extends Controller
         }
 
         $downloadName = $fileSafeName ? $fileSafeName . '-quickcut-export.mp4' : 'quickcut-export.mp4';
+        $fileSize = @filesize($videoPath) ?: null;
 
-        return response()->download($videoPath, $downloadName, [
+        $response = response()->streamDownload(function () use ($videoPath) {
+            $handle = @fopen($videoPath, 'rb');
+            if (!$handle) {
+                return;
+            }
+
+            try {
+                while (!feof($handle)) {
+                    echo fread($handle, 1024 * 512);
+                    if (function_exists('ob_flush')) {
+                        @ob_flush();
+                    }
+                    flush();
+                }
+            } finally {
+                fclose($handle);
+                @unlink($videoPath);
+            }
+        }, $downloadName, array_filter([
             'Content-Type' => 'video/mp4',
-        ])->deleteFileAfterSend(true);
+            'Content-Length' => $fileSize,
+        ]));
+
+        if ($fileSize !== null) {
+            $response->headers->set('Accept-Ranges', 'bytes');
+        }
+
+        return $response;
     }
 }

@@ -133,21 +133,43 @@ export default function Editor({ project }) {
   const transitionOverlayRef = useRef(null);
 
   const applyStageDimensions = useCallback((overlays) => {
-    const rect = stageRef.current?.getBoundingClientRect();
-    if (!rect || !Array.isArray(overlays)) return overlays;
-    const width = rect.width;
-    const height = rect.height;
+    const stageRect = stageRef.current?.getBoundingClientRect();
+    const videoRect = videoRef.current?.getBoundingClientRect();
+
+    if (!stageRect || !Array.isArray(overlays)) return overlays;
+
+    const stageWidth = stageRect.width || 1;
+    const stageHeight = stageRect.height || 1;
+    const videoWidth = Math.max(1, videoRect?.width || stageWidth);
+    const videoHeight = Math.max(1, videoRect?.height || stageHeight);
+    const videoOffsetX = videoRect ? videoRect.left - stageRect.left : 0;
+    const videoOffsetY = videoRect ? videoRect.top - stageRect.top : 0;
 
     return overlays.map((overlay) => {
-      if (!overlay || typeof overlay !== 'object') return overlay;
-      if (overlay.canvasWidth === width && overlay.canvasHeight === height) {
+      if (!overlay || typeof overlay !== 'object') {
+        return overlay;
+      }
+
+      const unchanged =
+        overlay.canvasWidth === stageWidth &&
+        overlay.canvasHeight === stageHeight &&
+        overlay.displayVideoWidth === videoWidth &&
+        overlay.displayVideoHeight === videoHeight &&
+        overlay.displayVideoOffsetX === videoOffsetX &&
+        overlay.displayVideoOffsetY === videoOffsetY;
+
+      if (unchanged) {
         return overlay;
       }
 
       return {
         ...overlay,
-        canvasWidth: width,
-        canvasHeight: height
+        canvasWidth: stageWidth,
+        canvasHeight: stageHeight,
+        displayVideoWidth: videoWidth,
+        displayVideoHeight: videoHeight,
+        displayVideoOffsetX: videoOffsetX,
+        displayVideoOffsetY: videoOffsetY,
       };
     });
   }, []);
@@ -159,6 +181,38 @@ export default function Editor({ project }) {
       return applyStageDimensions(Array.isArray(next) ? next : base);
     });
   }, [applyStageDimensions]);
+
+  useEffect(() => {
+    const sync = () => {
+      updateTextOverlays((prev) => prev);
+    };
+
+    const video = videoRef.current;
+    if (video) {
+      video.addEventListener('loadedmetadata', sync);
+    }
+    window.addEventListener('resize', sync);
+    sync();
+
+    return () => {
+      if (video) {
+        video.removeEventListener('loadedmetadata', sync);
+      }
+      window.removeEventListener('resize', sync);
+    };
+  }, [updateTextOverlays]);
+
+  useEffect(() => {
+    if (!Array.isArray(textOverlays) || textOverlays.length === 0) return;
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const requiresUpdate = textOverlays.some((overlay) => {
+      if (!overlay || typeof overlay !== 'object') return false;
+      return !overlay.canvasWidth || !overlay.canvasHeight;
+    });
+    if (!requiresUpdate) return;
+    setTextOverlays((prev) => applyStageDimensions(prev));
+  }, [textOverlays, applyStageDimensions]);
 
   const [resizeState, setResizeState] = useState(null);
   const [resizeEffectState, setResizeEffectState] = useState(null);
