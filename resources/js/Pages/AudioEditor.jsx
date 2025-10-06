@@ -1,5 +1,5 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head, router } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import '@/../css/Editor.css';
 import '@/../css/AudioEditor.css';
@@ -32,6 +32,15 @@ const normalizeTracks = (arr = []) =>
         };
     });
 
+const readLocal = (key, fallback = null) => {
+    try {
+        const value = localStorage.getItem(key);
+        return value ?? fallback;
+    } catch (error) {
+        return fallback;
+    }
+};
+
 const isAudioFile = (file) => {
     if (!file) return false;
     if (file.type && file.type.startsWith('audio')) return true;
@@ -45,14 +54,27 @@ const isAudioFile = (file) => {
 export default function AudioEditor({ project }) {
     const [tracks, setTracks] = useState(() =>
         normalizeTracks(
-            (project.tracks || []).map((t) => {
-                const storageKey = t.storageKey || (t.source?.startsWith('local-') ? t.source : null);
-                if (!storageKey) return t;
+            (Array.isArray(project.tracks) ? project.tracks : []).map((track) => {
+                if (!track || typeof track !== 'object') return track;
 
-                const data = localStorage.getItem(storageKey);
-                if (!data) return t;
+                const storageKey =
+                    track.storageKey ||
+                    (typeof track.source === 'string' && track.source.startsWith('local-')
+                        ? track.source
+                        : null);
 
-                return { ...t, source: data, storageKey };
+                if (storageKey) {
+                    const data = readLocal(storageKey, null);
+                    if (data) {
+                        return { ...track, source: data, storageKey };
+                    }
+                }
+
+                if (typeof track.fallbackSource === 'string' && track.fallbackSource.startsWith('data:')) {
+                    return { ...track, source: track.fallbackSource };
+                }
+
+                return track;
             })
         )
     );
@@ -145,10 +167,24 @@ export default function AudioEditor({ project }) {
     };
 
     const handleSave = () => {
-        const tracksToSave = tracks.map(({ storageKey, source, ...rest }) => ({
-            ...rest,
-            source: storageKey || source,
-        }));
+        const tracksToSave = tracks.map(({ storageKey, source, ...rest }) => {
+            const payload = { ...rest };
+
+            if (storageKey) {
+                payload.storageKey = storageKey;
+                payload.source = storageKey;
+                if (typeof source === 'string' && source.startsWith('data:')) {
+                    payload.fallbackSource = source;
+                }
+            } else if (typeof source === 'string') {
+                payload.source = source;
+                if (source.startsWith('data:')) {
+                    payload.fallbackSource = source;
+                }
+            }
+
+            return payload;
+        });
 
         router.put(route('audio.projects.update', project.id), {
             name: project.name,
@@ -420,7 +456,13 @@ export default function AudioEditor({ project }) {
             <div className="editor-container audio-editor">
                 <div className="editor-header">
                     <h2>{project.name} 🎵</h2>
-                    <div>
+                    <div className="header-actions">
+                        <Link
+                            href={route('audio.projects.export', project.id)}
+                            className="export-btn"
+                        >
+                            Export
+                        </Link>
                         {selectedTrackIndex !== null && (
                             <label className="volume-control">
                                 Volume

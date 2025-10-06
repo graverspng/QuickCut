@@ -139,7 +139,14 @@ class ProjectExportController extends Controller
             'video/mp4' => 'mp4',
             'video/webm' => 'webm',
             'video/ogg', 'video/ogv' => 'ogv',
-            default => 'mp4',
+            'audio/mpeg', 'audio/mp3' => 'mp3',
+            'audio/wav', 'audio/x-wav' => 'wav',
+            'audio/ogg', 'audio/oga', 'audio/vorbis' => 'ogg',
+            'audio/webm' => 'webm',
+            'audio/aac' => 'aac',
+            'audio/mp4', 'audio/m4a', 'audio/x-m4a' => 'm4a',
+            'audio/flac' => 'flac',
+            default => str_starts_with($mime, 'audio/') ? 'mp3' : 'mp4',
         };
 
         $path = $directory . DIRECTORY_SEPARATOR . $prefix . '.' . $extension;
@@ -155,6 +162,12 @@ class ProjectExportController extends Controller
             ?: Arr::get($item, 'source');
         $sourceId = Arr::get($item, 'mediaId') ?: Arr::get($item, 'id');
         $fallbackSource = Arr::get($item, 'fallbackSource');
+        if (!$fallbackSource) {
+            $sourceValue = Arr::get($item, 'source');
+            if (is_string($sourceValue) && str_starts_with($sourceValue, 'data:')) {
+                $fallbackSource = $sourceValue;
+            }
+        }
 
         if ($storageKey && Storage::disk('public')->exists($storageKey)) {
             return Storage::disk('public')->path($storageKey);
