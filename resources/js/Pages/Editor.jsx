@@ -4,7 +4,6 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import '@/../css/Editor.css';
 
 const EFFECT_PRESETS = [
-  { key: 'glow', name: 'Glow', type: 'glow', intensity: 0.8, color: 'rgba(60,207,101,0.9)', fadeIn: 0.5, fadeOut: 0.5, duration: 4 },
   { key: 'blur', name: 'Blur', type: 'blur', intensity: 0.5, fadeIn: 0.3, fadeOut: 0.3, duration: 3 },
   { key: 'brightness', name: 'Brightness', type: 'brightness', intensity: 0.3, fadeIn: 0.4, fadeOut: 0.4, duration: 5 }
 ];
@@ -356,20 +355,24 @@ export default function Editor({ project }) {
       }
     } else if (payload.kind === 'effect') {
       const base = payload.effect;
-      setEffects((prev) => [
-        ...prev,
-        {
+      setEffects((prev) => {
+        const next = {
           id: crypto.randomUUID(),
           name: base.name,
           type: base.type,
-          color: base.color,
           intensity: base.intensity ?? 0.5,
           startTime: dropTime,
           duration: base.duration ?? 5,
           fadeIn: base.fadeIn ?? 0,
           fadeOut: base.fadeOut ?? 0
+        };
+
+        if (base.color) {
+          next.color = base.color;
         }
-      ]);
+
+        return [...prev, next];
+      });
     } else if (payload.kind === 'text') {
       updateTextOverlays((prev) => [
         ...prev,
