@@ -107,6 +107,11 @@ class ProjectExportController extends Controller
         return str_replace("\n", '\\n', $escaped);
     }
 
+    protected function quoteFilterValue(string $value): string
+    {
+        return "'" . $this->escapeFilterValue($value) . "'";
+    }
+
     protected function ensureOutputDirectory(string $directory): void
     {
         if (!is_dir($directory)) {
@@ -584,7 +589,7 @@ class ProjectExportController extends Controller
                     $filters[] = sprintf('[%s]split[%s][%s]', $currentLabel, $baseLabel, $brightLabel);
                     $filters[] = sprintf('[%s]eq=brightness=%0.3f[%s]', $brightLabel, $brightness, $brightAppliedLabel);
 
-                    $alphaSegments = [sprintf('between(T,%0.3f,%0.3f)', $start, $end)];
+                    $alphaSegments = [sprintf('(gte(T,%0.3f)*lte(T,%0.3f))', $start, $end)];
                     if ($fadeIn > 0.0) {
                         $alphaSegments[] = sprintf('min(1,max(0,(T-%0.3f)/%0.3f))', $start, max($fadeIn, 0.001));
                     }
@@ -636,7 +641,7 @@ class ProjectExportController extends Controller
         $counter = 0;
         $fontPath = $this->resolveDefaultFontPath();
         $fontDirective = $fontPath
-            ? 'fontfile=' . $this->escapeFilterValue($fontPath)
+            ? 'fontfile=' . $this->quoteFilterValue($fontPath)
             : 'font=DejaVuSans';
 
         foreach ($textOverlays as $index => $overlay) {
@@ -657,7 +662,7 @@ class ProjectExportController extends Controller
                 continue;
             }
 
-            $safeText = $this->escapeFilterValue($text);
+            $quotedText = $this->quoteFilterValue($text);
             $color = ltrim((string) Arr::get($overlay, 'color', '#FCFFFC'), '#');
             if (!preg_match('/^[0-9a-fA-F]{6}$/', $color)) {
                 $color = 'FCFFFC';
@@ -716,7 +721,7 @@ class ProjectExportController extends Controller
 
             $nextLabel = 'v_text_' . $counter++;
             $drawtextOptions = [
-                'text=' . $safeText,
+                'text=' . $quotedText,
                 $fontDirective,
                 'fontcolor=0x' . strtoupper($color),
                 'fontsize=' . $fontSize,
