@@ -17,7 +17,8 @@ const TRANSITION_TYPES = [
 const getTransitionLabel = (type) => TRANSITION_TYPES.find((t) => t.value === type)?.label || 'Fade';
 
 export default function Editor({ project }) {
-  const PX_PER_SEC = 20;
+  const BASE_PX_PER_SEC = 20;
+  const MIN_TIMELINE_SECONDS = 12;
 
   const makeId = (prefix) => `${prefix}-${globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`}`;
 
@@ -124,7 +125,6 @@ export default function Editor({ project }) {
   const [selectedTransitionId, setSelectedTransitionId] = useState(null);
 
   const [currentTime, setCurrentTime] = useState(0);
-  const [globalDuration, setGlobalDuration] = useState(60);
 
   const videoRef = useRef(null);
   const audioRefs = useRef([]);
@@ -220,6 +220,8 @@ export default function Editor({ project }) {
   const [dragEffectState, setDragEffectState] = useState(null);
   const [dragTextState, setDragTextState] = useState(null);
   const [dragTextStageState, setDragTextStageState] = useState(null);
+  const timelineScrollRef = useRef(null);
+  const [timelineViewportWidth, setTimelineViewportWidth] = useState(0);
 
   const [newText, setNewText] = useState('New Text');
   const [newTextSize, setNewTextSize] = useState(32);
@@ -232,8 +234,67 @@ export default function Editor({ project }) {
     const musicDur = musicTracks.reduce((max, t) => Math.max(max, (t.startTime || 0) + (t.duration || 0)), 0);
     const effectDur = effects.reduce((max, fx) => Math.max(max, (fx.startTime || 0) + (fx.duration || 0)), 0);
     const textDur = textOverlays.reduce((max, tx) => Math.max(max, (tx.startTime || 0) + (tx.duration || 0)), 0);
-    return Math.max(clipDur, musicDur, effectDur, textDur, globalDuration);
-  }, [clipTotal, musicTracks, effects, textOverlays, globalDuration]);
+    return Math.max(clipDur, musicDur, effectDur, textDur);
+  }, [clipTotal, musicTracks, effects, textOverlays]);
+
+  const hasTimelineContent =
+    totalDuration > 0 || clips.length > 0 || musicTracks.length > 0 || effects.length > 0 || textOverlays.length > 0;
+  const timelineBaseDuration = hasTimelineContent ? 5 : MIN_TIMELINE_SECONDS;
+  const timelineDuration = Math.max(totalDuration, timelineBaseDuration);
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const measure = () => {
+      if (timelineScrollRef.current) {
+        setTimelineViewportWidth(timelineScrollRef.current.clientWidth || 0);
+      }
+    };
+
+    measure();
+    window.addEventListener('resize', measure);
+
+    return () => {
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !timelineScrollRef.current) return undefined;
+    const handle = window.requestAnimationFrame(() => {
+      setTimelineViewportWidth(timelineScrollRef.current?.clientWidth || 0);
+    });
+    return () => window.cancelAnimationFrame(handle);
+  }, [timelineDuration]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.ResizeObserver === 'undefined' || !timelineScrollRef.current) {
+      return undefined;
+    }
+    const observer = new window.ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect) {
+          setTimelineViewportWidth(entry.contentRect.width);
+        }
+      }
+    });
+    observer.observe(timelineScrollRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const pxPerSec = useMemo(() => {
+    if (!timelineDuration || !Number.isFinite(timelineDuration)) {
+      return BASE_PX_PER_SEC;
+    }
+    if (!timelineViewportWidth) {
+      return BASE_PX_PER_SEC;
+    }
+    const viewportBased = timelineViewportWidth / timelineDuration;
+    return Math.max(BASE_PX_PER_SEC, viewportBased);
+  }, [timelineDuration, timelineViewportWidth]);
+
+  const timelineWidth = timelineDuration * pxPerSec;
 
   const transitionLookup = useMemo(() => {
     const map = new Map();
@@ -283,7 +344,7 @@ export default function Editor({ project }) {
       origStartTime: track.startTime || 0,
       origDuration: track.duration || 0,
       sourceDuration: track.sourceDuration || track.duration || 0,
-      pxPerSec: PX_PER_SEC
+      pxPerSec
     });
   };
 
@@ -331,7 +392,10 @@ export default function Editor({ project }) {
 
     const rect = e.currentTarget.getBoundingClientRect();
     const dropX = e.clientX - rect.left + e.currentTarget.scrollLeft;
-    const dropTime = Math.max(0, Math.min(totalDuration, (dropX / (totalDuration * PX_PER_SEC)) * totalDuration));
+    const safeDuration = Math.max(timelineDuration, 1);
+    const safeWidth = safeDuration * pxPerSec;
+    const ratio = safeWidth > 0 ? dropX / safeWidth : 0;
+    const dropTime = Math.max(0, Math.min(safeDuration, ratio * safeDuration));
 
     if (payload.kind === 'media') {
       const file = payload.file;
@@ -573,7 +637,7 @@ export default function Editor({ project }) {
       origStartOffset: clip.startOffset || 0,
       origDuration: clip.duration || 0,
       sourceDuration: clip.sourceDuration || clip.duration || 0,
-      pxPerSec: PX_PER_SEC
+      pxPerSec
     });
   };
 
@@ -588,7 +652,7 @@ export default function Editor({ project }) {
       startX: e.clientX,
       origStartTime: fx.startTime || 0,
       origDuration: fx.duration || 0,
-      pxPerSec: PX_PER_SEC
+      pxPerSec
     });
   };
 
@@ -604,7 +668,7 @@ export default function Editor({ project }) {
       startX: e.clientX,
       origStart: fx.startTime || 0,
       duration: fx.duration || 0,
-      pxPerSec: PX_PER_SEC
+      pxPerSec
     });
   };
 
@@ -619,7 +683,7 @@ export default function Editor({ project }) {
       startX: e.clientX,
       origStartTime: tx.startTime || 0,
       origDuration: tx.duration || 0,
-      pxPerSec: PX_PER_SEC
+      pxPerSec
     });
   };
 
@@ -634,7 +698,7 @@ export default function Editor({ project }) {
       startX: e.clientX,
       origStart: tx.startTime || 0,
       duration: tx.duration || 0,
-      pxPerSec: PX_PER_SEC
+      pxPerSec
     });
   };
 
@@ -1104,17 +1168,20 @@ export default function Editor({ project }) {
     const video = videoRef.current;
     if (!video) return;
 
+    const safeDuration = Math.max(timelineDuration, 0);
+    const targetTime = Math.max(0, Math.min(newGlobalTime, safeDuration));
+
     let newIndex = null;
     for (let i = 0; i < clips.length; i++) {
       const clipStart = clips[i].startTime || 0;
       const clipEnd = clipStart + (clips[i].duration || 0);
-      if (newGlobalTime >= clipStart && newGlobalTime < clipEnd) { newIndex = i; break; }
+      if (targetTime >= clipStart && targetTime < clipEnd) { newIndex = i; break; }
     }
 
     const seg = newIndex !== null ? clips[newIndex] : null;
 
     if (seg) {
-      const segRelative = Math.max(0, newGlobalTime - (seg.startTime || 0));
+      const segRelative = Math.max(0, targetTime - (seg.startTime || 0));
       const seekTimeInSource = (seg.startOffset || 0) + segRelative;
       setActiveClipIndex(newIndex);
       video.src = seg.source;
@@ -1127,10 +1194,10 @@ export default function Editor({ project }) {
       video.load();
     }
 
-    setCurrentTime(newGlobalTime);
+    setCurrentTime(targetTime);
     const wrapper = video.parentElement;
-    if (wrapper) wrapper.style.filter = computeFilterForTime(newGlobalTime);
-    applyTransitionVisuals(newGlobalTime, newIndex);
+    if (wrapper) wrapper.style.filter = computeFilterForTime(targetTime);
+    applyTransitionVisuals(targetTime, newIndex);
 
     musicTracks.forEach((track, i) => {
       const audio = audioRefs.current[i];
@@ -1138,8 +1205,8 @@ export default function Editor({ project }) {
       const start = track.startTime || 0;
       const dur = track.duration || 0;
       const off = track.startOffset || 0;
-      if (newGlobalTime >= start && newGlobalTime <= start + dur) {
-        const rel = newGlobalTime - start;
+      if (targetTime >= start && targetTime <= start + dur) {
+        const rel = targetTime - start;
         audio.currentTime = off + rel;
         if (keepPlaying) audio.play().catch(() => {});
       } else {
@@ -1153,8 +1220,10 @@ export default function Editor({ project }) {
     const scrollLeft = scroller ? scroller.scrollLeft : 0;
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left + scrollLeft;
-    const fullWidth = totalDuration * PX_PER_SEC;
-    return Math.max(0, Math.min(totalDuration, (clickX / fullWidth) * totalDuration));
+    const fullWidth = Math.max(timelineWidth, 1);
+    const ratio = fullWidth > 0 ? clickX / fullWidth : 0;
+    const rawTime = ratio * timelineDuration;
+    return Math.max(0, Math.min(timelineDuration, rawTime));
   };
 
   const handleSeekMouseDownCapture = (e) => {
@@ -1186,7 +1255,7 @@ export default function Editor({ project }) {
       if (k === 'arrowright' || k === 'l') {
         e.preventDefault();
         const wasPlaying = videoRef.current && !videoRef.current.paused;
-        seekTo(Math.min(totalDuration, currentTime + 1), wasPlaying);
+        seekTo(Math.min(timelineDuration, currentTime + 1), wasPlaying);
       }
 
       if ((k === 'backspace' || k === 'delete') && selectedClipIndex !== null) {
@@ -1515,16 +1584,20 @@ export default function Editor({ project }) {
               <button className="play-btn" onClick={togglePlay}>Play / Pause</button>
             </div>
 
-            <div className="timeline-scroll" onClick={(e) => e.stopPropagation()}>
+            <div
+              ref={timelineScrollRef}
+              className="timeline-scroll"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div
                 className="effects-timeline"
                 onMouseDownCapture={handleSeekMouseDownCapture}
                 onClick={() => clearSelection()}
               >
-                <div className="lane" style={{ width: `${totalDuration * PX_PER_SEC}px` }}>
+                <div className="lane" style={{ width: `${timelineWidth}px` }}>
                   {effects.map((fx, index) => {
-                    const width = Math.max(2, (fx.duration || 0) * PX_PER_SEC);
-                    const left = Math.max(0, (fx.startTime || 0) * PX_PER_SEC);
+                    const width = Math.max(2, (fx.duration || 0) * pxPerSec);
+                    const left = Math.max(0, (fx.startTime || 0) * pxPerSec);
                     const isSelected = selectedEffectIndex === index;
                     return (
                       <div
@@ -1559,7 +1632,7 @@ export default function Editor({ project }) {
                       </div>
                     );
                   })}
-                  <div className="playhead" style={{ left: `${currentTime * PX_PER_SEC}px` }} />
+                  <div className="playhead" style={{ left: `${currentTime * pxPerSec}px` }} />
                 </div>
               </div>
 
@@ -1568,10 +1641,10 @@ export default function Editor({ project }) {
                 onMouseDownCapture={handleSeekMouseDownCapture}
                 onClick={() => clearSelection()}
               >
-                <div className="lane" style={{ width: `${totalDuration * PX_PER_SEC}px` }}>
+                <div className="lane" style={{ width: `${timelineWidth}px` }}>
                   {textOverlays.map((tx, index) => {
-                    const width = Math.max(2, (tx.duration || 0) * PX_PER_SEC);
-                    const left = Math.max(0, (tx.startTime || 0) * PX_PER_SEC);
+                    const width = Math.max(2, (tx.duration || 0) * pxPerSec);
+                    const left = Math.max(0, (tx.startTime || 0) * pxPerSec);
                     const isSelected = selectedTextIndex === index;
                     return (
                       <div
@@ -1591,7 +1664,7 @@ export default function Editor({ project }) {
                       </div>
                     );
                   })}
-                  <div className="playhead" style={{ left: `${currentTime * PX_PER_SEC}px` }} />
+                  <div className="playhead" style={{ left: `${currentTime * pxPerSec}px` }} />
                 </div>
               </div>
 
@@ -1600,9 +1673,9 @@ export default function Editor({ project }) {
                 onMouseDownCapture={handleSeekMouseDownCapture}
                 onClick={() => clearSelection()}
               >
-                <div className="lane" style={{ width: `${totalDuration * PX_PER_SEC}px` }}>
+                <div className="lane" style={{ width: `${timelineWidth}px` }}>
                   {clips.map((clip, index) => {
-                    const width = Math.max(2, (clip.duration || 0) * PX_PER_SEC);
+                    const width = Math.max(2, (clip.duration || 0) * pxPerSec);
                     const isSelected = selectedClipIndex === index;
                     return (
                       <div
@@ -1634,8 +1707,8 @@ export default function Editor({ project }) {
                     if (transition) {
                       const safeDuration = Number(transition.duration || 0);
                       const startTime = Math.max(0, seamTime - safeDuration);
-                      const width = Math.max(18, safeDuration * PX_PER_SEC);
-                      const left = Math.max(0, startTime * PX_PER_SEC);
+                      const width = Math.max(18, safeDuration * pxPerSec);
+                      const left = Math.max(0, startTime * pxPerSec);
                       const isSelected = selectedTransitionId === transition.id;
                       const durationLabel = safeDuration.toFixed(1);
                       return (
@@ -1654,7 +1727,7 @@ export default function Editor({ project }) {
 
                     const canAdd = (clip.duration || 0) > 0 && (nextClip.duration || 0) > 0;
                     if (!canAdd) return null;
-                    const buttonLeft = Math.max(0, seamTime * PX_PER_SEC);
+                    const buttonLeft = Math.max(0, seamTime * pxPerSec);
                     return (
                       <button
                         key={`add-transition-${clip._localId}`}
@@ -1667,7 +1740,7 @@ export default function Editor({ project }) {
                       </button>
                     );
                   })}
-                  <div className="playhead" style={{ left: `${currentTime * PX_PER_SEC}px` }} />
+                  <div className="playhead" style={{ left: `${currentTime * pxPerSec}px` }} />
                 </div>
               </div>
 
@@ -1676,10 +1749,10 @@ export default function Editor({ project }) {
                 onMouseDownCapture={handleSeekMouseDownCapture}
                 onClick={() => clearSelection()}
               >
-                <div className="lane" style={{ width: `${totalDuration * PX_PER_SEC}px` }}>
+                <div className="lane" style={{ width: `${timelineWidth}px` }}>
                   {musicTracks.map((track, index) => {
-                    const width = Math.max(2, (track.duration || 0) * PX_PER_SEC);
-                    const left = Math.max(0, (track.startTime || 0) * PX_PER_SEC);
+                    const width = Math.max(2, (track.duration || 0) * pxPerSec);
+                    const left = Math.max(0, (track.startTime || 0) * pxPerSec);
                     const isSelected = selectedMusicIndex === index;
                     return (
                       <div
@@ -1703,7 +1776,7 @@ export default function Editor({ project }) {
                       </div>
                     );
                   })}
-                  <div className="playhead" style={{ left: `${currentTime * PX_PER_SEC}px` }} />
+                  <div className="playhead" style={{ left: `${currentTime * pxPerSec}px` }} />
                 </div>
               </div>
             </div>
