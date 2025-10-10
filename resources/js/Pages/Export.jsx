@@ -256,7 +256,6 @@ export default function Export({ project, exportWindow }) {
             <strong>MP4 Video</strong> — a rendered export of your timeline, ready to share or archive.
             </li>
             <li>
-              <strong>README.txt</strong> — instructions for restoring your project elsewhere.
               <strong>Clips &amp; Audio</strong> — combined in the exported video based on your project timeline.
             </li>
           </ul>

@@ -1,27 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head } from '@inertiajs/react';
 import '@/../css/formatchanger.css';
 
-const formatOptions = {
-  video: [
-    { value: 'mp4', label: 'MP4 (H.264)' },
-    { value: 'mov', label: 'MOV (Apple QuickTime)' },
-    { value: 'webm', label: 'WEBM (Web Ready)' },
-    { value: 'gif', label: 'GIF (Animated)' }
-  ],
-  audio: [
-    { value: 'mp3', label: 'MP3 (Compressed)' },
-    { value: 'wav', label: 'WAV (Lossless)' },
-    { value: 'aac', label: 'AAC (Apple)' },
-    { value: 'flac', label: 'FLAC (Hi-Res)' }
-  ],
-  image: [
-    { value: 'jpg', label: 'JPG (Compressed)' },
-    { value: 'png', label: 'PNG (Transparent)' },
-    { value: 'webp', label: 'WEBP (Modern Web)' },
-    { value: 'tiff', label: 'TIFF (Lossless)' }
-  ]
+const TARGET_FORMATS = {
+  video: { value: 'mp4', label: 'MP4 (H.264)' },
+  audio: { value: 'mp3', label: 'MP3 (Compressed)' },
 };
 
 export default function FormatChanger() {
@@ -38,13 +22,10 @@ export default function FormatChanger() {
 
   const MAX_MB = 500;
 
-  const availableFormats = useMemo(() => (category ? formatOptions[category] : []), [category]);
-
   const detectCategory = (file) => {
     if (!file) return null;
     if (file.type.startsWith('video/')) return 'video';
     if (file.type.startsWith('audio/')) return 'audio';
-    if (file.type.startsWith('image/')) return 'image';
     return null;
   };
 
@@ -69,11 +50,11 @@ export default function FormatChanger() {
     }
     const detected = detectCategory(file);
     if (!detected) {
-      setError('Unsupported file type');
+      setError('Unsupported file type. Please choose an audio or video file.');
       return;
     }
     setCategory(detected);
-    setTargetFormat(formatOptions[detected][0].value);
+    setTargetFormat(TARGET_FORMATS[detected].value);
     setSelectedFile(file);
     setPreviewUrl((u) => {
       if (u) URL.revokeObjectURL(u);
@@ -108,10 +89,19 @@ export default function FormatChanger() {
       const convertedName = originalName.includes('.')
         ? `${originalName.split('.').slice(0, -1).join('.')}.${targetFormat}`
         : `${originalName}.${targetFormat}`;
+      const formatMeta = TARGET_FORMATS[category];
       const blob = new Blob([`Converted content of ${originalName}`], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       setHistory((prev) => [
-        { id: Date.now(), original: originalName, converted: convertedName, format: targetFormat, category, url },
+        {
+          id: Date.now(),
+          original: originalName,
+          converted: convertedName,
+          format: targetFormat,
+          formatLabel: formatMeta?.label ?? targetFormat.toUpperCase(),
+          category,
+          url,
+        },
         ...prev
       ].slice(0, 5));
       setToastMsg('Conversion complete');
@@ -177,7 +167,7 @@ export default function FormatChanger() {
                       type="file"
                       onChange={handleInputChange}
                       className="hidden"
-                      accept="video/*,audio/*,image/*"
+                      accept="video/*,audio/*"
                     />
                     <label htmlFor="format-changer-input" className="fc-browse">Click to choose a file</label>
                     <p id="upload-hint" className="fc-upload-sub">or drag & drop it here</p>
@@ -192,11 +182,6 @@ export default function FormatChanger() {
                           <span>{fileSizeMB} MB</span>
                           <span>{selectedFile.type || 'Unknown type'}</span>
                         </div>
-                        {previewUrl && category === 'image' && (
-                          <div className="fc-preview">
-                            <img src={previewUrl} alt="" />
-                          </div>
-                        )}
                       </div>
                     ) : (
                       <p className="fc-empty-hint">No file selected yet.</p>
@@ -205,19 +190,9 @@ export default function FormatChanger() {
                   </div>
                 </div>
                 {category && (
-                  <div>
-                    <label className="fc-label">
-                      <span>Target format</span>
-                      <select
-                        value={targetFormat}
-                        onChange={(e) => setTargetFormat(e.target.value)}
-                        className="fc-input"
-                      >
-                        {availableFormats.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </label>
+                  <div className="fc-output-format">
+                    <span className="fc-label-text">Target format</span>
+                    <div className="fc-output-chip">{TARGET_FORMATS[category].label}</div>
                   </div>
                 )}
                 {loading && (
@@ -241,7 +216,7 @@ export default function FormatChanger() {
                   <li key={item.id} className="fc-history-item">
                     <div className="fc-history-main">
                       <p className="fc-history-name">{item.converted}</p>
-                      <p className="fc-history-sub">from {item.original} · {item.category.toUpperCase()} → {item.format.toUpperCase()}</p>
+                      <p className="fc-history-sub">from {item.original} · {item.category.toUpperCase()} → {item.formatLabel}</p>
                     </div>
                     <a href={item.url} download={item.converted} className="fc-button fc-button-small">Download</a>
                   </li>

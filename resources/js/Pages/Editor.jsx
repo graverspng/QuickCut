@@ -3,6 +3,49 @@ import { Head, Link, router } from '@inertiajs/react';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import '@/../css/Editor.css';
 
+const DEFAULT_IMAGE_CLIP_DURATION = 5;
+
+const ensurePngExtension = (name = '') => {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.png')) return name;
+  const dot = name.lastIndexOf('.');
+  const base = dot > 0 ? name.slice(0, dot) : name || 'image';
+  return `${base}.png`;
+};
+
+const ensurePngDataUrl = (file, dataUrl) =>
+  new Promise((resolve) => {
+    const isImage = file?.type?.startsWith('image/');
+    if (!isImage) {
+      resolve({ dataUrl, mime: file?.type || '' });
+      return;
+    }
+    const alreadyPng = file.type === 'image/png' && typeof dataUrl === 'string' && dataUrl.startsWith('data:image/png');
+    if (alreadyPng) {
+      resolve({ dataUrl, mime: 'image/png' });
+      return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width || 1;
+        canvas.height = img.height || 1;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Canvas context unavailable');
+        ctx.drawImage(img, 0, 0);
+        const pngUrl = canvas.toDataURL('image/png');
+        resolve({ dataUrl: pngUrl, mime: 'image/png' });
+      } catch (_) {
+        resolve({ dataUrl, mime: 'image/png' });
+      }
+    };
+    img.onerror = () => resolve({ dataUrl, mime: 'image/png' });
+    img.src = typeof dataUrl === 'string' ? dataUrl : '';
+  });
+
 const EFFECT_PRESETS = [
   { key: 'blur', name: 'Blur', type: 'blur', intensity: 0.5, fadeIn: 0.3, fadeOut: 0.3, duration: 3 },
   { key: 'brightness', name: 'Brightness', type: 'brightness', intensity: 0.3, fadeIn: 0.4, fadeOut: 0.4, duration: 5 }
@@ -127,27 +170,68 @@ export default function Editor({ project }) {
   const [currentTime, setCurrentTime] = useState(0);
 
   const videoRef = useRef(null);
+  const imageRef = useRef(null);
   const audioRefs = useRef([]);
   const stageRef = useRef(null);
   const transitionOverlayRef = useRef(null);
+  const manualPlaybackRef = useRef(null);
+  const seekToRef = useRef(null);
 
   const applyStageDimensions = useCallback((overlays) => {
     const stageRect = stageRef.current?.getBoundingClientRect();
-    const videoRect = videoRef.current?.getBoundingClientRect();
+    let mediaRect = null;
+    if (videoRef.current?.getBoundingClientRect) {
+      const rect = videoRef.current.getBoundingClientRect();
+      if (rect && rect.width && rect.height) mediaRect = rect;
+    }
+    if (!mediaRect && imageRef.current?.getBoundingClientRect) {
+      const rect = imageRef.current.getBoundingClientRect();
+      if (rect && rect.width && rect.height) mediaRect = rect;
+    }
 
     if (!stageRect || !Array.isArray(overlays)) return overlays;
 
     const stageWidth = stageRect.width || 1;
     const stageHeight = stageRect.height || 1;
-    const videoWidth = Math.max(1, videoRect?.width || stageWidth);
-    const videoHeight = Math.max(1, videoRect?.height || stageHeight);
-    const videoOffsetX = videoRect ? videoRect.left - stageRect.left : 0;
-    const videoOffsetY = videoRect ? videoRect.top - stageRect.top : 0;
+    const videoWidth = Math.max(1, mediaRect?.width || stageWidth);
+    const videoHeight = Math.max(1, mediaRect?.height || stageHeight);
+    const videoOffsetX = mediaRect ? mediaRect.left - stageRect.left : 0;
+    const videoOffsetY = mediaRect ? mediaRect.top - stageRect.top : 0;
 
     return overlays.map((overlay) => {
       if (!overlay || typeof overlay !== 'object') {
         return overlay;
       }
+
+      const clampPercent = (value, fallback = 50) => {
+        const num = Number.isFinite(value) ? value : fallback;
+        return Math.max(0, Math.min(100, num));
+      };
+
+      const fallbackVideoPercentX = clampPercent(Number.isFinite(overlay.x) ? overlay.x : 50, 50);
+      const fallbackVideoPercentY = clampPercent(Number.isFinite(overlay.y) ? overlay.y : 50, 50);
+
+      const stagePercentXRaw = Number.isFinite(overlay.stagePercentX) ? overlay.stagePercentX : null;
+      const stagePercentYRaw = Number.isFinite(overlay.stagePercentY) ? overlay.stagePercentY : null;
+
+      const stagePosX = stagePercentXRaw != null
+        ? (stagePercentXRaw / 100) * stageWidth
+        : ((fallbackVideoPercentX / 100) * Math.max(1, videoWidth)) + videoOffsetX;
+      const stagePosY = stagePercentYRaw != null
+        ? (stagePercentYRaw / 100) * stageHeight
+        : ((fallbackVideoPercentY / 100) * Math.max(1, videoHeight)) + videoOffsetY;
+
+      const stagePercentX = clampPercent((stagePosX / Math.max(1, stageWidth)) * 100, fallbackVideoPercentX);
+      const stagePercentY = clampPercent((stagePosY / Math.max(1, stageHeight)) * 100, fallbackVideoPercentY);
+
+      const videoPercentX = clampPercent(
+        ((stagePosX - videoOffsetX) / Math.max(1, videoWidth)) * 100,
+        fallbackVideoPercentX
+      );
+      const videoPercentY = clampPercent(
+        ((stagePosY - videoOffsetY) / Math.max(1, videoHeight)) * 100,
+        fallbackVideoPercentY
+      );
 
       const unchanged =
         overlay.canvasWidth === stageWidth &&
@@ -155,7 +239,11 @@ export default function Editor({ project }) {
         overlay.displayVideoWidth === videoWidth &&
         overlay.displayVideoHeight === videoHeight &&
         overlay.displayVideoOffsetX === videoOffsetX &&
-        overlay.displayVideoOffsetY === videoOffsetY;
+        overlay.displayVideoOffsetY === videoOffsetY &&
+        overlay.x === videoPercentX &&
+        overlay.y === videoPercentY &&
+        overlay.stagePercentX === stagePercentX &&
+        overlay.stagePercentY === stagePercentY;
 
       if (unchanged) {
         return overlay;
@@ -163,6 +251,10 @@ export default function Editor({ project }) {
 
       return {
         ...overlay,
+        x: videoPercentX,
+        y: videoPercentY,
+        stagePercentX,
+        stagePercentY,
         canvasWidth: stageWidth,
         canvasHeight: stageHeight,
         displayVideoWidth: videoWidth,
@@ -171,6 +263,59 @@ export default function Editor({ project }) {
         displayVideoOffsetY: videoOffsetY,
       };
     });
+  }, []);
+
+  const resolveOverlayGeometry = useCallback((overlay) => {
+    if (!overlay || typeof overlay !== 'object') return null;
+    const fallbackStageWidth = stageRef.current?.clientWidth || 1;
+    const fallbackStageHeight = stageRef.current?.clientHeight || 1;
+    const stageWidth =
+      Number.isFinite(overlay.canvasWidth) && overlay.canvasWidth > 0 ? overlay.canvasWidth : fallbackStageWidth;
+    const stageHeight =
+      Number.isFinite(overlay.canvasHeight) && overlay.canvasHeight > 0 ? overlay.canvasHeight : fallbackStageHeight;
+    const videoWidth =
+      Number.isFinite(overlay.displayVideoWidth) && overlay.displayVideoWidth > 0
+        ? overlay.displayVideoWidth
+        : stageWidth;
+    const videoHeight =
+      Number.isFinite(overlay.displayVideoHeight) && overlay.displayVideoHeight > 0
+        ? overlay.displayVideoHeight
+        : stageHeight;
+    const offsetX =
+      Number.isFinite(overlay.displayVideoOffsetX) && overlay.displayVideoOffsetX >= 0
+        ? overlay.displayVideoOffsetX
+        : Math.max(0, (stageWidth - videoWidth) / 2);
+    const offsetY =
+      Number.isFinite(overlay.displayVideoOffsetY) && overlay.displayVideoOffsetY >= 0
+        ? overlay.displayVideoOffsetY
+        : Math.max(0, (stageHeight - videoHeight) / 2);
+    const clampPercent = (value, fallback = 50) => {
+      const num = Number.isFinite(value) ? value : fallback;
+      return Math.max(0, Math.min(100, num));
+    };
+    const videoPercentX = clampPercent(overlay.x, 50);
+    const videoPercentY = clampPercent(overlay.y, 50);
+    let stagePercentX = Number.isFinite(overlay.stagePercentX) ? overlay.stagePercentX : null;
+    let stagePercentY = Number.isFinite(overlay.stagePercentY) ? overlay.stagePercentY : null;
+    const stageX = stagePercentX != null ? (stagePercentX / 100) * stageWidth : offsetX + (videoWidth * videoPercentX) / 100;
+    const stageY = stagePercentY != null ? (stagePercentY / 100) * stageHeight : offsetY + (videoHeight * videoPercentY) / 100;
+    const normalizedStagePercentX = (stageX / Math.max(1, stageWidth)) * 100;
+    const normalizedStagePercentY = (stageY / Math.max(1, stageHeight)) * 100;
+
+    return {
+      stageWidth,
+      stageHeight,
+      videoWidth: Math.max(1, videoWidth),
+      videoHeight: Math.max(1, videoHeight),
+      offsetX,
+      offsetY,
+      videoPercentX,
+      videoPercentY,
+      stagePercentX: clampPercent(normalizedStagePercentX, 50),
+      stagePercentY: clampPercent(normalizedStagePercentY, 50),
+      stageX,
+      stageY,
+    };
   }, []);
 
   const updateTextOverlays = useCallback((updater) => {
@@ -306,6 +451,9 @@ export default function Editor({ project }) {
   return map;
 }, [transitions]);
 
+  const activeClip = activeClipIndex != null ? clips[activeClipIndex] : null;
+  const activeClipIsImage = activeClip?.type === 'image';
+
   const clearSelection = () => {
     setSelectedClipIndex(null);
     setSelectedMusicIndex(null);
@@ -326,9 +474,31 @@ export default function Editor({ project }) {
   };
 
   const togglePlay = () => {
-    if (!videoRef.current) return;
-    if (videoRef.current.paused) videoRef.current.play();
-    else videoRef.current.pause();
+    const clip = activeClipIndex != null ? clips[activeClipIndex] : null;
+    if (clip?.type === 'image') {
+      if (manualPlaybackRef.current) {
+        stopManualPlayback({ syncAudio: true });
+      } else {
+        startManualPlayback(currentTime);
+      }
+      return;
+    }
+
+    const video = videoRef.current;
+    if (!video) return;
+    if (manualPlaybackRef.current) {
+      stopManualPlayback({ syncAudio: false });
+    }
+    if (video.paused) {
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
+  };
+
+  const isTimelinePlaying = () => {
+    const video = videoRef.current;
+    return (video && !video.paused) || Boolean(manualPlaybackRef.current);
   };
 
   const startMusicResize = (e, index, edge) => {
@@ -358,19 +528,35 @@ export default function Editor({ project }) {
           new Promise((resolve) => {
             const reader = new FileReader();
             const key = `local-${globalThis.crypto?.randomUUID?.() || Date.now()}`;
-            reader.onload = () => {
-              const dataUrl = reader.result;
-              try { localStorage.setItem(key, dataUrl); } catch (_) {}
+            reader.onload = async () => {
+              const rawDataUrl = typeof reader.result === 'string' ? reader.result : '';
+              const isAudio = (file.type || '').startsWith('audio/');
+              const isImage = (file.type || '').startsWith('image/');
+
+              let finalSource = rawDataUrl;
+              let finalMime = file.type || '';
+              let finalName = file.name || 'asset';
+
+              if (isImage && rawDataUrl) {
+                const conversion = await ensurePngDataUrl(file, rawDataUrl);
+                finalSource = conversion.dataUrl || rawDataUrl;
+                finalMime = conversion.mime || 'image/png';
+                finalName = ensurePngExtension(file.name || 'image');
+              }
+
+              try { localStorage.setItem(key, finalSource); } catch (_) {}
+
               resolve({
-                name: file.name,
-                source: dataUrl,
+                name: finalName,
+                source: finalSource,
                 storageKey: key,
-                duration: 0,
-                type: file.type.startsWith('audio/') ? 'audio' : 'video',
+                duration: isImage ? DEFAULT_IMAGE_CLIP_DURATION : 0,
+                type: isAudio ? 'audio' : isImage ? 'image' : 'video',
                 startOffset: 0,
                 startTime: 0,
-                sourceDuration: 0,
-                autoClamped: file.type.startsWith('audio/')
+                sourceDuration: isImage ? DEFAULT_IMAGE_CLIP_DURATION : 0,
+                autoClamped: isAudio,
+                mime: finalMime,
               });
             };
             reader.readAsDataURL(file);
@@ -416,6 +602,24 @@ export default function Editor({ project }) {
           ...prev,
           { ...file, startTime: 0, startOffset: 0, duration: 0 }
         ]);
+      } else if (file.type === 'image') {
+        setClips((prev) => {
+          const baseDuration = file.duration && file.duration > 0 ? file.duration : DEFAULT_IMAGE_CLIP_DURATION;
+          const startTime = prev.reduce((sum, c) => sum + (c.duration || 0), 0);
+          const newClips = normalizeClipsLocal([
+            ...prev,
+            {
+              ...file,
+              startOffset: 0,
+              startTime,
+              duration: baseDuration,
+              sourceDuration: Number.isFinite(file.sourceDuration) && file.sourceDuration > 0 ? file.sourceDuration : null,
+              type: 'image',
+            }
+          ]);
+          if (prev.length === 0) setActiveClipIndex(0);
+          return newClips;
+        });
       }
     } else if (payload.kind === 'effect') {
       const base = payload.effect;
@@ -440,7 +644,18 @@ export default function Editor({ project }) {
     } else if (payload.kind === 'text') {
       updateTextOverlays((prev) => [
         ...prev,
-        { id: crypto.randomUUID(), content: newText || 'New Text', startTime: dropTime, duration: 5, x: 50, y: 50, color: newTextColor, fontSize: newTextSize }
+        {
+          id: crypto.randomUUID(),
+          content: newText || 'New Text',
+          startTime: dropTime,
+          duration: 5,
+          x: 50,
+          y: 50,
+          stagePercentX: 50,
+          stagePercentY: 50,
+          color: newTextColor,
+          fontSize: newTextSize
+        }
       ]);
     }
   };
@@ -482,7 +697,7 @@ export default function Editor({ project }) {
   };
 
   const handleCut = () => {
-    const wasPlaying = videoRef.current && !videoRef.current.paused;
+    const wasPlaying = isTimelinePlaying();
 
     if (selectedClipIndex !== null) {
       const targetIndex = selectedClipIndex;
@@ -636,7 +851,7 @@ export default function Editor({ project }) {
       startX: e.clientX,
       origStartOffset: clip.startOffset || 0,
       origDuration: clip.duration || 0,
-      sourceDuration: clip.sourceDuration || clip.duration || 0,
+      sourceDuration: clip.type === 'image' ? Infinity : clip.sourceDuration || clip.duration || 0,
       pxPerSec
     });
   };
@@ -815,6 +1030,17 @@ export default function Editor({ project }) {
 
   useEffect(() => {
     clips.forEach((clip, i) => {
+      if (!clip || clip.type === 'image') {
+        if (clip?.type === 'image' && (!clip.duration || clip.duration <= 0)) {
+          setClips((prev) => {
+            const list = [...prev];
+            const updated = { ...list[i], duration: DEFAULT_IMAGE_CLIP_DURATION };
+            list[i] = updated;
+            return normalizeClipsLocal(list);
+          });
+        }
+        return;
+      }
       if (!clip.source) return;
       if (!clip.sourceDuration || !clip.duration) {
         const vid = document.createElement('video');
@@ -896,7 +1122,7 @@ export default function Editor({ project }) {
     };
     const onUp = () => {
       setResizeMusicState(null);
-      const wasPlaying = videoRef.current && !videoRef.current.paused;
+      const wasPlaying = isTimelinePlaying();
       seekTo(currentTime, wasPlaying);
     };
     window.addEventListener('mousemove', onMove);
@@ -932,7 +1158,7 @@ export default function Editor({ project }) {
     };
     const onUp = () => {
       setResizeState(null);
-      const wasPlaying = videoRef.current && !videoRef.current.paused;
+      const wasPlaying = isTimelinePlaying();
       seekTo(currentTime, wasPlaying);
     };
     window.addEventListener('mousemove', onMove);
@@ -965,7 +1191,7 @@ export default function Editor({ project }) {
     };
     const onUp = () => {
       setResizeEffectState(null);
-      const wasPlaying = videoRef.current && !videoRef.current.paused;
+      const wasPlaying = isTimelinePlaying();
       seekTo(currentTime, wasPlaying);
     };
     window.addEventListener('mousemove', onMove);
@@ -1086,75 +1312,154 @@ export default function Editor({ project }) {
     return filters.join(' ');
   };
 
-  useEffect(() => {
+  const findClipIndexAtTime = useCallback((time) => {
+    if (!Array.isArray(clips) || clips.length === 0) return null;
+    for (let i = 0; i < clips.length; i++) {
+      const clip = clips[i];
+      if (!clip) continue;
+      const clipStart = clip.startTime || 0;
+      const clipEnd = clipStart + (clip.duration || 0);
+      if (time >= clipStart && time < clipEnd) {
+        return i;
+      }
+    }
+    const lastClip = clips[clips.length - 1];
+    if (lastClip) {
+      const lastEnd = (lastClip.startTime || 0) + (lastClip.duration || 0);
+      if (time >= lastEnd) return clips.length - 1;
+    }
+    return null;
+  }, [clips]);
+
+  const syncVisuals = useCallback((globalTime) => {
     const video = videoRef.current;
-    if (!video) return;
-
-    const onTimeUpdate = () => {
-      const seg = clips[activeClipIndex];
-      let globalTime = 0;
-      if (seg) {
-        const segStartTime = seg.startTime || 0;
-        globalTime = segStartTime + (video.currentTime - (seg.startOffset || 0));
-      } else {
-        globalTime = video.currentTime || 0;
-      }
-      setCurrentTime(globalTime);
-
+    if (video) {
       const wrapper = video.parentElement;
-      if (wrapper) wrapper.style.filter = seg ? computeFilterForTime(globalTime) : '';
-      applyTransitionVisuals(globalTime, activeClipIndex);
+      if (wrapper) wrapper.style.filter = computeFilterForTime(globalTime);
+    }
+    const clipIndex = findClipIndexAtTime(globalTime);
+    applyTransitionVisuals(globalTime, clipIndex != null ? clipIndex : -1);
+  }, [computeFilterForTime, applyTransitionVisuals, findClipIndexAtTime]);
 
-      if (seg && (video.currentTime || 0) >= (seg.startOffset || 0) + (seg.duration || 0) - 0.05) {
-        if (activeClipIndex < clips.length - 1) {
-          setActiveClipIndex((p) => p + 1);
-        } else {
-          const musicStillPlaying = musicTracks.some((track) => {
-            const end = (track.startTime || 0) + (track.duration || 0);
-            return globalTime < end;
-          });
-
-          if (!musicStillPlaying) {
-            video.pause();
-            setActiveClipIndex(0);
-            setCurrentTime(0);
-            const wrap2 = video.parentElement;
-            if (wrap2) wrap2.style.filter = '';
-            audioRefs.current.forEach((a) => { if (a) { a.pause(); a.currentTime = 0; } });
-          } else {
-            try {
-              video.pause();
-              if (video.duration && !isNaN(video.duration)) video.currentTime = Math.max(0, video.duration - 0.05);
-            } catch {}
-          }
-        }
-      }
-
+  const syncAudio = useCallback(
+    (globalTime, shouldPlay) => {
       musicTracks.forEach((track, i) => {
         const audio = audioRefs.current[i];
         if (!audio) return;
         const trackStart = track.startTime || 0;
-        const trackDur = track.duration || 0;
+        const trackDuration = track.duration || 0;
+        const trackEnd = trackStart + trackDuration;
         const trackOffset = track.startOffset || 0;
 
-        if (globalTime >= trackStart && globalTime <= trackStart + trackDur) {
+        if (globalTime >= trackStart && globalTime <= trackEnd) {
           const rel = globalTime - trackStart;
           const desired = trackOffset + rel;
-          if (Math.abs((audio.currentTime || 0) - desired) > 0.25) audio.currentTime = desired;
-          if (!video.paused && audio.paused) audio.play().catch(() => {});
-          if (video.paused && !audio.paused) audio.pause();
+          if (Math.abs((audio.currentTime || 0) - desired) > 0.25) {
+            try { audio.currentTime = desired; } catch (_) {}
+          }
+          if (shouldPlay) {
+            if (audio.paused) audio.play().catch(() => {});
+          } else if (!audio.paused) {
+            audio.pause();
+          }
         } else if (globalTime < trackStart) {
-          audio.pause();
-          audio.currentTime = track.startOffset || 0;
+          if (!audio.paused) audio.pause();
+          try { audio.currentTime = trackOffset; } catch (_) {}
         } else {
-          audio.pause();
+          if (!audio.paused) audio.pause();
         }
       });
-    };
+    },
+    [musicTracks]
+  );
 
-    video.addEventListener('timeupdate', onTimeUpdate);
-    return () => video.removeEventListener('timeupdate', onTimeUpdate);
-  }, [clips, activeClipIndex, musicTracks, effects, applyTransitionVisuals]);
+  const stopManualPlayback = useCallback(
+    (options = {}) => {
+      const { syncAudio: shouldSyncAudio = true, globalTime } = options;
+      const state = manualPlaybackRef.current;
+      if (state?.frameId) {
+        cancelAnimationFrame(state.frameId);
+      }
+      manualPlaybackRef.current = null;
+      if (shouldSyncAudio) {
+        syncAudio(globalTime != null ? globalTime : currentTime, false);
+      }
+    },
+    [currentTime, syncAudio]
+  );
+
+  const startManualPlayback = useCallback(
+    (anchorTime = null) => {
+      const targetTime = anchorTime != null ? anchorTime : currentTime;
+      const clipIndex = findClipIndexAtTime(targetTime) ?? activeClipIndex ?? 0;
+      const clip = clipIndex != null ? clips[clipIndex] : null;
+      if (!clip || clip.type !== 'image') return;
+
+      stopManualPlayback({ syncAudio: false });
+
+      const initialState = {
+        anchorTime: targetTime,
+        anchorTimestamp: performance.now(),
+        clipIndex,
+        frameId: null,
+      };
+
+      const step = (timestamp) => {
+        const state = manualPlaybackRef.current;
+        if (!state) return;
+        const active = clips[state.clipIndex];
+        if (!active || active.type !== 'image') {
+          stopManualPlayback({ syncAudio: true });
+          return;
+        }
+
+        const elapsed = (timestamp - state.anchorTimestamp) / 1000;
+        let newTime = state.anchorTime + elapsed;
+        const clipStart = active.startTime || 0;
+        const clipEnd = clipStart + (active.duration || 0);
+        if (newTime > clipEnd) newTime = clipEnd;
+
+        setCurrentTime(newTime);
+        syncVisuals(newTime);
+        syncAudio(newTime, true);
+
+        const epsilon = 1e-3;
+        if (newTime >= clipEnd - epsilon) {
+          const nextIndex = state.clipIndex + 1;
+          const nextClip = clips[nextIndex];
+          if (nextClip && nextClip.type === 'image') {
+            manualPlaybackRef.current = {
+              anchorTime: clipEnd,
+              anchorTimestamp: timestamp,
+              clipIndex: nextIndex,
+              frameId: null,
+            };
+            setActiveClipIndex(nextIndex);
+            syncVisuals(clipEnd);
+            syncAudio(clipEnd, true);
+            manualPlaybackRef.current.frameId = requestAnimationFrame(step);
+            return;
+          }
+
+          stopManualPlayback({ syncAudio: !nextClip, globalTime: newTime });
+          if (nextClip && typeof seekToRef.current === 'function') {
+            seekToRef.current(clipEnd, true);
+          }
+          return;
+        }
+
+        state.frameId = requestAnimationFrame(step);
+      };
+
+      manualPlaybackRef.current = { ...initialState };
+      setActiveClipIndex(clipIndex);
+      setCurrentTime(targetTime);
+      syncVisuals(targetTime);
+      syncAudio(targetTime, true);
+      manualPlaybackRef.current.frameId = requestAnimationFrame(step);
+    },
+    [activeClipIndex, clips, currentTime, findClipIndexAtTime, stopManualPlayback, syncAudio, syncVisuals]
+  );
 
   useEffect(() => {
     if (clips.length > 0 && activeClipIndex === null) setActiveClipIndex(0);
@@ -1164,56 +1469,132 @@ export default function Editor({ project }) {
     applyTransitionVisuals(currentTime, activeClipIndex != null ? activeClipIndex : -1);
   }, [applyTransitionVisuals, currentTime, activeClipIndex]);
 
-  const seekTo = (newGlobalTime, keepPlaying) => {
+  const seekTo = useCallback((newGlobalTime, keepPlaying) => {
+    const safeDuration = Math.max(timelineDuration, 0);
+    const targetTime = Math.max(0, Math.min(newGlobalTime, safeDuration));
+    const video = videoRef.current;
+    const clipIndex = findClipIndexAtTime(targetTime);
+    const seg = clipIndex != null ? clips[clipIndex] : null;
+
+    setCurrentTime(targetTime);
+
+    if (!seg) {
+      setActiveClipIndex(null);
+      stopManualPlayback({ syncAudio: true, globalTime: targetTime });
+      if (video) {
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+      }
+      syncVisuals(targetTime);
+      syncAudio(targetTime, false);
+      return;
+    }
+
+    setActiveClipIndex(clipIndex);
+
+    if (seg.type === 'image') {
+      if (video) {
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+      }
+      syncVisuals(targetTime);
+      syncAudio(targetTime, keepPlaying);
+      if (keepPlaying) {
+        startManualPlayback(targetTime);
+      } else {
+        stopManualPlayback({ syncAudio: true, globalTime: targetTime });
+      }
+      return;
+    }
+
+    stopManualPlayback({ syncAudio: false });
+
+    if (video) {
+      let source = seg.source;
+      if (seg.file && typeof seg.source === 'string' && seg.source.startsWith('blob:')) {
+        source = URL.createObjectURL(seg.file);
+      }
+      video.src = source;
+      const segRelative = Math.max(0, targetTime - (seg.startTime || 0));
+      const seekTimeInSource = (seg.startOffset || 0) + segRelative;
+      video.currentTime = seekTimeInSource;
+      if (keepPlaying) {
+        video.play().catch(() => {});
+      } else {
+        video.pause();
+      }
+    }
+
+    syncVisuals(targetTime);
+    syncAudio(targetTime, keepPlaying);
+  }, [clips, findClipIndexAtTime, startManualPlayback, stopManualPlayback, syncAudio, syncVisuals, timelineDuration]);
+
+  useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    const safeDuration = Math.max(timelineDuration, 0);
-    const targetTime = Math.max(0, Math.min(newGlobalTime, safeDuration));
+    const onTimeUpdate = () => {
+      const seg = clips[activeClipIndex];
+      if (seg?.type === 'image') return;
 
-    let newIndex = null;
-    for (let i = 0; i < clips.length; i++) {
-      const clipStart = clips[i].startTime || 0;
-      const clipEnd = clipStart + (clips[i].duration || 0);
-      if (targetTime >= clipStart && targetTime < clipEnd) { newIndex = i; break; }
-    }
-
-    const seg = newIndex !== null ? clips[newIndex] : null;
-
-    if (seg) {
-      const segRelative = Math.max(0, targetTime - (seg.startTime || 0));
-      const seekTimeInSource = (seg.startOffset || 0) + segRelative;
-      setActiveClipIndex(newIndex);
-      video.src = seg.source;
-      video.currentTime = seekTimeInSource;
-      if (keepPlaying) video.play().catch(() => {}); else video.pause();
-    } else {
-      setActiveClipIndex(null);
-      video.pause();
-      video.removeAttribute('src');
-      video.load();
-    }
-
-    setCurrentTime(targetTime);
-    const wrapper = video.parentElement;
-    if (wrapper) wrapper.style.filter = computeFilterForTime(targetTime);
-    applyTransitionVisuals(targetTime, newIndex);
-
-    musicTracks.forEach((track, i) => {
-      const audio = audioRefs.current[i];
-      if (!audio) return;
-      const start = track.startTime || 0;
-      const dur = track.duration || 0;
-      const off = track.startOffset || 0;
-      if (targetTime >= start && targetTime <= start + dur) {
-        const rel = targetTime - start;
-        audio.currentTime = off + rel;
-        if (keepPlaying) audio.play().catch(() => {});
-      } else {
-        audio.pause();
+      let globalTime = video.currentTime || 0;
+      if (seg) {
+        const segStartTime = seg.startTime || 0;
+        globalTime = segStartTime + (video.currentTime - (seg.startOffset || 0));
       }
-    });
-  };
+
+      setCurrentTime(globalTime);
+      syncVisuals(globalTime);
+      syncAudio(globalTime, !video.paused);
+
+      if (seg) {
+        const clipDuration = seg.duration || 0;
+        if (clipDuration > 0) {
+          const clipEndTime = (seg.startTime || 0) + clipDuration;
+          const videoEndTime = (seg.startOffset || 0) + clipDuration;
+          if ((video.currentTime || 0) >= videoEndTime - 0.05) {
+            if (activeClipIndex < clips.length - 1) {
+              seekTo(clipEndTime, true);
+              return;
+            }
+
+            const musicStillPlaying = musicTracks.some((track) => {
+              const end = (track.startTime || 0) + (track.duration || 0);
+              return globalTime < end;
+            });
+
+            if (!musicStillPlaying) {
+              video.pause();
+              setActiveClipIndex(0);
+              setCurrentTime(0);
+              syncVisuals(0);
+              syncAudio(0, false);
+              audioRefs.current.forEach((a) => {
+                if (a) {
+                  a.pause();
+                  a.currentTime = 0;
+                }
+              });
+            } else {
+              try {
+                video.pause();
+                if (video.duration && !isNaN(video.duration)) {
+                  video.currentTime = Math.max(0, video.duration - 0.05);
+                }
+              } catch {}
+            }
+          }
+        }
+      }
+    };
+
+    video.addEventListener('timeupdate', onTimeUpdate);
+    return () => video.removeEventListener('timeupdate', onTimeUpdate);
+  }, [clips, activeClipIndex, musicTracks, syncVisuals, syncAudio, seekTo]);
+
+  seekToRef.current = seekTo;
 
   const getClickTimeFromEvent = (e) => {
     const scroller = e.currentTarget.closest('.timeline-scroll');
@@ -1228,7 +1609,7 @@ export default function Editor({ project }) {
 
   const handleSeekMouseDownCapture = (e) => {
     if (e.target.closest('.clip, .track, .effect-block, .text-block, .clip-handle, .effect-slider, .transition-block, .transition-add-button, .transition-toolbar, .transition-type, .transition-slider')) return;
-    const wasPlaying = videoRef.current && !videoRef.current.paused;
+    const wasPlaying = isTimelinePlaying();
     const t = getClickTimeFromEvent(e);
     seekTo(t, wasPlaying);
   };
@@ -1249,12 +1630,12 @@ export default function Editor({ project }) {
       }
       if (k === 'arrowleft' || k === 'j') {
         e.preventDefault();
-        const wasPlaying = videoRef.current && !videoRef.current.paused;
+        const wasPlaying = isTimelinePlaying();
         seekTo(Math.max(0, currentTime - 1), wasPlaying);
       }
       if (k === 'arrowright' || k === 'l') {
         e.preventDefault();
-        const wasPlaying = videoRef.current && !videoRef.current.paused;
+        const wasPlaying = isTimelinePlaying();
         seekTo(Math.min(timelineDuration, currentTime + 1), wasPlaying);
       }
 
@@ -1287,22 +1668,59 @@ export default function Editor({ project }) {
 
   useEffect(() => {
     const video = videoRef.current;
+    const image = imageRef.current;
     const seg = clips[activeClipIndex];
-    if (!video || !seg || !seg.source) return;
+    if (!video) return;
+
+    if (!seg) {
+      if (image) image.style.display = 'none';
+      video.pause();
+      return;
+    }
+
+    if (seg.type === 'image') {
+      if (image) {
+        image.src = seg.source || '';
+        image.style.display = 'block';
+      }
+      video.pause();
+      video.style.display = 'none';
+      video.removeAttribute('src');
+      video.load();
+      return;
+    }
+
+    if (image) image.style.display = 'none';
+    video.style.display = '';
+
+    if (!seg.source) return;
 
     let source = seg.source;
-    if (seg.file && seg.source.startsWith('blob:')) source = URL.createObjectURL(seg.file);
+    if (seg.file && typeof seg.source === 'string' && seg.source.startsWith('blob:')) {
+      source = URL.createObjectURL(seg.file);
+    }
 
-    video.src = source;
+    if (video.src !== source) {
+      video.src = source;
+    }
     video.currentTime = seg.startOffset || 0;
-    const playPromise = video.play();
-    if (playPromise !== undefined) playPromise.catch(() => {});
   }, [activeClipIndex, clips]);
 
   const addTextAtPlayhead = () => {
     updateTextOverlays((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), content: newText || 'New Text', startTime: currentTime, duration: 5, x: 50, y: 50, color: newTextColor, fontSize: newTextSize }
+      {
+        id: crypto.randomUUID(),
+        content: newText || 'New Text',
+        startTime: currentTime,
+        duration: 5,
+        x: 50,
+        y: 50,
+        stagePercentX: 50,
+        stagePercentY: 50,
+        color: newTextColor,
+        fontSize: newTextSize
+      }
     ]);
   };
 
@@ -1312,7 +1730,51 @@ export default function Editor({ project }) {
     if (!rect) return;
     const tx = textOverlays[index];
     if (!tx) return;
-    setDragTextStageState({ index, startX: e.clientX, startY: e.clientY, origX: tx.x || 50, origY: tx.y || 50, rectW: rect.width, rectH: rect.height });
+    const geometry = resolveOverlayGeometry(tx);
+    if (!geometry) return;
+    const elementRect = e.currentTarget?.getBoundingClientRect?.() || null;
+    const elementHalfWidth = elementRect ? elementRect.width / 2 : 0;
+    const elementHalfHeight = elementRect ? elementRect.height / 2 : 0;
+    const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
+    const minStageX = geometry.offsetX + elementHalfWidth;
+    const maxStageX = geometry.offsetX + geometry.videoWidth - elementHalfWidth;
+    const minStageY = geometry.offsetY + elementHalfHeight;
+    const maxStageY = geometry.offsetY + geometry.videoHeight - elementHalfHeight;
+    const safeMinStageX = maxStageX >= minStageX ? minStageX : geometry.offsetX + geometry.videoWidth / 2;
+    const safeMaxStageX = maxStageX >= minStageX ? maxStageX : safeMinStageX;
+    const safeMinStageY = maxStageY >= minStageY ? minStageY : geometry.offsetY + geometry.videoHeight / 2;
+    const safeMaxStageY = maxStageY >= minStageY ? maxStageY : safeMinStageY;
+    const rawPointerStageX = e.clientX - rect.left;
+    const rawPointerStageY = e.clientY - rect.top;
+    const pointerStageX = clamp(rawPointerStageX, safeMinStageX, safeMaxStageX);
+    const pointerStageY = clamp(rawPointerStageY, safeMinStageY, safeMaxStageY);
+    const origStageX = geometry.stageX;
+    const origStageY = geometry.stageY;
+    setDragTextStageState({
+      index,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      pointerStageX,
+      pointerStageY,
+      stageLeft: rect.left,
+      stageTop: rect.top,
+      origStageX,
+      origStageY,
+      origVideoX: geometry.videoPercentX,
+      origVideoY: geometry.videoPercentY,
+      stageWidth: geometry.stageWidth,
+      stageHeight: geometry.stageHeight,
+      videoWidth: geometry.videoWidth,
+      videoHeight: geometry.videoHeight,
+      offsetX: geometry.offsetX,
+      offsetY: geometry.offsetY,
+      elementHalfWidth,
+      elementHalfHeight,
+      safeMinStageX,
+      safeMaxStageX,
+      safeMinStageY,
+      safeMaxStageY,
+    });
   };
 
   useEffect(() => {
@@ -1321,13 +1783,34 @@ export default function Editor({ project }) {
       updateTextOverlays((prev) => {
         const arr = [...prev];
         const tx = { ...arr[dragTextStageState.index] };
-        const dx = ((e.clientX - dragTextStageState.startX) / dragTextStageState.rectW) * 100;
-        const dy = ((e.clientY - dragTextStageState.startY) / dragTextStageState.rectH) * 100;
-        let nx = (dragTextStageState.origX || 0) + dx;
-        let ny = (dragTextStageState.origY || 0) + dy;
-        nx = Math.max(0, Math.min(100, nx));
-        ny = Math.max(0, Math.min(100, ny));
-        tx.x = nx; tx.y = ny;
+        const rawPointerStageX = e.clientX - dragTextStageState.stageLeft;
+        const rawPointerStageY = e.clientY - dragTextStageState.stageTop;
+        const pointerStageX = Math.max(
+          dragTextStageState.safeMinStageX,
+          Math.min(dragTextStageState.safeMaxStageX, rawPointerStageX)
+        );
+        const pointerStageY = Math.max(
+          dragTextStageState.safeMinStageY,
+          Math.min(dragTextStageState.safeMaxStageY, rawPointerStageY)
+        );
+        const deltaX = pointerStageX - dragTextStageState.pointerStageX;
+        const deltaY = pointerStageY - dragTextStageState.pointerStageY;
+        const minStageX = dragTextStageState.safeMinStageX;
+        const maxStageX = dragTextStageState.safeMaxStageX;
+        const minStageY = dragTextStageState.safeMinStageY;
+        const maxStageY = dragTextStageState.safeMaxStageY;
+        let newStageX = dragTextStageState.origStageX + deltaX;
+        let newStageY = dragTextStageState.origStageY + deltaY;
+        newStageX = Math.max(minStageX, Math.min(maxStageX, newStageX));
+        newStageY = Math.max(minStageY, Math.min(maxStageY, newStageY));
+        const newVideoX = ((newStageX - dragTextStageState.offsetX) / dragTextStageState.videoWidth) * 100;
+        const newVideoY = ((newStageY - dragTextStageState.offsetY) / dragTextStageState.videoHeight) * 100;
+        const newStagePercentX = (newStageX / dragTextStageState.stageWidth) * 100;
+        const newStagePercentY = (newStageY / dragTextStageState.stageHeight) * 100;
+        tx.x = Math.max(0, Math.min(100, newVideoX));
+        tx.y = Math.max(0, Math.min(100, newVideoY));
+        tx.stagePercentX = Math.max(0, Math.min(100, newStagePercentX));
+        tx.stagePercentY = Math.max(0, Math.min(100, newStagePercentY));
         arr[dragTextStageState.index] = tx;
         return arr;
       });
@@ -1482,16 +1965,34 @@ export default function Editor({ project }) {
               <div className="media-item text-item" draggable onDragStart={(e) => handleDragStart(e, { kind: 'text' })}>
                 New Text
               </div>
-              <div className="text-add-inline" style={{ display: 'grid', gridTemplateColumns: '1fr 72px 72px auto', gap: 8, marginTop: 8 }}>
-                <input className="text-input" value={newText} onChange={(e) => setNewText(e.target.value)} placeholder="Your text" style={{ background: '#222', border: '1px solid #333', color: '#FCFFFC', borderRadius: 6, padding: '8px 10px' }} />
-                <input className="text-size" type="number" min="12" max="96" value={newTextSize} onChange={(e) => setNewTextSize(parseInt(e.target.value || 32))} style={{ background: '#222', border: '1px solid #333', color: '#FCFFFC', borderRadius: 6, padding: '8px 10px' }} />
-                <input className="text-color" type="color" value={newTextColor} onChange={(e) => setNewTextColor(e.target.value)} style={{ height: 36, borderRadius: 6, border: '1px solid #333' }} />
-                <button className="text-add-btn" onClick={addTextAtPlayhead} style={{ padding: '8px 14px', borderRadius: 8, background: 'linear-gradient(90deg, var(--green-1), var(--green-2))', color: 'var(--light)', fontWeight: 700 }}>Add</button>
+              <div className="text-add-inline">
+                <input
+                  className="text-field text-field--full"
+                  value={newText}
+                  onChange={(e) => setNewText(e.target.value)}
+                  placeholder="Enter text"
+                />
+                <div className="text-add-inline-row">
+                  <input
+                    className="text-field text-field--number"
+                    type="number"
+                    min="12"
+                    max="96"
+                    value={newTextSize}
+                    onChange={(e) => setNewTextSize(parseInt(e.target.value || 32))}
+                  />
+                  <input
+                    className="text-field text-field--color"
+                    type="color"
+                    value={newTextColor}
+                    onChange={(e) => setNewTextColor(e.target.value)}
+                  />
+                </div>
               </div>
               {selectedTextIndex !== null && textOverlays[selectedTextIndex] && (
-                <div className="text-edit-panel" style={{ display: 'grid', gridTemplateColumns: '1fr 80px 90px', gap: 8, marginTop: 10 }}>
+                <div className="text-edit-panel">
                   <input
-                    className="text-input"
+                    className="text-field text-field--full"
                     value={textOverlays[selectedTextIndex].content}
                     onChange={(e) => {
                       const v = e.target.value;
@@ -1501,10 +2002,9 @@ export default function Editor({ project }) {
                         return arr;
                       });
                     }}
-                    style={{ background: '#222', border: '1px solid #333', color: '#FCFFFC', borderRadius: 6, padding: '8px 10px' }}
                   />
                   <input
-                    className="text-size"
+                    className="text-field text-field--number"
                     type="number"
                     min="12"
                     max="96"
@@ -1517,10 +2017,9 @@ export default function Editor({ project }) {
                         return arr;
                       });
                     }}
-                    style={{ background: '#222', border: '1px solid #333', color: '#FCFFFC', borderRadius: 6, padding: '8px 10px' }}
                   />
                   <input
-                    className="text-color"
+                    className="text-field text-field--color"
                     type="color"
                     value={textOverlays[selectedTextIndex].color || '#FCFFFC'}
                     onChange={(e) => {
@@ -1531,7 +2030,6 @@ export default function Editor({ project }) {
                         return arr;
                       });
                     }}
-                    style={{ height: 36, borderRadius: 6, border: '1px solid #333' }}
                   />
                 </div>
               )}
@@ -1556,30 +2054,70 @@ export default function Editor({ project }) {
                 </div>
               ))}
             </div>
+
+            <div className="media-section image-section">
+              <h4>🖼️ Images</h4>
+              <div className="section-divider" />
+              {mediaFiles.filter((f) => f.type === 'image').map((file, index) => (
+                <div key={`img-${index}`} draggable onDragStart={(e) => handleDragStart(e, { kind: 'media', file })} className="media-item">
+                  {file.name}
+                </div>
+              ))}
+              {mediaFiles.filter((f) => f.type === 'image').length === 0 && <p className="hint">No images added yet.</p>}
+            </div>
           </div>
 
           <div className="editor-area" onDrop={handleDrop} onDragOver={(e) => e.preventDefault()}>
             <div className="video-player" onClick={(e) => e.stopPropagation()}>
-              <video ref={videoRef} />
+              <video ref={videoRef} style={{ display: activeClipIsImage ? 'none' : 'block' }} />
+              <img
+                ref={imageRef}
+                className="image-player"
+                style={{ display: activeClipIsImage ? 'block' : 'none' }}
+                alt={activeClip?.name || 'Image frame'}
+                draggable={false}
+              />
               <div
                 ref={transitionOverlayRef}
                 className="transition-overlay-layer"
                 style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'transparent', opacity: 0, zIndex: 2 }}
               />
               <div className="overlay-stage" ref={stageRef} onMouseDown={() => setSelectedTextIndex(null)}>
-                {activeTexts.map((t) => (
-                  <div
-                    key={t.id}
-                    className={`overlay-text ${selectedTextIndex === t._i ? 'selected' : ''}`}
-                    style={{ left: `${t.x || 50}%`, top: `${t.y || 50}%`, fontSize: `${t.fontSize || 32}px`, color: t.color || '#FCFFFC' }}
-                    onMouseDown={(e) => {
-                      selectText(t._i);
-                      startStageTextDrag(e, t._i);
-                    }}
-                  >
-                    {t.content}
-                  </div>
-                ))}
+                {activeTexts.map((t) => {
+                  const geom = resolveOverlayGeometry(t);
+                  const leftPercent = geom
+                    ? geom.stagePercentX
+                    : Number.isFinite(t.stagePercentX)
+                    ? t.stagePercentX
+                    : Number.isFinite(t.x)
+                    ? t.x
+                    : 50;
+                  const topPercent = geom
+                    ? geom.stagePercentY
+                    : Number.isFinite(t.stagePercentY)
+                    ? t.stagePercentY
+                    : Number.isFinite(t.y)
+                    ? t.y
+                    : 50;
+                  return (
+                    <div
+                      key={t.id}
+                      className={`overlay-text ${selectedTextIndex === t._i ? 'selected' : ''}`}
+                      style={{
+                        left: `${leftPercent}%`,
+                        top: `${topPercent}%`,
+                        fontSize: `${t.fontSize || 32}px`,
+                        color: t.color || '#FCFFFC'
+                      }}
+                      onMouseDown={(e) => {
+                        selectText(t._i);
+                        startStageTextDrag(e, t._i);
+                      }}
+                    >
+                      {t.content}
+                    </div>
+                  );
+                })}
               </div>
               <button className="play-btn" onClick={togglePlay}>Play / Pause</button>
             </div>

@@ -2,20 +2,20 @@
 
 namespace Database\Seeders;
 
+use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
-use App\Models\User;
 
-class AdminUserSeeder extends Seeder
+class StandardUserSeeder extends Seeder
 {
     public function run(): void
     {
         User::updateOrCreate(
-            ['email' => 'admin@example.com'],
+            ['email' => 'user@example.com'],
             [
-                'name' => 'admin',
+                'name' => 'user',
                 'password' => Hash::make('Parole123!'),
-                'is_admin' => true,
+                'is_admin' => false,
             ]
         );
     }

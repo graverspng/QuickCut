@@ -146,7 +146,11 @@ class ProjectExportController extends Controller
             'audio/aac' => 'aac',
             'audio/mp4', 'audio/m4a', 'audio/x-m4a' => 'm4a',
             'audio/flac' => 'flac',
-            default => str_starts_with($mime, 'audio/') ? 'mp3' : 'mp4',
+            'image/png' => 'png',
+            'image/jpeg', 'image/jpg' => 'jpg',
+            'image/webp' => 'webp',
+            'image/gif' => 'gif',
+            default => str_starts_with($mime, 'audio/') ? 'mp3' : (str_starts_with($mime, 'image/') ? 'png' : 'mp4'),
         };
 
         $path = $directory . DIRECTORY_SEPARATOR . $prefix . '.' . $extension;
@@ -209,7 +213,66 @@ class ProjectExportController extends Controller
         return false;
     }
 
-    protected function trimClipSegment(string $sourcePath, string $outputPath, float $startOffset, float $duration): bool
+    protected function ensureEvenDimension(int $value): int
+    {
+        return $value % 2 === 0 ? $value : $value + 1;
+    }
+
+    protected function buildScalingFilter(?array $targetDimensions): ?string
+    {
+        if (!is_array($targetDimensions)) {
+            return null;
+        }
+
+        $width = (int) ($targetDimensions['width'] ?? 0);
+        $height = (int) ($targetDimensions['height'] ?? 0);
+
+        if ($width <= 0 || $height <= 0) {
+            return null;
+        }
+
+        $width = $this->ensureEvenDimension($width);
+        $height = $this->ensureEvenDimension($height);
+
+        return sprintf(
+            'scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2:black',
+            $width,
+            $height,
+            $width,
+            $height
+        );
+    }
+
+    protected function renderImageSegment(string $imagePath, string $outputPath, float $duration, ?array $targetDimensions = null): bool
+    {
+        $duration = max(0.1, $duration);
+        $args = [
+            'ffmpeg',
+            '-y',
+            '-loop', '1',
+            '-framerate', '30',
+            '-i', $imagePath,
+        ];
+
+        $filter = $this->buildScalingFilter($targetDimensions) ?? 'scale=trunc(iw/2)*2:trunc(ih/2)*2';
+        $args = array_merge($args, ['-vf', $filter]);
+
+        $args = array_merge($args, [
+            '-t', sprintf('%.3f', $duration),
+            '-c:v', 'libx264',
+            '-preset', 'veryfast',
+            '-crf', '20',
+            '-pix_fmt', 'yuv420p',
+            '-r', '30',
+            '-video_track_timescale', '15360',
+            '-movflags', '+faststart',
+            $outputPath,
+        ]);
+
+        return $this->runProcess($args);
+    }
+
+    protected function trimClipSegment(string $sourcePath, string $outputPath, float $startOffset, float $duration, ?array $targetDimensions = null): bool
     {
         $args = ['ffmpeg', '-y'];
         if ($startOffset > 0) {
@@ -222,6 +285,11 @@ class ProjectExportController extends Controller
             $args = array_merge($args, ['-t', sprintf('%.3f', max(0, $duration))]);
         }
 
+        $filter = $this->buildScalingFilter($targetDimensions);
+        if ($filter) {
+            $args = array_merge($args, ['-vf', $filter]);
+        }
+
         $args = array_merge($args, [
             '-c:v', 'libx264',
             '-preset', 'veryfast',
@@ -229,6 +297,9 @@ class ProjectExportController extends Controller
             '-pix_fmt', 'yuv420p',
             '-c:a', 'aac',
             '-b:a', '192k',
+            '-r', '30',
+            '-video_track_timescale', '15360',
+            '-ar', '48000',
             '-movflags', '+faststart',
             $outputPath,
         ]);
@@ -313,6 +384,7 @@ class ProjectExportController extends Controller
             '-c:v', 'copy',
             '-c:a', 'aac',
             '-b:a', '192k',
+            '-ar', '48000',
             $tempPath,
         ];
 
@@ -342,6 +414,7 @@ class ProjectExportController extends Controller
 
             return $id ? [$id => $item] : [];
         });
+        $targetDimensions = null;
         $runningStart = 0.0;
 
         foreach (($project->clips ?? []) as $index => $clip) {
@@ -362,20 +435,58 @@ class ProjectExportController extends Controller
                 continue;
             }
 
-            $startOffset = max(0.0, (float) Arr::get($clip, 'startOffset', 0));
             $segmentPath = $directory . DIRECTORY_SEPARATOR . 'segment_' . $index . '_' . Str::random(8) . '.mp4';
 
-            if (!$this->trimClipSegment($sourcePath, $segmentPath, $startOffset, $duration)) {
-                @unlink($segmentPath);
-                $hadFailures = true;
-                continue;
+            $clipType = Arr::get($clip, 'type');
+            if ($clipType === 'image') {
+                $dimensionsForImage = $targetDimensions ?: ['width' => 1920, 'height' => 1080];
+                $dimensionsForImage['width'] = $this->ensureEvenDimension((int) ($dimensionsForImage['width'] ?? 1920));
+                $dimensionsForImage['height'] = $this->ensureEvenDimension((int) ($dimensionsForImage['height'] ?? 1080));
+
+                if (!$this->renderImageSegment($sourcePath, $segmentPath, $duration, $dimensionsForImage)) {
+                    @unlink($segmentPath);
+                    $hadFailures = true;
+                    continue;
+                }
+
+                if (!$this->ensureAudioTrack($segmentPath, $duration)) {
+                    @unlink($segmentPath);
+                    $hadFailures = true;
+                    continue;
+                }
+
+                if (!$targetDimensions) {
+                    $targetDimensions = $dimensionsForImage;
+                }
+            } else {
+                $startOffset = max(0.0, (float) Arr::get($clip, 'startOffset', 0));
+                $segmentTargetDimensions = $targetDimensions ?: $this->probeVideoDimensions($sourcePath);
+                if ($segmentTargetDimensions) {
+                    $segmentTargetDimensions['width'] = $this->ensureEvenDimension((int) ($segmentTargetDimensions['width'] ?? 1920));
+                    $segmentTargetDimensions['height'] = $this->ensureEvenDimension((int) ($segmentTargetDimensions['height'] ?? 1080));
+                }
+                if (!$this->trimClipSegment($sourcePath, $segmentPath, $startOffset, $duration, $segmentTargetDimensions ?: $targetDimensions)) {
+                    @unlink($segmentPath);
+                    $hadFailures = true;
+                    continue;
+                }
+
+                if (!$this->ensureAudioTrack($segmentPath, $duration)) {
+                    @unlink($segmentPath);
+                    $hadFailures = true;
+                    continue;
+                }
+
+                if (!$targetDimensions) {
+                    $targetDimensions = $this->probeVideoDimensions($segmentPath) ?? $segmentTargetDimensions;
+                }
             }
 
-            if (!$this->ensureAudioTrack($segmentPath, $duration)) {
-                @unlink($segmentPath);
-                $hadFailures = true;
-                continue;
+            if (!$targetDimensions) {
+                $targetDimensions = ['width' => 1920, 'height' => 1080];
             }
+            $targetDimensions['width'] = $this->ensureEvenDimension((int) ($targetDimensions['width'] ?? 1920));
+            $targetDimensions['height'] = $this->ensureEvenDimension((int) ($targetDimensions['height'] ?? 1080));
 
             $segments[] = [
                 'path' => $segmentPath,
@@ -711,23 +822,36 @@ class ProjectExportController extends Controller
             }
 
             $fontSize = max(10, (int) round($fontSize));
-            $xPercent = max(0, min(100, (float) Arr::get($overlay, 'x', 50)));
-            $yPercent = max(0, min(100, (float) Arr::get($overlay, 'y', 50)));
-
             $stageWidth = $canvasWidth > 0 ? $canvasWidth : max($displayVideoWidth, 1);
             $stageHeight = $canvasHeight > 0 ? $canvasHeight : max($displayVideoHeight, 1);
-
-            $stageX = ($xPercent / 100) * $stageWidth;
-            $stageY = ($yPercent / 100) * $stageHeight;
-
-            $videoCoordinateX = $stageX - $displayOffsetX;
-            $videoCoordinateY = $stageY - $displayOffsetY;
 
             $displayWidthSafe = $displayVideoWidth > 0 ? $displayVideoWidth : $stageWidth;
             $displayHeightSafe = $displayVideoHeight > 0 ? $displayVideoHeight : $stageHeight;
 
-            $videoRatioX = $displayWidthSafe > 0 ? $videoCoordinateX / $displayWidthSafe : $xPercent / 100;
-            $videoRatioY = $displayHeightSafe > 0 ? $videoCoordinateY / $displayHeightSafe : $yPercent / 100;
+            $stagePercentXMeta = Arr::get($overlay, 'stagePercentX');
+            $stagePercentYMeta = Arr::get($overlay, 'stagePercentY');
+            $stagePercentX = is_numeric($stagePercentXMeta)
+                ? max(0, min(100, (float) $stagePercentXMeta))
+                : max(0, min(100, (float) Arr::get($overlay, 'x', 50)));
+            $stagePercentY = is_numeric($stagePercentYMeta)
+                ? max(0, min(100, (float) $stagePercentYMeta))
+                : max(0, min(100, (float) Arr::get($overlay, 'y', 50)));
+
+            $stagePosX = ($stagePercentX / 100) * $stageWidth;
+            $stagePosY = ($stagePercentY / 100) * $stageHeight;
+
+            $videoPercentX = $displayWidthSafe > 0
+                ? (($stagePosX - $displayOffsetX) / $displayWidthSafe) * 100
+                : max(0, min(100, (float) Arr::get($overlay, 'x', 50)));
+            $videoPercentY = $displayHeightSafe > 0
+                ? (($stagePosY - $displayOffsetY) / $displayHeightSafe) * 100
+                : max(0, min(100, (float) Arr::get($overlay, 'y', 50)));
+
+            $videoPercentX = max(0, min(100, $videoPercentX));
+            $videoPercentY = max(0, min(100, $videoPercentY));
+
+            $videoRatioX = $videoPercentX / 100;
+            $videoRatioY = $videoPercentY / 100;
 
             $xExpr = sprintf('(w*%0.6f)-(text_w/2)', $videoRatioX);
             $yExpr = sprintf('(h*%0.6f)-(text_h/2)', $videoRatioY);
@@ -762,7 +886,10 @@ class ProjectExportController extends Controller
                 'display_video_offset_x' => $displayOffsetX,
                 'display_video_offset_y' => $displayOffsetY,
                 'video_dimensions' => $videoDimensions,
-                'position_percent' => ['x' => $xPercent, 'y' => $yPercent],
+                'position_percent' => [
+                    'video' => ['x' => $videoPercentX, 'y' => $videoPercentY],
+                    'stage' => ['x' => $stagePercentX, 'y' => $stagePercentY],
+                ],
             ]);
         }
 

@@ -38,13 +38,11 @@ export default function ReportIssue() {
     });
   };
 
-
   useEffect(() => {
     if (!showToast) return;
     const t = setTimeout(() => setShowToast(false), 3800);
     return () => clearTimeout(t);
   }, [showToast]);
-
 
   const onKeyDownTextarea = (e) => {
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
@@ -53,26 +51,40 @@ export default function ReportIssue() {
     }
   };
 
-
   const getIssueLabel = () => {
     if (!selectedProject) return 'Describe the issue';
     if (selectedProject === 'Somewhere else') return 'What was the issue?';
     return `What was the issue in your ${selectedProject}?`;
   };
 
+const getProjectExample = (project) => {
+  switch (project) {
+    case 'Media project':
+      return `In Media project, exporting a 4K video freezes around 87%.`;
+    case 'Audio project':
+      return `In Audio project, sound cuts off halfway during playback.`;
+    case 'Format changer':
+      return `Format changer converts files but the audio track is missing.`;
+    case 'Profile page':
+      return `On Profile page, changing my password gets me stuck on the loading bar.`;
+    case 'Somewhere else':
+      return `In the Dashboard, projects cant be favorited.`;
+    default:
+      return 'Include what you were doing and what went wrong.';
+  }
+};
+
+
   return (
     <AuthenticatedLayout hideNavbar>
       <Head title="Report an Issue" />
 
       <div className="report-issue-background">
-        {/* Ambient floating brand graphic */}
         <img src="/QuickCut.png" alt="" className="report-float" aria-hidden="true" />
 
         <div className="report-issue-container" role="region" aria-labelledby="report-title">
-          {/* Header */}
           <div className="report-title-wrap">
             <span className="report-title-icon" aria-hidden="true">
-              {/* inline SVG shield/flag icon */}
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M12 3l7 3v6c0 4.418-3.582 8-8 8s-8-3.582-8-8V6l9-3Z" stroke="rgba(0,0,0,0.25)" fill="rgba(255,255,255,0.25)"/>
               </svg>
@@ -85,9 +97,7 @@ export default function ReportIssue() {
 
           <div className="report-divider" />
 
-          {/* Form */}
           <form onSubmit={submit} noValidate>
-            {/* Dropdown Selection */}
             <div className="report-field report-dropdown-container">
               <label htmlFor="project" className="report-label">
                 <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
@@ -127,7 +137,6 @@ export default function ReportIssue() {
               )}
             </div>
 
-            {/* Issue Textarea */}
             <div className="report-field">
               <label htmlFor="issue" className="report-label">
                 <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
@@ -149,9 +158,7 @@ export default function ReportIssue() {
                 onChange={(e) => setData('issue', e.target.value)}
                 onKeyDown={onKeyDownTextarea}
                 className="report-textarea"
-                placeholder={selectedProject
-                  ? `E.g. In ${selectedProject}, exporting stalled at 87% with no error message…`
-                  : 'Let us know what went wrong… Include steps to reproduce if possible.'}
+                placeholder={selectedProject ? getProjectExample(selectedProject) : getProjectExample('')}
                 aria-invalid={!!errors.issue}
                 aria-describedby={errors.issue ? 'issue-error' : 'issue-hint'}
               />
@@ -176,7 +183,6 @@ export default function ReportIssue() {
               </div>
             </div>
 
-            {/* Buttons */}
             <div className="report-buttons">
               <Link href={route('dashboard')} className="report-back">
                 ← Back to Home
@@ -196,7 +202,6 @@ export default function ReportIssue() {
         </div>
       </div>
 
-      {/* Success toast */}
       {showToast && (
         <div className="report-toast" role="status" aria-live="polite">
           <span className="dot" aria-hidden="true" />
