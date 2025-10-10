@@ -163,7 +163,7 @@ export default function Dashboard({ projects = [] }) {
                 onChange={(e) => setProjectName(e.target.value)}
                 onKeyDown={onKeyDownInput}
                 required
-                maxLength={100}
+                maxLength={20}
               />
               <div className="modal-actions">
                 <button type="button" className="modal-cancel" onClick={closeModal}>

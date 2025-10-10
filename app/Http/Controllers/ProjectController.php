@@ -24,7 +24,7 @@ class ProjectController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate(['name' => 'required|string|max:255']);
+        $request->validate(['name' => 'required|string|max:20']);
 
         $project = Project::create([
             'user_id'       => auth()->id(),
@@ -46,7 +46,7 @@ class ProjectController extends Controller
         Gate::authorize('update', $project);
 
         $validated = $request->validate([
-            'name'          => 'sometimes|string|max:255',
+            'name'          => 'sometimes|string|max:20',
             'description'   => 'sometimes|nullable|string',
             'favorited_project' => 'sometimes|boolean',
             'media_files'   => 'sometimes|array',

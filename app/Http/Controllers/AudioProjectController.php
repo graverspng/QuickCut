@@ -28,7 +28,7 @@ class AudioProjectController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'name' => 'required|string|max:255',
+            'name' => 'required|string|max:20',
         ]);
 
         $project = AudioProject::create([
@@ -56,7 +56,7 @@ class AudioProjectController extends Controller
         $this->authorize('update', $audioProject);
 
         $validated = $request->validate([
-            'name' => 'sometimes|string|max:255',
+            'name' => 'sometimes|string|max:20',
             'description' => 'sometimes|nullable|string',
             'tracks' => 'sometimes|array',
             'favorited_project' => 'sometimes|boolean',

@@ -187,8 +187,6 @@ export default function AudioEditor({ project }) {
         });
 
         router.put(route('audio.projects.update', project.id), {
-            name: project.name,
-            description: project.description,
             tracks: tracksToSave,
         });
     };

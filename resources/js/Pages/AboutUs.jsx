@@ -25,7 +25,7 @@ export default function AboutUs() {
 
                     <p className="about-us-text">
                         QuickCut is all about <em>freedom</em>: no paywalls, no restrictions, 
-                        just pure creative flow. Whether it’s videos, music, or both — it’s yours to craft. これ が自由だ
+                        just pure creative flow. Whether it’s videos, music, or both — it’s yours to craft.
                     </p>
 
                     {/* Tagline */}
