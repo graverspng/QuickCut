@@ -15,20 +15,24 @@ use function str_ends_with;
 use function str_replace;
 use function substr;
 use Countable;
+use SebastianBergmann\CodeCoverage\StaticAnalysis\LinesOfCode;
 use SebastianBergmann\CodeCoverage\Util\Percentage;
 
 /**
  * @internal This class is not covered by the backward compatibility promise for phpunit/php-code-coverage
  *
- * @phpstan-import-type LinesOfCodeType from \SebastianBergmann\CodeCoverage\StaticAnalysis\FileAnalyser
- * @phpstan-import-type ProcessedFunctionType from \SebastianBergmann\CodeCoverage\Node\File
- * @phpstan-import-type ProcessedClassType from \SebastianBergmann\CodeCoverage\Node\File
- * @phpstan-import-type ProcessedTraitType from \SebastianBergmann\CodeCoverage\Node\File
+ * @phpstan-import-type ProcessedFunctionType from File
+ * @phpstan-import-type ProcessedClassType from File
+ * @phpstan-import-type ProcessedTraitType from File
  */
 abstract class AbstractNode implements Countable
 {
     private readonly string $name;
     private string $pathAsString;
+
+    /**
+     * @var non-empty-list<self>
+     */
     private array $pathAsArray;
     private readonly ?AbstractNode $parent;
     private string $id;
@@ -61,6 +65,9 @@ abstract class AbstractNode implements Countable
         return $this->pathAsString;
     }
 
+    /**
+     * @return non-empty-list<self>
+     */
     public function pathAsArray(): array
     {
         return $this->pathAsArray;
@@ -172,6 +179,24 @@ abstract class AbstractNode implements Countable
     }
 
     /**
+     * @return non-negative-int
+     */
+    public function cyclomaticComplexity(): int
+    {
+        $ccn = 0;
+
+        foreach ($this->classesAndTraits() as $classLike) {
+            $ccn += $classLike['ccn'];
+        }
+
+        foreach ($this->functions() as $function) {
+            $ccn += $function['ccn'];
+        }
+
+        return $ccn;
+    }
+
+    /**
      * @return array<string, ProcessedClassType>
      */
     abstract public function classes(): array;
@@ -186,10 +211,7 @@ abstract class AbstractNode implements Countable
      */
     abstract public function functions(): array;
 
-    /**
-     * @return LinesOfCodeType
-     */
-    abstract public function linesOfCode(): array;
+    abstract public function linesOfCode(): LinesOfCode;
 
     abstract public function numberOfExecutableLines(): int;
 

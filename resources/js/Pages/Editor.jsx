@@ -654,7 +654,9 @@ export default function Editor({ project }) {
           stagePercentX: 50,
           stagePercentY: 50,
           color: newTextColor,
-          fontSize: newTextSize
+          fontSize: newTextSize,
+          anchorX: null,
+          anchorY: null
         }
       ]);
     }
@@ -1719,7 +1721,7 @@ export default function Editor({ project }) {
         stagePercentX: 50,
         stagePercentY: 50,
         color: newTextColor,
-        fontSize: newTextSize
+        fontSize: newTextSize,
       }
     ]);
   };

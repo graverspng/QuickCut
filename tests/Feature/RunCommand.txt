@@ -1,0 +1,7 @@
+./vendor/bin/pest tests/Feature/mytest.php
+
+./vendor/bin/pest tests/Feature/LoginTest.php
+
+user
+user@example.com
+Parole123!
