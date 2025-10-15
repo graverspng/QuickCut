@@ -4,7 +4,7 @@ import InputLabel from '@/Components/InputLabel';
 import TextInput from '@/Components/TextInput';
 import GuestLayout from '@/Layouts/GuestLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
-import '@/../css/login.css';
+import '@/../css/Login.css';
 import QuickCutImg from '@/Pages/Auth/img/QuickCut.png';
 
 export default function Login({ status, canResetPassword }) {

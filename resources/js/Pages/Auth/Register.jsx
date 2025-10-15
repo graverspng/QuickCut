@@ -3,7 +3,7 @@ import InputLabel from '@/Components/InputLabel';
 import TextInput from '@/Components/TextInput';
 import GuestLayout from '@/Layouts/GuestLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
-import '@/../css/login.css'; // shared CSS for login/register styling
+import '@/../css/Login.css'; // shared CSS for login/register styling
 
 export default function Register() {
     const { data, setData, post, processing, errors, reset } = useForm({
