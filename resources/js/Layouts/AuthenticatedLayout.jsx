@@ -3,7 +3,7 @@ import NavLink from '@/Components/NavLink';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink';
 import { Link, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
-import ReportIssue from '@/Pages/Auth/Img/ReportIssue.png';
+import ReportIssue from '@/Pages/Auth/img/ReportIssue.png';
 import QuickCutCutoutImg from '@/Pages/Auth/img/QuickCut_Cutout.png';
 
 export default function AuthenticatedLayout({ header, children, hideNavbar }) {

@@ -5,7 +5,7 @@ import TextInput from '@/Components/TextInput';
 import GuestLayout from '@/Layouts/GuestLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
 import '@/../css/login.css';
-import QuickCutImg from '@/Pages/Auth/Img/QuickCut.png';
+import QuickCutImg from '@/Pages/Auth/img/QuickCut.png';
 
 export default function Login({ status, canResetPassword }) {
     const { data, setData, post, processing, errors, reset } = useForm({
