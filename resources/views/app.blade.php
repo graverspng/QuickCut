@@ -15,7 +15,11 @@
 
         <!-- Scripts -->
         @routes
-        @viteReactRefresh
+
+        @if (app()->environment('local'))
+            @viteReactRefresh
+        @endif
+
         @vite(['resources/js/app.jsx', "resources/js/Pages/{$page['component']}.jsx"])
         @inertiaHead
     </head>
