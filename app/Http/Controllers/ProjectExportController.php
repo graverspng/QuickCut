@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -118,7 +119,7 @@ class ProjectExportController extends Controller
             return null;
         }
 
-        $value = trim($value);
+        $value = trim(rawurldecode($value));
         if ($value === '') {
             return null;
         }
@@ -245,6 +246,7 @@ class ProjectExportController extends Controller
             Arr::get($item, 'source'),
             Arr::get($item, 'url'),
         ];
+        $httpCandidates = [];
 
         $mediaSource = null;
         if ($sourceId && $mediaById && $mediaById->has($sourceId)) {
@@ -259,6 +261,9 @@ class ProjectExportController extends Controller
         }
 
         foreach ($candidates as $candidate) {
+            if (is_string($candidate) && preg_match('#^https?://#i', $candidate)) {
+                $httpCandidates[] = $candidate;
+            }
             $resolved = $this->findExistingMediaPath($candidate);
             if ($resolved) {
                 return $resolved;
@@ -270,6 +275,49 @@ class ProjectExportController extends Controller
             if ($decoded) {
                 $cleanup[] = $decoded['path'];
                 return $decoded['path'];
+            }
+        }
+
+        foreach ($httpCandidates as $url) {
+            try {
+                $response = Http::timeout(20)->get($url);
+                if (!$response->successful()) {
+                    continue;
+                }
+                $contents = $response->body();
+                if ($contents === '' || $contents === false) {
+                    continue;
+                }
+                $extension = pathinfo(parse_url($url, PHP_URL_PATH) ?? '', PATHINFO_EXTENSION);
+                if (!$extension) {
+                    $extension = match (Str::lower(Arr::get($item, 'mime', ''))) {
+                        'video/mp4' => 'mp4',
+                        'video/webm' => 'webm',
+                        'video/ogg', 'video/ogv' => 'ogv',
+                        'audio/mpeg', 'audio/mp3' => 'mp3',
+                        'audio/wav', 'audio/x-wav' => 'wav',
+                        'audio/ogg', 'audio/oga', 'audio/vorbis' => 'ogg',
+                        'audio/webm' => 'webm',
+                        'audio/aac' => 'aac',
+                        'audio/mp4', 'audio/m4a', 'audio/x-m4a' => 'm4a',
+                        'audio/flac' => 'flac',
+                        'image/png' => 'png',
+                        'image/jpeg', 'image/jpg' => 'jpg',
+                        'image/webp' => 'webp',
+                        'image/gif' => 'gif',
+                        default => 'mp4',
+                    };
+                }
+                $tempPath = $directory . DIRECTORY_SEPARATOR . $prefix . '_' . Str::random(6) . '.' . $extension;
+                file_put_contents($tempPath, $contents);
+                $cleanup[] = $tempPath;
+                return $tempPath;
+            } catch (\Throwable $e) {
+                Log::warning('Failed to download media asset for export.', [
+                    'url' => $url,
+                    'error' => $e->getMessage(),
+                ]);
+                continue;
             }
         }
 
