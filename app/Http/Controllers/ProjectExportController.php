@@ -113,6 +113,16 @@ class ProjectExportController extends Controller
         return "'" . $this->escapeFilterValue($value) . "'";
     }
 
+    protected function ffmpegBinary(): string
+    {
+        return (string) config('quickcut.export.ffmpeg_path', 'ffmpeg');
+    }
+
+    protected function ffprobeBinary(): string
+    {
+        return (string) config('quickcut.export.ffprobe_path', 'ffprobe');
+    }
+
     protected function normalizeStorageReference(?string $value): ?string
     {
         if (!is_string($value)) {
@@ -326,6 +336,14 @@ class ProjectExportController extends Controller
 
     protected function runProcess(array $arguments): bool
     {
+        if (!empty($arguments)) {
+            if ($arguments[0] === 'ffmpeg') {
+                $arguments[0] = $this->ffmpegBinary();
+            } elseif ($arguments[0] === 'ffprobe') {
+                $arguments[0] = $this->ffprobeBinary();
+            }
+        }
+
         $process = new Process($arguments);
         $process->setTimeout(300);
         $process->run();
@@ -376,7 +394,7 @@ class ProjectExportController extends Controller
     {
         $duration = max(0.1, $duration);
         $args = [
-            'ffmpeg',
+            $this->ffmpegBinary(),
             '-y',
             '-loop', '1',
             '-framerate', '30',
@@ -403,7 +421,7 @@ class ProjectExportController extends Controller
 
     protected function trimClipSegment(string $sourcePath, string $outputPath, float $startOffset, float $duration, ?array $targetDimensions = null): bool
     {
-        $args = ['ffmpeg', '-y'];
+        $args = [$this->ffmpegBinary(), '-y'];
         if ($startOffset > 0) {
             $args = array_merge($args, ['-ss', sprintf('%.3f', max(0, $startOffset))]);
         }
@@ -439,7 +457,7 @@ class ProjectExportController extends Controller
     protected function hasAudioStream(string $path): bool
     {
         $process = new Process([
-            'ffprobe',
+            $this->ffprobeBinary(),
             '-v', 'error',
             '-select_streams', 'a',
             '-show_entries', 'stream=codec_type',
@@ -465,7 +483,7 @@ class ProjectExportController extends Controller
         }
 
         $process = new Process([
-            'ffprobe',
+            $this->ffprobeBinary(),
             '-v', 'error',
             '-select_streams', 'v:0',
             '-show_entries', 'stream=width,height',
@@ -503,7 +521,7 @@ class ProjectExportController extends Controller
 
         $tempPath = $inputPath . '.tmpaudio.mp4';
         $args = [
-            'ffmpeg',
+            $this->ffmpegBinary(),
             '-y',
             '-i', $inputPath,
             '-f', 'lavfi',
@@ -690,7 +708,7 @@ class ProjectExportController extends Controller
                 };
 
                 $args = [
-                    'ffmpeg',
+                    $this->ffmpegBinary(),
                     '-y',
                     '-i', $currentPath,
                     '-i', $next['path'],
@@ -721,7 +739,7 @@ class ProjectExportController extends Controller
                 $currentDuration = $currentDuration + (float) $next['duration'] - $transitionDuration;
             } else {
                 $args = [
-                    'ffmpeg',
+                    $this->ffmpegBinary(),
                     '-y',
                     '-i', $currentPath,
                     '-i', $next['path'],
@@ -1043,7 +1061,7 @@ class ProjectExportController extends Controller
             return copy($inputPath, $outputPath);
         }
 
-        $args = ['ffmpeg', '-y', '-i', $inputPath];
+        $args = [$this->ffmpegBinary(), '-y', '-i', $inputPath];
         foreach ($musicTracks as $track) {
             $args[] = '-i';
             $args[] = $track['path'];
