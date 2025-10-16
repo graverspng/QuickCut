@@ -113,14 +113,76 @@ class ProjectExportController extends Controller
         return "'" . $this->escapeFilterValue($value) . "'";
     }
 
+    protected function resolveBinary(string $configured, array $fallbacks, string $default): string
+    {
+        static $cache = [];
+        $cacheKey = $configured . '|' . implode(',', $fallbacks) . '|' . $default;
+
+        if (isset($cache[$cacheKey])) {
+            return $cache[$cacheKey];
+        }
+
+        $candidates = [];
+        if (is_string($configured) && $configured !== '') {
+            $candidates[] = $configured;
+        }
+        $candidates = array_merge($candidates, $fallbacks);
+        $candidates[] = $default;
+
+        foreach ($candidates as $candidate) {
+            if (!is_string($candidate) || $candidate === '') {
+                continue;
+            }
+            if (str_contains($candidate, '/') || str_contains($candidate, '\\')) {
+                if (@is_file($candidate) && @is_executable($candidate)) {
+                    return $cache[$cacheKey] = $candidate;
+                }
+            } else {
+                try {
+                    $which = new Process(['which', $candidate]);
+                    $which->setTimeout(1);
+                    $which->run();
+                    if ($which->isSuccessful()) {
+                        $path = trim($which->getOutput());
+                        if ($path !== '') {
+                            return $cache[$cacheKey] = $path;
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    // Ignore lookup failure and continue to next candidate.
+                }
+            }
+        }
+
+        return $cache[$cacheKey] = $default;
+    }
+
     protected function ffmpegBinary(): string
     {
-        return (string) config('quickcut.export.ffmpeg_path', 'ffmpeg');
+        $configured = (string) config('quickcut.export.ffmpeg_path', '');
+        $fallbacks = [
+            '/usr/bin/ffmpeg',
+            '/usr/local/bin/ffmpeg',
+            '/bin/ffmpeg',
+            '/opt/homebrew/bin/ffmpeg',
+            'C:/ffmpeg/bin/ffmpeg.exe',
+        ];
+
+        return $this->resolveBinary($configured, $fallbacks, 'ffmpeg');
     }
 
     protected function ffprobeBinary(): string
     {
-        return (string) config('quickcut.export.ffprobe_path', 'ffprobe');
+        $configured = (string) config('quickcut.export.ffprobe_path', '');
+        $fallbacks = [
+            '/usr/bin/ffprobe',
+            '/usr/local/bin/ffprobe',
+            '/bin/ffprobe',
+            '/opt/homebrew/bin/ffprobe',
+            'C:/ffmpeg/bin/ffprobe.exe',
+        ];
+
+        return $this->resolveBinary($configured, $fallbacks, 'ffprobe');
     }
 
     protected function normalizeStorageReference(?string $value): ?string
@@ -1198,10 +1260,18 @@ class ProjectExportController extends Controller
         $prepared = $this->prepareClipSegments($project, $directory);
         $segments = $prepared['segments'];
         $rawSources = $prepared['raw_sources'] ?? [];
+        $hadFailures = $prepared['had_failures'] ?? false;
 
         if (empty($segments) && empty($rawSources)) {
-
             abort(422, 'This project does not contain any video clips to export.');
+        }
+
+        if ($hadFailures) {
+            Log::error('Export aborted because one or more clip segments failed to render.', [
+                'project_id' => $project->id,
+                'clip_count' => count($project->clips ?? []),
+            ]);
+            abort(500, 'Unable to build video export. Please verify FFmpeg is installed and check the logs for details.');
         }
 
         $cleanup = $prepared['cleanup'] ?? [];
