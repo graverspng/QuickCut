@@ -112,6 +112,75 @@ class ProjectExportController extends Controller
         return "'" . $this->escapeFilterValue($value) . "'";
     }
 
+    protected function normalizeStorageReference(?string $value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+
+        if (preg_match('#^https?://#i', $value)) {
+            $parsed = parse_url($value, PHP_URL_PATH);
+            if (is_string($parsed) && $parsed !== '') {
+                $value = $parsed;
+            }
+        }
+
+        $value = ltrim($value, '/');
+
+        if (str_starts_with($value, 'storage/')) {
+            $value = substr($value, strlen('storage/'));
+        }
+
+        if (str_starts_with($value, 'public/')) {
+            $value = substr($value, strlen('public/'));
+        }
+
+        return ltrim($value, '/');
+    }
+
+    protected function findExistingMediaPath(?string $candidate): ?string
+    {
+        if (!is_string($candidate) || $candidate === '') {
+            return null;
+        }
+
+        $candidate = trim($candidate);
+        if ($candidate === '') {
+            return null;
+        }
+
+        if (file_exists($candidate)) {
+            return realpath($candidate) ?: $candidate;
+        }
+
+        $normalized = $this->normalizeStorageReference($candidate);
+        if (!$normalized) {
+            return null;
+        }
+
+        $disk = Storage::disk('public');
+        if ($disk->exists($normalized)) {
+            return $disk->path($normalized);
+        }
+
+        $storagePath = storage_path('app/public/' . ltrim($normalized, '/'));
+        if (file_exists($storagePath)) {
+            return $storagePath;
+        }
+
+        $publicStoragePath = public_path('storage/' . ltrim($normalized, '/'));
+        if (file_exists($publicStoragePath)) {
+            return $publicStoragePath;
+        }
+
+        return null;
+    }
+
     protected function ensureOutputDirectory(string $directory): void
     {
         if (!is_dir($directory)) {
@@ -161,9 +230,6 @@ class ProjectExportController extends Controller
 
     protected function resolveMediaPath(array $item, $mediaById, string $directory, string $prefix, array &$cleanup): ?string
     {
-        $storageKey = Arr::get($item, 'storageKey')
-            ?: Arr::get($item, 'path')
-            ?: Arr::get($item, 'source');
         $sourceId = Arr::get($item, 'mediaId') ?: Arr::get($item, 'id');
         $fallbackSource = Arr::get($item, 'fallbackSource');
         if (!$fallbackSource) {
@@ -173,14 +239,29 @@ class ProjectExportController extends Controller
             }
         }
 
-        if ($storageKey && Storage::disk('public')->exists($storageKey)) {
-            return Storage::disk('public')->path($storageKey);
+        $candidates = [
+            Arr::get($item, 'storageKey'),
+            Arr::get($item, 'path'),
+            Arr::get($item, 'source'),
+            Arr::get($item, 'url'),
+        ];
+
+        $mediaSource = null;
+        if ($sourceId && $mediaById && $mediaById->has($sourceId)) {
+            $mediaSource = $mediaById[$sourceId];
+            $candidates[] = Arr::get($mediaSource, 'storageKey');
+            $candidates[] = Arr::get($mediaSource, 'path');
+            $candidates[] = Arr::get($mediaSource, 'source');
+            $candidates[] = Arr::get($mediaSource, 'url');
+            if (!$fallbackSource) {
+                $fallbackSource = Arr::get($mediaSource, 'fallbackSource');
+            }
         }
 
-        if ($sourceId && $mediaById && $mediaById->has($sourceId)) {
-            $candidate = Arr::get($mediaById[$sourceId], 'path') ?: Arr::get($mediaById[$sourceId], 'source');
-            if ($candidate && Storage::disk('public')->exists($candidate)) {
-                return Storage::disk('public')->path($candidate);
+        foreach ($candidates as $candidate) {
+            $resolved = $this->findExistingMediaPath($candidate);
+            if ($resolved) {
+                return $resolved;
             }
         }
 
