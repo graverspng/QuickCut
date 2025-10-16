@@ -1785,7 +1785,13 @@ export default function Editor({ project }) {
   );
 
   const handleSeekMouseDownCapture = (e) => {
-    if (e.target.closest('.clip-handle, .effect-slider, .transition-add-button, .transition-toolbar, .transition-type, .transition-slider')) return;
+    if (
+      e.target.closest(
+        '.clip, .track, .effect-block, .text-block, .transition-block, .clip-handle, .effect-slider, .transition-add-button, .transition-toolbar, .transition-type, .transition-slider'
+      )
+    ) {
+      return;
+    }
     const wasPlaying = isTimelinePlaying();
     const t = getClickTimeFromEvent(e);
     seekTo(t, wasPlaying);
