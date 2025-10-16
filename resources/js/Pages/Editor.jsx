@@ -609,7 +609,26 @@ export default function Editor({ project }) {
       }
     } catch (error) {
       console.error('Media upload failed', error);
-      alert('Uploading media failed. Please try again.');
+      const status = error?.response?.status;
+      const serverMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.response?.data?.errors
+          ? JSON.stringify(error.response.data.errors)
+          : null;
+      let message = 'Uploading media failed. Please try again.';
+      if (status === 413) {
+        message = 'Upload too large for the server (HTTP 413). Try a smaller file or contact support.';
+      } else if (status === 419) {
+        message = 'Session expired (HTTP 419). Refresh the page and try again.';
+      } else if (status === 422) {
+        message = serverMessage || 'The file did not pass validation (HTTP 422).';
+      } else if (status >= 500 && status < 600) {
+        message = 'Server error while uploading. Please try again later.';
+      } else if (serverMessage) {
+        message = serverMessage;
+      }
+      alert(message);
     } finally {
       setIsUploadingMedia(false);
       if (input?.target?.value !== undefined) {
