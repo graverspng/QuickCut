@@ -2,6 +2,10 @@
 
 ./vendor/bin/pest tests/Feature/LoginTest.php
 
+./vendor/bin/pest tests/Feature/RegisterTest.php
+
+./vendor/bin/pest tests/Feature/AudioProjectCreationTest.php
+
 user
 user@example.com
 Parole123!

@@ -22,6 +22,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
     Route::put('/projects/{project}', [ProjectController::class, 'update'])->name('projects.update');
     Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])->name('projects.destroy');
+    Route::post('/projects/{project}/media', [ProjectController::class, 'uploadMedia'])->name('projects.media.upload');
     Route::get('/editor/{project}', [EditorController::class, 'show'])->name('editor');
     Route::get('/projects/{project}/export', [ProjectExportController::class, 'show'])->name('projects.export');
     Route::get('/projects/{project}/export/download', [ProjectExportController::class, 'download'])->name('projects.export.download');

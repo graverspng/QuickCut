@@ -93,7 +93,7 @@ class ProjectController extends Controller
         ]);
 
         $disk = 'public';
-        $dir  = "projects/{$project->id}/media";
+        $dir  = "quickcut/projects/{$project->id}/media";
 
 
         if (!Storage::disk($disk)->exists($dir)) {

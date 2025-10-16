@@ -1,3 +1,4 @@
+import axios from 'axios';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -5,46 +6,48 @@ import '@/../css/Editor.css';
 
 const DEFAULT_IMAGE_CLIP_DURATION = 5;
 
-const ensurePngExtension = (name = '') => {
-  const lower = name.toLowerCase();
-  if (lower.endsWith('.png')) return name;
-  const dot = name.lastIndexOf('.');
-  const base = dot > 0 ? name.slice(0, dot) : name || 'image';
-  return `${base}.png`;
+const createMediaItemFromAsset = (asset) => {
+  if (!asset) return null;
+  const fallbackId =
+    globalThis.crypto?.randomUUID?.() ||
+    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const kind = asset.kind || asset.type || 'video';
+  const relativeFromPath =
+    typeof asset.path === 'string' && asset.path.length
+      ? `/storage/${asset.path.replace(/^\/?storage\//, '')}`
+      : null;
+  const urlFromAsset = typeof asset.url === 'string' && asset.url.length ? asset.url : null;
+  const source =
+    relativeFromPath ||
+    (asset.source && typeof asset.source === 'string' ? asset.source : null) ||
+    urlFromAsset ||
+    '';
+
+  const base = {
+    id: asset.id || fallbackId,
+    name: asset.name || 'Media Asset',
+    type: kind,
+    kind,
+    mime: asset.mime || '',
+    path: asset.path || '',
+    url: urlFromAsset || relativeFromPath || asset.url || asset.source || '',
+    source,
+    size: asset.size ?? null,
+    startTime: 0,
+    startOffset: 0,
+    storageKey: null,
+    sourceDuration: 0,
+    duration: 0,
+  };
+
+  if (kind === 'image') {
+    base.sourceDuration = DEFAULT_IMAGE_CLIP_DURATION;
+    base.duration = DEFAULT_IMAGE_CLIP_DURATION;
+  }
+
+  return base;
 };
-
-const ensurePngDataUrl = (file, dataUrl) =>
-  new Promise((resolve) => {
-    const isImage = file?.type?.startsWith('image/');
-    if (!isImage) {
-      resolve({ dataUrl, mime: file?.type || '' });
-      return;
-    }
-    const alreadyPng = file.type === 'image/png' && typeof dataUrl === 'string' && dataUrl.startsWith('data:image/png');
-    if (alreadyPng) {
-      resolve({ dataUrl, mime: 'image/png' });
-      return;
-    }
-
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width || 1;
-        canvas.height = img.height || 1;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('Canvas context unavailable');
-        ctx.drawImage(img, 0, 0);
-        const pngUrl = canvas.toDataURL('image/png');
-        resolve({ dataUrl: pngUrl, mime: 'image/png' });
-      } catch (_) {
-        resolve({ dataUrl, mime: 'image/png' });
-      }
-    };
-    img.onerror = () => resolve({ dataUrl, mime: 'image/png' });
-    img.src = typeof dataUrl === 'string' ? dataUrl : '';
-  });
 
 const EFFECT_PRESETS = [
   { key: 'blur', name: 'Blur', type: 'blur', intensity: 0.5, fadeIn: 0.3, fadeOut: 0.3, duration: 3 },
@@ -123,10 +126,22 @@ export default function Editor({ project }) {
 
   const hydrateFromStorage = (item) => {
     if (!item) return null;
-    const storageKey = item.storageKey || (typeof item.source === 'string' && item.source.startsWith('local-') ? item.source : null);
+    const storageKey =
+      item.storageKey ||
+      (typeof item.source === 'string' && item.source.startsWith('local-') ? item.source : null);
     if (storageKey) {
       const data = resolveLocal(storageKey, null);
       if (data) return { ...item, source: data, storageKey };
+    }
+    if (typeof item.source === 'string' && item.source.length > 0) {
+      return { ...item };
+    }
+    if (typeof item.path === 'string' && item.path.length > 0) {
+      const relative = `/storage/${item.path.replace(/^\/?storage\//, '')}`;
+      return { ...item, source: relative };
+    }
+    if (item.url) {
+      return { ...item, source: item.url };
     }
     if (item.fallbackSource) return { ...item, source: item.fallbackSource };
     return { ...item, source: '/placeholder.mp4', missing: true };
@@ -158,6 +173,7 @@ export default function Editor({ project }) {
   const [musicTracks, setMusicTracks] = useState(() => rehydrateItems(project.music_tracks || []));
   const [effects, setEffects] = useState(() => (Array.isArray(project.effects) && project.effects.length ? project.effects : []));
   const [textOverlays, setTextOverlays] = useState(() => (Array.isArray(project.text_overlays) ? project.text_overlays : []));
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
 
   const [transitions, setTransitions] = useState(initialTransitions);
   const [activeClipIndex, setActiveClipIndex] = useState(null);
@@ -170,12 +186,54 @@ export default function Editor({ project }) {
   const [currentTime, setCurrentTime] = useState(0);
 
   const videoRef = useRef(null);
+  const videoSourceRef = useRef({ url: null, objectUrl: null, file: null });
   const imageRef = useRef(null);
   const audioRefs = useRef([]);
+  const audioSyncStateRef = useRef(new Map());
   const stageRef = useRef(null);
   const transitionOverlayRef = useRef(null);
   const manualPlaybackRef = useRef(null);
   const seekToRef = useRef(null);
+
+  const handleAudioMetadataLoaded = useCallback((track, index) => {
+    const audio = audioRefs.current[index];
+    if (!audio) return;
+    const key = track?._localId || track?.id || `track-${index}`;
+    const state = audioSyncStateRef.current;
+    const entry = state.get(key) || { lastForcedAt: 0, lastDesired: null };
+    const target =
+      entry && entry.lastDesired != null ? entry.lastDesired : (track.startOffset || 0);
+    try {
+      audio.currentTime = target;
+    } catch (_) {}
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    entry.lastDesired = target;
+    entry.lastForcedAt = now;
+    state.set(key, entry);
+  }, []);
+
+  useEffect(() => {
+    const state = audioSyncStateRef.current;
+    const validKeys = new Set(
+      musicTracks.map((track, index) => {
+        if (!track) return `track-${index}`;
+        return track._localId || track.id || `track-${index}`;
+      })
+    );
+    Array.from(state.keys()).forEach((key) => {
+      if (!validKeys.has(key)) state.delete(key);
+    });
+  }, [musicTracks]);
+
+  useEffect(() => {
+    return () => {
+      const current = videoSourceRef.current;
+      if (current?.objectUrl) {
+        URL.revokeObjectURL(current.objectUrl);
+        videoSourceRef.current = { url: null, objectUrl: null, file: null };
+      }
+    };
+  }, []);
 
   const applyStageDimensions = useCallback((overlays) => {
     const stageRect = stageRef.current?.getBoundingClientRect();
@@ -520,50 +578,44 @@ export default function Editor({ project }) {
 
   const goBack = () => router.get(route('dashboard'));
 
-  const handleFileUpload = async (e) => {
-    const uploads = Array.from(e.target.files || []);
-    const files = await Promise.all(
-      uploads.map(
-        (file) =>
-          new Promise((resolve) => {
-            const reader = new FileReader();
-            const key = `local-${globalThis.crypto?.randomUUID?.() || Date.now()}`;
-            reader.onload = async () => {
-              const rawDataUrl = typeof reader.result === 'string' ? reader.result : '';
-              const isAudio = (file.type || '').startsWith('audio/');
-              const isImage = (file.type || '').startsWith('image/');
+  const handleFileUpload = async (input) => {
+    const fileList =
+      input?.target?.files ||
+      input?.dataTransfer?.files ||
+      input?.files ||
+      (Array.isArray(input) ? input : null);
 
-              let finalSource = rawDataUrl;
-              let finalMime = file.type || '';
-              let finalName = file.name || 'asset';
+    const uploads = Array.from(fileList || []);
+    if (uploads.length === 0) {
+      if (input?.target?.value !== undefined) input.target.value = '';
+      return;
+    }
 
-              if (isImage && rawDataUrl) {
-                const conversion = await ensurePngDataUrl(file, rawDataUrl);
-                finalSource = conversion.dataUrl || rawDataUrl;
-                finalMime = conversion.mime || 'image/png';
-                finalName = ensurePngExtension(file.name || 'image');
-              }
+    const formData = new FormData();
+    uploads.forEach((file, index) => formData.append(`files[${index}]`, file));
 
-              try { localStorage.setItem(key, finalSource); } catch (_) {}
+    setIsUploadingMedia(true);
 
-              resolve({
-                name: finalName,
-                source: finalSource,
-                storageKey: key,
-                duration: isImage ? DEFAULT_IMAGE_CLIP_DURATION : 0,
-                type: isAudio ? 'audio' : isImage ? 'image' : 'video',
-                startOffset: 0,
-                startTime: 0,
-                sourceDuration: isImage ? DEFAULT_IMAGE_CLIP_DURATION : 0,
-                autoClamped: isAudio,
-                mime: finalMime,
-              });
-            };
-            reader.readAsDataURL(file);
-          })
-      )
-    );
-    setMediaFiles((prev) => [...prev, ...files]);
+    try {
+      const response = await axios.post(route('projects.media.upload', project.id), formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      const assets = Array.isArray(response?.data?.assets) ? response.data.assets : [];
+      const normalized = assets.map(createMediaItemFromAsset).filter(Boolean);
+
+      if (normalized.length) {
+        setMediaFiles((prev) => [...prev, ...normalized]);
+      }
+    } catch (error) {
+      console.error('Media upload failed', error);
+      alert('Uploading media failed. Please try again.');
+    } finally {
+      setIsUploadingMedia(false);
+      if (input?.target?.value !== undefined) {
+        input.target.value = '';
+      }
+    }
   };
 
   const handleDragStart = (e, payload) => {
@@ -1345,19 +1397,38 @@ export default function Editor({ project }) {
 
   const syncAudio = useCallback(
     (globalTime, shouldPlay) => {
+      const syncState = audioSyncStateRef.current;
       musicTracks.forEach((track, i) => {
         const audio = audioRefs.current[i];
         if (!audio) return;
+
         const trackStart = track.startTime || 0;
         const trackDuration = track.duration || 0;
         const trackEnd = trackStart + trackDuration;
         const trackOffset = track.startOffset || 0;
+        const key = track?._localId || track?.id || `track-${i}`;
+        const entry = syncState.get(key) || { lastForcedAt: 0, lastDesired: null };
+        const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+        const forceToTime = (target) => {
+          const current = audio.currentTime || 0;
+          const diff = Math.abs(current - target);
+          const elapsed = now - (entry.lastForcedAt || 0);
+          if (diff > 0.35 && elapsed > 200) {
+            try {
+              audio.currentTime = target;
+              entry.lastForcedAt = now;
+            } catch (_) {}
+          }
+          entry.lastDesired = target;
+        };
 
         if (globalTime >= trackStart && globalTime <= trackEnd) {
-          const rel = globalTime - trackStart;
-          const desired = trackOffset + rel;
-          if (Math.abs((audio.currentTime || 0) - desired) > 0.25) {
-            try { audio.currentTime = desired; } catch (_) {}
+          const desired = trackOffset + (globalTime - trackStart);
+          if (audio.readyState >= 1) {
+            forceToTime(desired);
+          } else {
+            entry.lastDesired = desired;
           }
           if (shouldPlay) {
             if (audio.paused) audio.play().catch(() => {});
@@ -1366,10 +1437,17 @@ export default function Editor({ project }) {
           }
         } else if (globalTime < trackStart) {
           if (!audio.paused) audio.pause();
-          try { audio.currentTime = trackOffset; } catch (_) {}
+          if (entry.lastDesired !== trackOffset) {
+            try { audio.currentTime = trackOffset; } catch (_) {}
+            entry.lastDesired = trackOffset;
+            entry.lastForcedAt = now;
+          }
         } else {
           if (!audio.paused) audio.pause();
+          entry.lastDesired = null;
         }
+
+        syncState.set(key, entry);
       });
     },
     [musicTracks]
@@ -1513,25 +1591,99 @@ export default function Editor({ project }) {
 
     stopManualPlayback({ syncAudio: false });
 
+    const clipStart = seg.startTime || 0;
+    const clipStartOffset = seg.startOffset || 0;
+    const clipDuration = seg.duration || 0;
+    const segRelative = Math.max(0, targetTime - clipStart);
+    const rawSeek = clipStartOffset + segRelative;
+    const clipEndInSource = clipStartOffset + clipDuration;
+    const availableInSource =
+      typeof seg.sourceDuration === 'number' && seg.sourceDuration > 0 ? seg.sourceDuration : clipEndInSource;
+    const seekTimeInSource = Math.max(
+      clipStartOffset,
+      Math.min(Number.isFinite(availableInSource) ? availableInSource : rawSeek, rawSeek)
+    );
+
     if (video) {
-      let source = seg.source;
-      if (seg.file && typeof seg.source === 'string' && seg.source.startsWith('blob:')) {
-        source = URL.createObjectURL(seg.file);
+      const lastSource = videoSourceRef.current;
+      const nextFile = typeof Blob !== 'undefined' && seg.file && seg.file instanceof Blob ? seg.file : null;
+      let nextObjectUrl = lastSource?.objectUrl || null;
+      let nextSource = seg.source || '';
+
+      const canUseObjectUrl =
+        typeof URL !== 'undefined' &&
+        typeof URL.createObjectURL === 'function' &&
+        typeof URL.revokeObjectURL === 'function';
+
+      if (nextFile && canUseObjectUrl) {
+        if (lastSource?.file === nextFile && lastSource?.objectUrl) {
+          nextSource = lastSource.objectUrl;
+          nextObjectUrl = lastSource.objectUrl;
+        } else {
+          if (lastSource?.objectUrl) {
+            URL.revokeObjectURL(lastSource.objectUrl);
+          }
+          nextObjectUrl = URL.createObjectURL(nextFile);
+          nextSource = nextObjectUrl;
+        }
+      } else if (nextFile) {
+        nextObjectUrl = null;
+        nextSource = seg.source || '';
+      } else if (lastSource?.objectUrl && lastSource?.file && canUseObjectUrl) {
+        URL.revokeObjectURL(lastSource.objectUrl);
+        nextObjectUrl = null;
       }
-      video.src = source;
-      const segRelative = Math.max(0, targetTime - (seg.startTime || 0));
-      const seekTimeInSource = (seg.startOffset || 0) + segRelative;
-      video.currentTime = seekTimeInSource;
-      if (keepPlaying) {
-        video.play().catch(() => {});
+
+      const sourceChanged = !lastSource || lastSource.url !== nextSource;
+      const sameClipActive = activeClipIndex === clipIndex;
+      const videoTime = video.currentTime || 0;
+      if (!sourceChanged && sameClipActive && Math.abs(videoTime - seekTimeInSource) < 0.01) {
+        if (keepPlaying) {
+          video.play().catch(() => {});
+        } else {
+          video.pause();
+        }
+        syncVisuals(targetTime);
+        syncAudio(targetTime, keepPlaying);
+        return;
+      }
+
+      if (sourceChanged) {
+        video.src = nextSource;
+      }
+
+      videoSourceRef.current = { url: nextSource, objectUrl: nextObjectUrl, file: nextFile };
+
+      const applyPlaybackState = () => {
+        try {
+          video.currentTime = seekTimeInSource;
+        } catch {
+          return;
+        }
+        if (keepPlaying) {
+          video.play().catch(() => {});
+        } else {
+          video.pause();
+        }
+      };
+
+      if (video.readyState >= 1 && !sourceChanged) {
+        applyPlaybackState();
       } else {
-        video.pause();
+        const onLoaded = () => {
+          video.removeEventListener('loadedmetadata', onLoaded);
+          applyPlaybackState();
+        };
+        video.addEventListener('loadedmetadata', onLoaded);
+        if (video.readyState >= 1) {
+          onLoaded();
+        }
       }
     }
 
     syncVisuals(targetTime);
     syncAudio(targetTime, keepPlaying);
-  }, [clips, findClipIndexAtTime, startManualPlayback, stopManualPlayback, syncAudio, syncVisuals, timelineDuration]);
+  }, [activeClipIndex, clips, findClipIndexAtTime, startManualPlayback, stopManualPlayback, syncAudio, syncVisuals, timelineDuration]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -1598,19 +1750,23 @@ export default function Editor({ project }) {
 
   seekToRef.current = seekTo;
 
-  const getClickTimeFromEvent = (e) => {
-    const scroller = e.currentTarget.closest('.timeline-scroll');
-    const scrollLeft = scroller ? scroller.scrollLeft : 0;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = e.clientX - rect.left + scrollLeft;
-    const fullWidth = Math.max(timelineWidth, 1);
-    const ratio = fullWidth > 0 ? clickX / fullWidth : 0;
-    const rawTime = ratio * timelineDuration;
-    return Math.max(0, Math.min(timelineDuration, rawTime));
-  };
+  const getClickTimeFromEvent = useCallback(
+    (e) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      if (!rect) return 0;
+      const scroller = e.currentTarget.closest('.timeline-scroll');
+      const scrollLeft = scroller ? scroller.scrollLeft : 0;
+      const offsetX = e.clientX - rect.left + scrollLeft;
+      const positionX = Math.max(0, offsetX);
+      const clampedPxPerSec = Number.isFinite(pxPerSec) && pxPerSec > 0 ? pxPerSec : BASE_PX_PER_SEC;
+      const rawTime = positionX / clampedPxPerSec;
+      return Math.max(0, Math.min(timelineDuration, rawTime));
+    },
+    [pxPerSec, timelineDuration]
+  );
 
   const handleSeekMouseDownCapture = (e) => {
-    if (e.target.closest('.clip, .track, .effect-block, .text-block, .clip-handle, .effect-slider, .transition-block, .transition-add-button, .transition-toolbar, .transition-type, .transition-slider')) return;
+    if (e.target.closest('.clip-handle, .effect-slider, .transition-add-button, .transition-toolbar, .transition-type, .transition-slider')) return;
     const wasPlaying = isTimelinePlaying();
     const t = getClickTimeFromEvent(e);
     seekTo(t, wasPlaying);
@@ -1943,10 +2099,12 @@ export default function Editor({ project }) {
             <div
               className="upload-dropzone"
               onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => { e.preventDefault(); handleFileUpload({ target: { files: e.dataTransfer.files } }); }}
+              onDrop={(e) => { e.preventDefault(); handleFileUpload(e); }}
               onClick={() => document.getElementById('hiddenFileInput').click()}
             >
-              <p style={{ fontSize: '10px' }}>Drop files here or click to upload</p>
+              <p style={{ fontSize: '10px' }}>
+                {isUploadingMedia ? 'Uploading...' : 'Drop files here or click to upload'}
+              </p>
               <input id="hiddenFileInput" type="file" multiple style={{ display: 'none' }} onChange={handleFileUpload} />
             </div>
 
@@ -2306,7 +2464,12 @@ export default function Editor({ project }) {
                         style={{ width: `${width}px`, left: `${left}px` }}
                       >
                         {track.name}
-                        <audio ref={(el) => (audioRefs.current[index] = el)} src={track.source} />
+                        <audio
+                          ref={(el) => (audioRefs.current[index] = el)}
+                          src={track.source}
+                          preload="auto"
+                          onLoadedMetadata={() => handleAudioMetadataLoaded(track, index)}
+                        />
                         {isSelected && (
                           <>
                             <div className="clip-handle left" onMouseDown={(e) => startMusicResize(e, index, 'start')} />
