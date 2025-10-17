@@ -23,6 +23,10 @@ it('registers with valid data', function () {
 });
 
 $invalidCases = [
+    'name too long' => [
+        ['name' => str_repeat('A', 21), 'email' => 'toolong@example.com', 'password' => 'Parole123!', 'password_confirmation' => 'Parole123!'],
+        'name',
+    ],
     'passwords do not match' => [
         ['name' => 'Jane', 'email' => 'mismatch@example.com', 'password' => 'A1!', 'password_confirmation' => 'B2!'],
         'password',

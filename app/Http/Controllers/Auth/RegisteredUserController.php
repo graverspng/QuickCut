@@ -38,7 +38,7 @@ class RegisteredUserController extends Controller
     {
         // Validē ievadītos datus: name, email un password
         $request->validate([
-            'name' => 'required|string|max:255',                            
+            'name' => 'required|string|max:20',
             'email' => 'required|string|lowercase|email|max:255|unique:'.User::class,  
             'password' => ['required', 'confirmed', Rules\Password::defaults()],  
         ]);
