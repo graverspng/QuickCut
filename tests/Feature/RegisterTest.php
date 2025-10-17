@@ -47,6 +47,18 @@ $invalidCases = [
         ['name' => 'Short', 'email' => 'short@example.com', 'password' => '123', 'password_confirmation' => '123'],
         'password',
     ],
+    'password missing uppercase' => [
+        ['name' => 'NoUpper', 'email' => 'noupper@example.com', 'password' => 'parole123!', 'password_confirmation' => 'parole123!'],
+        'password',
+    ],
+    'password missing number' => [
+        ['name' => 'NoNumber', 'email' => 'nonumber@example.com', 'password' => 'Parole!!!', 'password_confirmation' => 'Parole!!!'],
+        'password',
+    ],
+    'password missing symbol' => [
+        ['name' => 'NoSymbol', 'email' => 'nosymbol@example.com', 'password' => 'Parole1234', 'password_confirmation' => 'Parole1234'],
+        'password',
+    ],
     'missing username' => [
         ['name' => '', 'email' => 'nouser@example.com', 'password' => 'Parole123!', 'password_confirmation' => 'Parole123!'],
         'name',

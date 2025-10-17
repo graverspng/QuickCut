@@ -161,6 +161,45 @@
       0 0 6px rgba(42,168,74,0.08);
 }
 
+.login-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.password-criteria-compact {
+    margin-top: 0.6rem;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.35rem 0.75rem;
+    font-size: 0.82rem;
+    color: rgba(252,255,252,0.55);
+}
+
+.password-criteria-compact li {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: color 0.2s ease;
+}
+
+.password-criteria-compact li.valid {
+    color: var(--green-2);
+}
+
+.password-criteria-compact .indicator {
+    width: 1rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
 .login-card label span { color: rgba(252,255,252,0.9); }
 .login-card a { color: var(--green-2); text-decoration: underline; }
 .login-card a:hover { color: var(--green-1); text-shadow: 0 6px 18px rgba(42,168,74,0.14); }
