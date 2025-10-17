@@ -608,6 +608,8 @@ class ProjectExportController extends Controller
 
     protected function prepareClipSegments(Project $project, string $directory): array
     {
+        $this->ensureOutputDirectory($directory);
+
         $cleanup = [];
         $segments = [];
         $rawSources = [];
@@ -838,6 +840,8 @@ class ProjectExportController extends Controller
 
     protected function gatherMusicSources(Project $project, string $directory): array
     {
+        $this->ensureOutputDirectory($directory);
+
         $cleanup = [];
         $tracks = [];
 
