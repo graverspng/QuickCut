@@ -721,20 +721,104 @@ class ProjectExportController extends Controller
     protected function buildTransitionMap(Project $project): array
     {
         $map = [];
+        $clips = collect($project->clips ?? [])
+            ->map(fn ($clip) => is_array($clip) ? $clip : [])
+            ->values();
+
+        $indexLookup = [];
+        foreach ($clips as $index => $clip) {
+            $candidates = [
+                Arr::get($clip, '_localId'),
+                Arr::get($clip, 'localId'),
+                Arr::get($clip, 'local_id'),
+                Arr::get($clip, 'id'),
+                Arr::get($clip, 'clip_id'),
+                Arr::get($clip, 'storageKey'),
+                'index-' . $index,
+            ];
+            foreach ($candidates as $candidate) {
+                if (is_string($candidate) && $candidate !== '') {
+                    $indexLookup[$candidate] = $index;
+                } elseif (is_numeric($candidate)) {
+                    $indexLookup[(string) $candidate] = $index;
+                }
+            }
+        }
+
         foreach (($project->transitions ?? []) as $transition) {
             if (!is_array($transition)) {
                 continue;
             }
 
-            $fromIndex = Arr::get($transition, 'from_clip_index');
-            $toIndex = Arr::get($transition, 'to_clip_index');
-            if (!is_numeric($fromIndex) || !is_numeric($toIndex)) {
+            $fromIndex = Arr::get($transition, 'from_clip_index', Arr::get($transition, 'fromClipIndex'));
+            $toIndex = Arr::get($transition, 'to_clip_index', Arr::get($transition, 'toClipIndex'));
+
+            $resolveIndex = function ($value, array $lookup) {
+                if (is_numeric($value)) {
+                    return (int) $value;
+                }
+                if (is_string($value) && $value !== '') {
+                    if (isset($lookup[$value])) {
+                        return $lookup[$value];
+                    }
+                    if (isset($lookup[(string) $value])) {
+                        return $lookup[(string) $value];
+                    }
+                }
+                return null;
+            };
+
+            if (!is_numeric($fromIndex)) {
+                $fromCandidates = [
+                    Arr::get($transition, 'from_clip_local_id'),
+                    Arr::get($transition, 'fromClipLocalId'),
+                    Arr::get($transition, 'from_clip_id'),
+                    Arr::get($transition, 'fromClipId'),
+                    Arr::get($transition, 'from_clip_storage_key'),
+                    Arr::get($transition, 'fromClipStorageKey'),
+                ];
+                foreach ($fromCandidates as $candidate) {
+                    $fromIndex = $resolveIndex($candidate, $indexLookup);
+                    if ($fromIndex !== null) {
+                        break;
+                    }
+                }
+            } else {
+                $fromIndex = (int) $fromIndex;
+            }
+
+            if (!is_numeric($toIndex)) {
+                $toCandidates = [
+                    Arr::get($transition, 'to_clip_local_id'),
+                    Arr::get($transition, 'toClipLocalId'),
+                    Arr::get($transition, 'to_clip_id'),
+                    Arr::get($transition, 'toClipId'),
+                    Arr::get($transition, 'to_clip_storage_key'),
+                    Arr::get($transition, 'toClipStorageKey'),
+                ];
+                foreach ($toCandidates as $candidate) {
+                    $toIndex = $resolveIndex($candidate, $indexLookup);
+                    if ($toIndex !== null) {
+                        break;
+                    }
+                }
+            } else {
+                $toIndex = (int) $toIndex;
+            }
+
+            if ($fromIndex === null || $toIndex === null) {
+                Log::debug('Skipping transition without resolvable clip indexes.', [
+                    'transition' => $transition,
+                ]);
                 continue;
             }
 
-            $fromIndex = (int) $fromIndex;
-            $toIndex = (int) $toIndex;
             if ($toIndex !== $fromIndex + 1) {
+                Log::debug('Transition target is not adjacent; skipping.', [
+                    'transition' => $transition,
+                    'from_index' => $fromIndex,
+                    'to_index' => $toIndex,
+                ]);
                 continue;
             }
 
