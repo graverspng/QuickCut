@@ -1,10 +1,47 @@
 import axios from 'axios';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router } from '@inertiajs/react';
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import '@/../css/Editor.css';
 
 const DEFAULT_IMAGE_CLIP_DURATION = 5;
+
+const useThrottledCallback = (callback, limitMs) => {
+  const lastCallRef = useRef(0);
+  const timeoutRef = useRef(null);
+  const latestArgsRef = useRef();
+  const savedCallback = useRef(callback);
+
+  useEffect(() => {
+    savedCallback.current = callback;
+  }, [callback]);
+
+  useEffect(() => () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+  }, []);
+
+  return useCallback((...args) => {
+    latestArgsRef.current = args;
+    const now = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+    const elapsed = now - lastCallRef.current;
+
+    if (elapsed >= limitMs) {
+      lastCallRef.current = now;
+      savedCallback.current(...args);
+      return;
+    }
+
+    if (timeoutRef.current) return;
+
+    timeoutRef.current = setTimeout(() => {
+      timeoutRef.current = null;
+      lastCallRef.current = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+      savedCallback.current(...(latestArgsRef.current || []));
+    }, limitMs - elapsed);
+  }, [limitMs]);
+};
 
 const createMediaItemFromAsset = (asset) => {
   if (!asset) return null;
@@ -62,11 +99,275 @@ const TRANSITION_TYPES = [
 
 const getTransitionLabel = (type) => TRANSITION_TYPES.find((t) => t.value === type)?.label || 'Fade';
 
+const LanePlayhead = memo(({ position }) => {
+  const safePosition = Number.isFinite(position) ? position : 0;
+  return <div className="playhead" style={{ left: `${safePosition}px` }} />;
+});
+
+const EffectsLaneContent = memo(function EffectsLaneContent({
+  effects,
+  selectedEffectIndex,
+  pxPerSec,
+  onSelect,
+  onStartResize,
+  onStartDrag,
+  onDragStart,
+  onDrop,
+  onIntensityChange,
+}) {
+  return (
+    <>
+      {effects.map((fx, index) => {
+        if (!fx) return null;
+        const width = Math.max(2, (fx.duration || 0) * pxPerSec);
+        const left = Math.max(0, (fx.startTime || 0) * pxPerSec);
+        const isSelected = selectedEffectIndex === index;
+        const intensity = fx.intensity ?? 0.5;
+
+        return (
+          <div
+            key={fx.id ?? `effect-${index}`}
+            className={`effect-block ${isSelected ? 'selected' : ''}`}
+            style={{ width: `${width}px`, left: `${left}px` }}
+            draggable={!isSelected}
+            onDragStart={(e) => {
+              if (isSelected) return;
+              onDragStart(e, index);
+            }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => onDrop(e, index)}
+            onMouseDown={(e) => onStartDrag(e, index)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(index);
+            }}
+          >
+            <span>{fx.name}</span>
+            {isSelected && (
+              <>
+                <div className="clip-handle left" onMouseDown={(e) => onStartResize(e, index, 'start')} />
+                <div className="clip-handle right" onMouseDown={(e) => onStartResize(e, index, 'end')} />
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={intensity}
+                  onChange={(e) => onIntensityChange(index, parseFloat(e.target.value))}
+                  className="effect-slider"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </>
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+});
+
+const TextLaneContent = memo(function TextLaneContent({
+  texts,
+  selectedTextIndex,
+  pxPerSec,
+  onSelect,
+  onStartResize,
+  onStartDrag,
+}) {
+  return (
+    <>
+      {texts.map((tx, index) => {
+        if (!tx) return null;
+        const width = Math.max(2, (tx.duration || 0) * pxPerSec);
+        const left = Math.max(0, (tx.startTime || 0) * pxPerSec);
+        const isSelected = selectedTextIndex === index;
+
+        return (
+          <div
+            key={tx.id ?? `text-${index}`}
+            className={`text-block ${isSelected ? 'selected' : ''}`}
+            style={{ width: `${width}px`, left: `${left}px` }}
+            onMouseDown={(e) => onStartDrag(e, index)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(index);
+            }}
+          >
+            <span className="text-block-label">{tx.content}</span>
+            {isSelected && (
+              <>
+                <div className="clip-handle left" onMouseDown={(e) => onStartResize(e, index, 'start')} />
+                <div className="clip-handle right" onMouseDown={(e) => onStartResize(e, index, 'end')} />
+              </>
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+});
+
+const ClipLaneContent = memo(function ClipLaneContent({
+  clips,
+  selectedClipIndex,
+  pxPerSec,
+  transitionLookup,
+  selectedTransitionId,
+  onSelectClip,
+  onClipDragStart,
+  onClipDrop,
+  onStartResize,
+  onSelectTransition,
+  onAddTransition,
+}) {
+  return (
+    <>
+      {clips.map((clip, index) => {
+        if (!clip) return null;
+        const width = Math.max(2, (clip.duration || 0) * pxPerSec);
+        const isSelected = selectedClipIndex === index;
+
+        return (
+          <div
+            key={clip._localId || clip.id || `clip-${index}`}
+            draggable={!isSelected}
+            onDragStart={(e) => onClipDragStart(e, index)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => onClipDrop(e, index)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectClip(index);
+            }}
+            className={`clip ${isSelected ? 'selected' : ''}`}
+            style={{ width: `${width}px` }}
+          >
+            {clip.name}
+            {isSelected && (
+              <>
+                <div className="clip-handle left" onMouseDown={(e) => onStartResize(e, index, 'start')} />
+                <div className="clip-handle right" onMouseDown={(e) => onStartResize(e, index, 'end')} />
+              </>
+            )}
+          </div>
+        );
+      })}
+
+      {clips.map((clip, index) => {
+        if (index >= clips.length - 1) return null;
+        const nextClip = clips[index + 1];
+        if (!nextClip) return null;
+        const key = clip._localId && nextClip._localId ? `${clip._localId}->${nextClip._localId}` : null;
+        const transition = key ? transitionLookup.get(key) : null;
+        const seamTime = (clip.startTime || 0) + (clip.duration || 0);
+
+        if (transition) {
+          const safeDuration = Number(transition.duration || 0);
+          const startTime = Math.max(0, seamTime - safeDuration);
+          const width = Math.max(18, safeDuration * pxPerSec);
+          const left = Math.max(0, startTime * pxPerSec);
+          const isSelected = selectedTransitionId === transition.id;
+          const durationLabel = safeDuration.toFixed(1);
+          return (
+            <div
+              key={`transition-${transition.id}`}
+              className={`transition-block ${isSelected ? 'selected' : ''}`}
+              style={{ width: `${width}px`, left: `${left}px` }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectTransition(transition.id);
+              }}
+              title={`${getTransitionLabel(transition.type)} · ${durationLabel}s`}
+            >
+              <span className="transition-label">{getTransitionLabel(transition.type)}</span>
+              <span className="transition-duration">{durationLabel}s</span>
+            </div>
+          );
+        }
+
+        const canAdd = (clip.duration || 0) > 0 && (nextClip.duration || 0) > 0;
+        if (!canAdd) return null;
+        const buttonLeft = Math.max(0, seamTime * pxPerSec);
+
+        return (
+          <button
+            key={`add-transition-${clip._localId || index}`}
+            className="transition-add-button"
+            style={{ left: `${buttonLeft}px` }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddTransition(index);
+            }}
+            title="Add transition"
+          >
+            +
+          </button>
+        );
+      })}
+    </>
+  );
+});
+
+const MusicLaneContent = memo(function MusicLaneContent({
+  tracks,
+  selectedMusicIndex,
+  pxPerSec,
+  onSelect,
+  onDragStart,
+  onDrop,
+  onStartResize,
+  registerAudioRef,
+  onLoadedMetadata,
+}) {
+  return (
+    <>
+      {tracks.map((track, index) => {
+        if (!track) return null;
+        const width = Math.max(2, (track.duration || 0) * pxPerSec);
+        const left = Math.max(0, (track.startTime || 0) * pxPerSec);
+        const isSelected = selectedMusicIndex === index;
+
+        return (
+          <div
+            key={track.id || `track-${index}`}
+            draggable
+            onDragStart={(e) => onDragStart(e, index)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => onDrop(e, index)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(index);
+            }}
+            className={`track ${isSelected ? 'selected' : ''}`}
+            style={{ width: `${width}px`, left: `${left}px` }}
+          >
+            {track.name}
+            <audio
+              ref={(el) => registerAudioRef(index, el)}
+              src={track.source}
+              preload="auto"
+              onLoadedMetadata={() => onLoadedMetadata(track, index)}
+            />
+            {isSelected && (
+              <>
+                <div className="clip-handle left" onMouseDown={(e) => onStartResize(e, index, 'start')} />
+                <div className="clip-handle right" onMouseDown={(e) => onStartResize(e, index, 'end')} />
+              </>
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+});
+
 export default function Editor({ project }) {
   const BASE_PX_PER_SEC = 20;
   const MIN_TIMELINE_SECONDS = 12;
 
-  const makeId = (prefix) => `${prefix}-${globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`}`;
+  const makeId = useCallback(
+    (prefix) => `${prefix}-${globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`}`,
+    []
+  );
 
   const resolveLocal = (key, fallback = '') => {
     try { return localStorage.getItem(key) || fallback; } catch (_) { return fallback; }
@@ -184,6 +485,7 @@ export default function Editor({ project }) {
   const [selectedTransitionId, setSelectedTransitionId] = useState(null);
 
   const [currentTime, setCurrentTime] = useState(0);
+  const setCurrentTimeThrottled = useThrottledCallback(setCurrentTime, 33);
 
   const videoRef = useRef(null);
   const videoSourceRef = useRef({ url: null, objectUrl: null, file: null });
@@ -512,24 +814,53 @@ export default function Editor({ project }) {
   const activeClip = activeClipIndex != null ? clips[activeClipIndex] : null;
   const activeClipIsImage = activeClip?.type === 'image';
 
-  const clearSelection = () => {
+  const clearSelection = useCallback(() => {
     setSelectedClipIndex(null);
     setSelectedMusicIndex(null);
     setSelectedEffectIndex(null);
     setSelectedTextIndex(null);
     setSelectedTransitionId(null);
-  };
-  const selectClip = (i) => { setSelectedClipIndex(i); setSelectedMusicIndex(null); setSelectedEffectIndex(null); setSelectedTextIndex(null); setSelectedTransitionId(null); };
-  const selectMusic = (i) => { setSelectedMusicIndex(i); setSelectedClipIndex(null); setSelectedEffectIndex(null); setSelectedTextIndex(null); setSelectedTransitionId(null); };
-  const selectEffect = (i) => { setSelectedEffectIndex(i); setSelectedClipIndex(null); setSelectedMusicIndex(null); setSelectedTextIndex(null); setSelectedTransitionId(null); };
-  const selectText = (i) => { setSelectedTextIndex(i); setSelectedClipIndex(null); setSelectedMusicIndex(null); setSelectedEffectIndex(null); setSelectedTransitionId(null); };
-  const selectTransition = (id) => {
+  }, []);
+
+  const selectClip = useCallback((index) => {
+    setSelectedClipIndex(index);
+    setSelectedMusicIndex(null);
+    setSelectedEffectIndex(null);
+    setSelectedTextIndex(null);
+    setSelectedTransitionId(null);
+  }, []);
+
+  const selectMusic = useCallback((index) => {
+    setSelectedMusicIndex(index);
+    setSelectedClipIndex(null);
+    setSelectedEffectIndex(null);
+    setSelectedTextIndex(null);
+    setSelectedTransitionId(null);
+  }, []);
+
+  const selectEffect = useCallback((index) => {
+    setSelectedEffectIndex(index);
+    setSelectedClipIndex(null);
+    setSelectedMusicIndex(null);
+    setSelectedTextIndex(null);
+    setSelectedTransitionId(null);
+  }, []);
+
+  const selectText = useCallback((index) => {
+    setSelectedTextIndex(index);
+    setSelectedClipIndex(null);
+    setSelectedMusicIndex(null);
+    setSelectedEffectIndex(null);
+    setSelectedTransitionId(null);
+  }, []);
+
+  const selectTransition = useCallback((id) => {
     setSelectedTransitionId(id);
     setSelectedClipIndex(null);
     setSelectedMusicIndex(null);
     setSelectedEffectIndex(null);
     setSelectedTextIndex(null);
-  };
+  }, []);
 
   const togglePlay = () => {
     const clip = activeClipIndex != null ? clips[activeClipIndex] : null;
@@ -559,22 +890,25 @@ export default function Editor({ project }) {
     return (video && !video.paused) || Boolean(manualPlaybackRef.current);
   };
 
-  const startMusicResize = (e, index, edge) => {
-    e.stopPropagation();
-    e.preventDefault();
-    const track = musicTracks[index];
-    if (!track) return;
-    setResizeMusicState({
-      index,
-      edge,
-      startX: e.clientX,
-      origStartOffset: track.startOffset || 0,
-      origStartTime: track.startTime || 0,
-      origDuration: track.duration || 0,
-      sourceDuration: track.sourceDuration || track.duration || 0,
-      pxPerSec
-    });
-  };
+  const startMusicResize = useCallback(
+    (e, index, edge) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const track = musicTracks[index];
+      if (!track) return;
+      setResizeMusicState({
+        index,
+        edge,
+        startX: e.clientX,
+        origStartOffset: track.startOffset || 0,
+        origStartTime: track.startTime || 0,
+        origDuration: track.duration || 0,
+        sourceDuration: track.sourceDuration || track.duration || 0,
+        pxPerSec,
+      });
+    },
+    [musicTracks, pxPerSec]
+  );
 
   const goBack = () => router.get(route('dashboard'));
 
@@ -840,11 +1174,13 @@ export default function Editor({ project }) {
     }
   };
 
-  const handleClipDragStart = (e, index) => e.dataTransfer.setData('clipIndex', index);
-  const handleClipDrop = (e, dropIndex) => {
+  const handleClipDragStart = useCallback((e, index) => {
+    e.dataTransfer.setData('clipIndex', String(index));
+  }, []);
+  const handleClipDrop = useCallback((e, dropIndex) => {
     e.preventDefault();
-    const draggedIndex = parseInt(e.dataTransfer.getData('clipIndex'));
-    if (draggedIndex === dropIndex) return;
+    const draggedIndex = parseInt(e.dataTransfer.getData('clipIndex'), 10);
+    if (Number.isNaN(draggedIndex) || draggedIndex === dropIndex) return;
     setClips((prev) => {
       const updated = [...prev];
       const [draggedClip] = updated.splice(draggedIndex, 1);
@@ -852,13 +1188,15 @@ export default function Editor({ project }) {
       return normalizeClipsLocal(updated);
     });
     selectClip(dropIndex);
-  };
+  }, [selectClip]);
 
-  const addTransitionBetween = (fromIndex) => {
+  const addTransitionBetween = useCallback((fromIndex) => {
     const fromClip = clips[fromIndex];
     const toClip = clips[fromIndex + 1];
     if (!fromClip || !toClip) return;
-    const existing = transitions.find((transition) => transition.fromClipLocalId === fromClip._localId && transition.toClipLocalId === toClip._localId);
+    const existing = transitions.find(
+      (transition) => transition.fromClipLocalId === fromClip._localId && transition.toClipLocalId === toClip._localId
+    );
     if (existing) {
       selectTransition(existing.id);
       return;
@@ -870,11 +1208,11 @@ export default function Editor({ project }) {
       type: 'fade',
       duration: Math.min(1.5, maxDuration),
       fromClipLocalId: fromClip._localId,
-      toClipLocalId: toClip._localId
+      toClipLocalId: toClip._localId,
     };
     setTransitions((prev) => [...prev, newTransition]);
     selectTransition(newTransition.id);
-  };
+  }, [clips, makeId, selectTransition, setTransitions, transitions]);
 
   const updateTransition = (id, updates) => {
     setTransitions((prev) => prev.map((transition) => (transition.id === id ? { ...transition, ...updates } : transition)));
@@ -885,11 +1223,13 @@ export default function Editor({ project }) {
     if (selectedTransitionId === id) setSelectedTransitionId(null);
   };
 
-  const handleTrackDragStart = (e, index) => e.dataTransfer.setData('trackIndex', index);
-  const handleTrackDrop = (e, dropIndex) => {
+  const handleTrackDragStart = useCallback((e, index) => {
+    e.dataTransfer.setData('trackIndex', String(index));
+  }, []);
+  const handleTrackDrop = useCallback((e, dropIndex) => {
     e.preventDefault();
-    const draggedIndex = parseInt(e.dataTransfer.getData('trackIndex'));
-    if (draggedIndex === dropIndex) return;
+    const draggedIndex = parseInt(e.dataTransfer.getData('trackIndex'), 10);
+    if (Number.isNaN(draggedIndex) || draggedIndex === dropIndex) return;
     setMusicTracks((prev) => {
       const updated = [...prev];
       const [draggedTrack] = updated.splice(draggedIndex, 1);
@@ -897,12 +1237,14 @@ export default function Editor({ project }) {
       return updated;
     });
     selectMusic(dropIndex);
-  };
+  }, [selectMusic]);
 
-  const handleEffectDragStart = (e, index) => e.dataTransfer.setData('effectIndex', index);
-  const handleEffectDrop = (e, dropIndex) => {
+  const handleEffectDragStart = useCallback((e, index) => {
+    e.dataTransfer.setData('effectIndex', String(index));
+  }, []);
+  const handleEffectDrop = useCallback((e, dropIndex) => {
     e.preventDefault();
-    const draggedIndex = parseInt(e.dataTransfer.getData('effectIndex'));
+    const draggedIndex = parseInt(e.dataTransfer.getData('effectIndex'), 10);
     if (Number.isNaN(draggedIndex) || draggedIndex === dropIndex) return;
     setEffects((prev) => {
       const updated = [...prev];
@@ -911,84 +1253,114 @@ export default function Editor({ project }) {
       return updated;
     });
     selectEffect(dropIndex);
-  };
+  }, [selectEffect]);
 
-  const startResize = (e, index, edge) => {
-    e.stopPropagation();
-    e.preventDefault();
-    const clip = clips[index];
-    if (!clip) return;
-    setResizeState({
-      index,
-      edge,
-      startX: e.clientX,
-      origStartOffset: clip.startOffset || 0,
-      origDuration: clip.duration || 0,
-      sourceDuration: clip.type === 'image' ? Infinity : clip.sourceDuration || clip.duration || 0,
-      pxPerSec
+  const handleEffectIntensityChange = useCallback((index, value) => {
+    if (!Number.isFinite(value)) return;
+    const clamped = Math.max(0, Math.min(1, value));
+    setEffects((prev) => {
+      if (!prev[index]) return prev;
+      const arr = [...prev];
+      arr[index] = { ...arr[index], intensity: clamped };
+      return arr;
     });
-  };
+  }, []);
 
-  const startEffectResize = (e, index, edge) => {
-    e.stopPropagation();
-    e.preventDefault();
-    const fx = effects[index];
-    if (!fx) return;
-    setResizeEffectState({
-      index,
-      edge,
-      startX: e.clientX,
-      origStartTime: fx.startTime || 0,
-      origDuration: fx.duration || 0,
-      pxPerSec
-    });
-  };
+  const registerAudioRef = useCallback((index, el) => {
+    audioRefs.current[index] = el;
+  }, []);
 
-  const startEffectDrag = (e, index) => {
-    const target = e.target;
-    if (target.closest('.clip-handle') || target.closest('.effect-slider')) return;
-    e.stopPropagation();
-    e.preventDefault();
-    const fx = effects[index];
-    if (!fx) return;
-    setDragEffectState({
-      index,
-      startX: e.clientX,
-      origStart: fx.startTime || 0,
-      duration: fx.duration || 0,
-      pxPerSec
-    });
-  };
+  const startResize = useCallback(
+    (e, index, edge) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const clip = clips[index];
+      if (!clip) return;
+      setResizeState({
+        index,
+        edge,
+        startX: e.clientX,
+        origStartOffset: clip.startOffset || 0,
+        origDuration: clip.duration || 0,
+        sourceDuration: clip.type === 'image' ? Infinity : clip.sourceDuration || clip.duration || 0,
+        pxPerSec,
+      });
+    },
+    [clips, pxPerSec]
+  );
 
-  const startTextResize = (e, index, edge) => {
-    e.stopPropagation();
-    e.preventDefault();
-    const tx = textOverlays[index];
-    if (!tx) return;
-    setResizeTextState({
-      index,
-      edge,
-      startX: e.clientX,
-      origStartTime: tx.startTime || 0,
-      origDuration: tx.duration || 0,
-      pxPerSec
-    });
-  };
+  const startEffectResize = useCallback(
+    (e, index, edge) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const fx = effects[index];
+      if (!fx) return;
+      setResizeEffectState({
+        index,
+        edge,
+        startX: e.clientX,
+        origStartTime: fx.startTime || 0,
+        origDuration: fx.duration || 0,
+        pxPerSec,
+      });
+    },
+    [effects, pxPerSec]
+  );
 
-  const startTextDrag = (e, index) => {
-    if (e.target.closest('.clip-handle')) return;
-    e.stopPropagation();
-    e.preventDefault();
-    const tx = textOverlays[index];
-    if (!tx) return;
-    setDragTextState({
-      index,
-      startX: e.clientX,
-      origStart: tx.startTime || 0,
-      duration: tx.duration || 0,
-      pxPerSec
-    });
-  };
+  const startEffectDrag = useCallback(
+    (e, index) => {
+      const target = e.target;
+      if (target.closest('.clip-handle') || target.closest('.effect-slider')) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const fx = effects[index];
+      if (!fx) return;
+      setDragEffectState({
+        index,
+        startX: e.clientX,
+        origStart: fx.startTime || 0,
+        duration: fx.duration || 0,
+        pxPerSec,
+      });
+    },
+    [effects, pxPerSec]
+  );
+
+  const startTextResize = useCallback(
+    (e, index, edge) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const tx = textOverlays[index];
+      if (!tx) return;
+      setResizeTextState({
+        index,
+        edge,
+        startX: e.clientX,
+        origStartTime: tx.startTime || 0,
+        origDuration: tx.duration || 0,
+        pxPerSec,
+      });
+    },
+    [pxPerSec, textOverlays]
+  );
+
+  const startTextDrag = useCallback(
+    (e, index) => {
+      if (e.target.closest('.clip-handle')) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const tx = textOverlays[index];
+      if (!tx) return;
+      setDragTextState({
+        index,
+        startX: e.clientX,
+        origStart: tx.startTime || 0,
+        duration: tx.duration || 0,
+        pxPerSec,
+      });
+    },
+    [pxPerSec, textOverlays]
+  );
 
   useEffect(() => {
     setTransitions((prev) => {
@@ -1518,7 +1890,7 @@ export default function Editor({ project }) {
         const clipEnd = clipStart + (active.duration || 0);
         if (newTime > clipEnd) newTime = clipEnd;
 
-        setCurrentTime(newTime);
+        setCurrentTimeThrottled(newTime);
         syncVisuals(newTime);
         syncAudio(newTime, true);
 
@@ -1557,7 +1929,7 @@ export default function Editor({ project }) {
       syncAudio(targetTime, true);
       manualPlaybackRef.current.frameId = requestAnimationFrame(step);
     },
-    [activeClipIndex, clips, currentTime, findClipIndexAtTime, stopManualPlayback, syncAudio, syncVisuals]
+    [activeClipIndex, clips, currentTime, findClipIndexAtTime, setCurrentTimeThrottled, stopManualPlayback, syncAudio, syncVisuals]
   );
 
   useEffect(() => {
@@ -1718,7 +2090,7 @@ export default function Editor({ project }) {
         globalTime = segStartTime + (video.currentTime - (seg.startOffset || 0));
       }
 
-      setCurrentTime(globalTime);
+      setCurrentTimeThrottled(globalTime);
       syncVisuals(globalTime);
       syncAudio(globalTime, !video.paused);
 
@@ -1765,7 +2137,7 @@ export default function Editor({ project }) {
 
     video.addEventListener('timeupdate', onTimeUpdate);
     return () => video.removeEventListener('timeupdate', onTimeUpdate);
-  }, [clips, activeClipIndex, musicTracks, syncVisuals, syncAudio, seekTo]);
+  }, [clips, activeClipIndex, musicTracks, setCurrentTimeThrottled, syncVisuals, syncAudio, seekTo]);
 
   seekToRef.current = seekTo;
 
@@ -2315,196 +2687,83 @@ export default function Editor({ project }) {
               <div
                 className="effects-timeline"
                 onMouseDownCapture={handleSeekMouseDownCapture}
-                onClick={() => clearSelection()}
+                onClick={clearSelection}
               >
                 <div className="lane" style={{ width: `${timelineWidth}px` }}>
-                  {effects.map((fx, index) => {
-                    const width = Math.max(2, (fx.duration || 0) * pxPerSec);
-                    const left = Math.max(0, (fx.startTime || 0) * pxPerSec);
-                    const isSelected = selectedEffectIndex === index;
-                    return (
-                      <div
-                        key={fx.id}
-                        className={`effect-block ${isSelected ? 'selected' : ''}`}
-                        style={{ width: `${width}px`, left: `${left}px` }}
-                        draggable={!isSelected}
-                        onDragStart={(e) => !isSelected && handleEffectDragStart(e, index)}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => handleEffectDrop(e, index)}
-                        onMouseDown={(e) => startEffectDrag(e, index)}
-                        onClick={(e) => { e.stopPropagation(); selectEffect(index); }}
-                      >
-                        <span>{fx.name}</span>
-                        {isSelected && (
-                          <>
-                            <div className="clip-handle left" onMouseDown={(e) => startEffectResize(e, index, 'start')} />
-                            <div className="clip-handle right" onMouseDown={(e) => startEffectResize(e, index, 'end')} />
-                            <input
-                              type="range"
-                              min="0" max="1" step="0.05"
-                              value={fx.intensity ?? 0.5}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value);
-                                setEffects((prev) => { const arr = [...prev]; arr[index] = { ...arr[index], intensity: val }; return arr; });
-                              }}
-                              className="effect-slider"
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
-                  <div className="playhead" style={{ left: `${currentTime * pxPerSec}px` }} />
+                  <EffectsLaneContent
+                    effects={effects}
+                    selectedEffectIndex={selectedEffectIndex}
+                    pxPerSec={pxPerSec}
+                    onSelect={selectEffect}
+                    onStartResize={startEffectResize}
+                    onStartDrag={startEffectDrag}
+                    onDragStart={handleEffectDragStart}
+                    onDrop={handleEffectDrop}
+                    onIntensityChange={handleEffectIntensityChange}
+                  />
+                  <LanePlayhead position={currentTime * pxPerSec} />
                 </div>
               </div>
 
               <div
                 className="text-timeline"
                 onMouseDownCapture={handleSeekMouseDownCapture}
-                onClick={() => clearSelection()}
+                onClick={clearSelection}
               >
                 <div className="lane" style={{ width: `${timelineWidth}px` }}>
-                  {textOverlays.map((tx, index) => {
-                    const width = Math.max(2, (tx.duration || 0) * pxPerSec);
-                    const left = Math.max(0, (tx.startTime || 0) * pxPerSec);
-                    const isSelected = selectedTextIndex === index;
-                    return (
-                      <div
-                        key={tx.id}
-                        className={`text-block ${isSelected ? 'selected' : ''}`}
-                        style={{ width: `${width}px`, left: `${left}px` }}
-                        onMouseDown={(e) => startTextDrag(e, index)}
-                        onClick={(e) => { e.stopPropagation(); selectText(index); }}
-                      >
-                        <span className="text-block-label">{tx.content}</span>
-                        {isSelected && (
-                          <>
-                            <div className="clip-handle left" onMouseDown={(e) => startTextResize(e, index, 'start')} />
-                            <div className="clip-handle right" onMouseDown={(e) => startTextResize(e, index, 'end')} />
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
-                  <div className="playhead" style={{ left: `${currentTime * pxPerSec}px` }} />
+                  <TextLaneContent
+                    texts={textOverlays}
+                    selectedTextIndex={selectedTextIndex}
+                    pxPerSec={pxPerSec}
+                    onSelect={selectText}
+                    onStartResize={startTextResize}
+                    onStartDrag={startTextDrag}
+                  />
+                  <LanePlayhead position={currentTime * pxPerSec} />
                 </div>
               </div>
 
               <div
                 className="timeline"
                 onMouseDownCapture={handleSeekMouseDownCapture}
-                onClick={() => clearSelection()}
+                onClick={clearSelection}
               >
                 <div className="lane" style={{ width: `${timelineWidth}px` }}>
-                  {clips.map((clip, index) => {
-                    const width = Math.max(2, (clip.duration || 0) * pxPerSec);
-                    const isSelected = selectedClipIndex === index;
-                    return (
-                      <div
-                      key={clip._localId || index}
-                        draggable={!isSelected}
-                        onDragStart={(e) => handleClipDragStart(e, index)}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => handleClipDrop(e, index)}
-                        onClick={(e) => { e.stopPropagation(); selectClip(index); }}
-                        className={`clip ${isSelected ? 'selected' : ''}`}
-                        style={{ width: `${width}px` }}
-                      >
-                        {clip.name}
-                        {isSelected && (
-                          <>
-                            <div className="clip-handle left" onMouseDown={(e) => startResize(e, index, 'start')} />
-                            <div className="clip-handle right" onMouseDown={(e) => startResize(e, index, 'end')} />
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
-                                    {clips.map((clip, index) => {
-                    if (index >= clips.length - 1) return null;
-                    const nextClip = clips[index + 1];
-                    if (!nextClip) return null;
-                    const transition = transitionLookup.get(`${clip._localId}->${nextClip._localId}`);
-                    const seamTime = (clip.startTime || 0) + (clip.duration || 0);
-                    if (transition) {
-                      const safeDuration = Number(transition.duration || 0);
-                      const startTime = Math.max(0, seamTime - safeDuration);
-                      const width = Math.max(18, safeDuration * pxPerSec);
-                      const left = Math.max(0, startTime * pxPerSec);
-                      const isSelected = selectedTransitionId === transition.id;
-                      const durationLabel = safeDuration.toFixed(1);
-                      return (
-                        <div
-                          key={`transition-${transition.id}`}
-                          className={`transition-block ${isSelected ? 'selected' : ''}`}
-                          style={{ width: `${width}px`, left: `${left}px` }}
-                          onClick={(e) => { e.stopPropagation(); selectTransition(transition.id); }}
-                          title={`${getTransitionLabel(transition.type)} · ${durationLabel}s`}
-                        >
-                          <span className="transition-label">{getTransitionLabel(transition.type)}</span>
-                          <span className="transition-duration">{durationLabel}s</span>
-                        </div>
-                      );
-                    }
-
-                    const canAdd = (clip.duration || 0) > 0 && (nextClip.duration || 0) > 0;
-                    if (!canAdd) return null;
-                    const buttonLeft = Math.max(0, seamTime * pxPerSec);
-                    return (
-                      <button
-                        key={`add-transition-${clip._localId}`}
-                        className="transition-add-button"
-                        style={{ left: `${buttonLeft}px` }}
-                        onClick={(e) => { e.stopPropagation(); addTransitionBetween(index); }}
-                        title="Add transition"
-                      >
-                        +
-                      </button>
-                    );
-                  })}
-                  <div className="playhead" style={{ left: `${currentTime * pxPerSec}px` }} />
+                  <ClipLaneContent
+                    clips={clips}
+                    selectedClipIndex={selectedClipIndex}
+                    pxPerSec={pxPerSec}
+                    transitionLookup={transitionLookup}
+                    selectedTransitionId={selectedTransitionId}
+                    onSelectClip={selectClip}
+                    onClipDragStart={handleClipDragStart}
+                    onClipDrop={handleClipDrop}
+                    onStartResize={startResize}
+                    onSelectTransition={selectTransition}
+                    onAddTransition={addTransitionBetween}
+                  />
+                  <LanePlayhead position={currentTime * pxPerSec} />
                 </div>
               </div>
 
               <div
                 className="music-timeline"
                 onMouseDownCapture={handleSeekMouseDownCapture}
-                onClick={() => clearSelection()}
+                onClick={clearSelection}
               >
                 <div className="lane" style={{ width: `${timelineWidth}px` }}>
-                  {musicTracks.map((track, index) => {
-                    const width = Math.max(2, (track.duration || 0) * pxPerSec);
-                    const left = Math.max(0, (track.startTime || 0) * pxPerSec);
-                    const isSelected = selectedMusicIndex === index;
-                    return (
-                      <div
-                        key={index}
-                        draggable
-                        onDragStart={(e) => handleTrackDragStart(e, index)}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => handleTrackDrop(e, index)}
-                        onClick={(e) => { e.stopPropagation(); selectMusic(index); }}
-                        className={`track ${isSelected ? 'selected' : ''}`}
-                        style={{ width: `${width}px`, left: `${left}px` }}
-                      >
-                        {track.name}
-                        <audio
-                          ref={(el) => (audioRefs.current[index] = el)}
-                          src={track.source}
-                          preload="auto"
-                          onLoadedMetadata={() => handleAudioMetadataLoaded(track, index)}
-                        />
-                        {isSelected && (
-                          <>
-                            <div className="clip-handle left" onMouseDown={(e) => startMusicResize(e, index, 'start')} />
-                            <div className="clip-handle right" onMouseDown={(e) => startMusicResize(e, index, 'end')} />
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
-                  <div className="playhead" style={{ left: `${currentTime * pxPerSec}px` }} />
+                  <MusicLaneContent
+                    tracks={musicTracks}
+                    selectedMusicIndex={selectedMusicIndex}
+                    pxPerSec={pxPerSec}
+                    onSelect={selectMusic}
+                    onDragStart={handleTrackDragStart}
+                    onDrop={handleTrackDrop}
+                    onStartResize={startMusicResize}
+                    registerAudioRef={registerAudioRef}
+                    onLoadedMetadata={handleAudioMetadataLoaded}
+                  />
+                  <LanePlayhead position={currentTime * pxPerSec} />
                 </div>
               </div>
             </div>
