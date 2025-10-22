@@ -3,6 +3,9 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router } from '@inertiajs/react';
 import '@/../css/dashboard.css';
 
+const MAX_PROJECT_NAME_LENGTH = 20;
+const PROJECT_NAME_LIMIT_MESSAGE = 'Project name is limited to 20 characters';
+
 export default function Dashboard({ projects = [] }) {
   const [showModal, setShowModal] = useState(false);
   const [projectName, setProjectName] = useState('');
@@ -42,10 +45,24 @@ export default function Dashboard({ projects = [] }) {
     return () => clearTimeout(t);
   }, [toastMsg]);
 
+  const handleProjectNameChange = (e) => {
+    const value = e.target.value;
+    if (value.length > MAX_PROJECT_NAME_LENGTH) {
+      setToastMsg(PROJECT_NAME_LIMIT_MESSAGE);
+      setProjectName(value.slice(0, MAX_PROJECT_NAME_LENGTH));
+      return;
+    }
+    setProjectName(value);
+  };
+
   const createProject = (e) => {
     e.preventDefault();
     const name = projectName.trim();
     if (!name) return;
+    if (name.length > MAX_PROJECT_NAME_LENGTH) {
+      setToastMsg(PROJECT_NAME_LIMIT_MESSAGE);
+      return;
+    }
     setCreating(true);
     router.post('/projects', { name }, {
       onSuccess: () => {
@@ -112,7 +129,6 @@ export default function Dashboard({ projects = [] }) {
                 className={`project-card group slide-in${project.favorited_project ? ' favorited' : ''}`}
                 style={{ animationDelay: `${i * 120}ms` }}
               >
-                {/* DELETE moved to the left */}
                 <button
                   onClick={() => deleteProject(project.id)}
                   className="delete-btn opacity-0 group-hover:opacity-100"
@@ -129,8 +145,6 @@ export default function Dashboard({ projects = [] }) {
                   <h3 className="project-card-title">{project.name}</h3>
                   <p className="project-card-sub">Click to edit</p>
                 </div>
-
-                {/* FAVORITE moved to the right */}
                 <button
                   type="button"
                   onClick={(e) => {
@@ -160,10 +174,9 @@ export default function Dashboard({ projects = [] }) {
                 className="modal-input"
                 placeholder="Project name"
                 value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
+                onChange={handleProjectNameChange}
                 onKeyDown={onKeyDownInput}
                 required
-                maxLength={20}
               />
               <div className="modal-actions">
                 <button type="button" className="modal-cancel" onClick={closeModal}>

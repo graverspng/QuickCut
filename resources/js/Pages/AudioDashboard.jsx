@@ -3,6 +3,9 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router } from '@inertiajs/react';
 import '@/../css/dashboard.css';
 
+const MAX_PROJECT_NAME_LENGTH = 20;
+const PROJECT_NAME_LIMIT_MESSAGE = 'Project name is limited to 20 characters';
+
 export default function AudioDashboard({ projects = [] }) {
   const [showModal, setShowModal] = useState(false);
   const [projectName, setProjectName] = useState('');
@@ -42,10 +45,24 @@ export default function AudioDashboard({ projects = [] }) {
     return () => clearTimeout(t);
   }, [toastMsg]);
 
+  const handleProjectNameChange = (e) => {
+    const value = e.target.value;
+    if (value.length > MAX_PROJECT_NAME_LENGTH) {
+      setToastMsg(PROJECT_NAME_LIMIT_MESSAGE);
+      setProjectName(value.slice(0, MAX_PROJECT_NAME_LENGTH));
+      return;
+    }
+    setProjectName(value);
+  };
+
   const createProject = (e) => {
     e.preventDefault();
     const name = projectName.trim();
     if (!name) return;
+    if (name.length > MAX_PROJECT_NAME_LENGTH) {
+      setToastMsg(PROJECT_NAME_LIMIT_MESSAGE);
+      return;
+    }
     setCreating(true);
     router.post(route('audio.projects.store'), { name }, {
       onSuccess: () => {
@@ -156,10 +173,9 @@ export default function AudioDashboard({ projects = [] }) {
                 className="modal-input"
                 placeholder="Audio project name"
                 value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
+                onChange={handleProjectNameChange}
                 onKeyDown={onKeyDownInput}
                 required
-                maxLength={20}
               />
               <div className="modal-actions">
                 <button

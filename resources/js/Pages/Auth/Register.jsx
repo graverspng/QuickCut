@@ -3,7 +3,6 @@ import InputLabel from '@/Components/InputLabel';
 import TextInput from '@/Components/TextInput';
 import GuestLayout from '@/Layouts/GuestLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
-import { useMemo } from 'react';
 import '@/../css/Login.css'; // shared CSS for login/register styling
 
 export default function Register() {
@@ -13,38 +12,6 @@ export default function Register() {
         password: '',
         password_confirmation: '',
     });
-
-    const passwordInsights = useMemo(() => {
-        const value = data.password || '';
-        const checks = [
-            {
-                key: 'length',
-                label: 'At least 8 characters',
-                met: value.length >= 8,
-            },
-            {
-                key: 'uppercase',
-                label: 'At least one uppercase letter',
-                met: /[A-Z]/.test(value),
-            },
-            {
-                key: 'number',
-                label: 'At least one number',
-                met: /\d/.test(value),
-            },
-            {
-                key: 'symbol',
-                label: 'At least one symbol',
-                met: /[^A-Za-z0-9]/.test(value),
-            },
-        ];
-
-        return {
-            checklist: checks,
-            isStrong: checks.every((item) => item.met),
-        };
-    }, [data.password]);
-    const { checklist: passwordChecklist, isStrong: isPasswordStrong } = passwordInsights;
 
     const submit = (e) => {
         e.preventDefault();
@@ -126,14 +93,6 @@ export default function Register() {
                                             required
                                         />
                                         <InputError message={errors.password} className="mt-2" />
-                                        <ul className="password-criteria-compact">
-                                            {passwordChecklist.map((item) => (
-                                                <li key={item.key} className={item.met ? 'valid' : ''}>
-                                                    <span className="indicator">{item.met ? '✔' : '•'}</span>
-                                                    {item.label}
-                                                </li>
-                                            ))}
-                                        </ul>
                                     </div>
 
                                     <div className="mt-4">
