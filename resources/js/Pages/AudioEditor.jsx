@@ -32,51 +32,19 @@ const normalizeTracks = (arr = []) =>
         };
     });
 
-const readLocal = (key, fallback = null) => {
-    try {
-        const value = localStorage.getItem(key);
-        return value ?? fallback;
-    } catch (error) {
-        return fallback;
-    }
-};
+const csrf = () =>
+    document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
 const isAudioFile = (file) => {
     if (!file) return false;
     if (file.type && file.type.startsWith('audio')) return true;
     const ext = file.name?.split('.').pop()?.toLowerCase();
-    return (
-        ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a'].includes(ext) ||
-        file.source?.startsWith('data:audio')
-    );
+    return ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a'].includes(ext);
 };
 
 export default function AudioEditor({ project }) {
     const [tracks, setTracks] = useState(() =>
-        normalizeTracks(
-            (Array.isArray(project.tracks) ? project.tracks : []).map((track) => {
-                if (!track || typeof track !== 'object') return track;
-
-                const storageKey =
-                    track.storageKey ||
-                    (typeof track.source === 'string' && track.source.startsWith('local-')
-                        ? track.source
-                        : null);
-
-                if (storageKey) {
-                    const data = readLocal(storageKey, null);
-                    if (data) {
-                        return { ...track, source: data, storageKey };
-                    }
-                }
-
-                if (typeof track.fallbackSource === 'string' && track.fallbackSource.startsWith('data:')) {
-                    return { ...track, source: track.fallbackSource };
-                }
-
-                return track;
-            })
-        )
+        normalizeTracks(Array.isArray(project.tracks) ? project.tracks : [])
     );
     const [mediaFiles, setMediaFiles] = useState([]);
     const [selectedTrackIndex, setSelectedTrackIndex] = useState(null);
@@ -99,31 +67,43 @@ export default function AudioEditor({ project }) {
     );
     const snapToGrid = (time, step = 1) => Math.round(time / step) * step;
 
+    const uploadToServer = async (files) => {
+        const uploaded = [];
+        for (const file of files) {
+            const form = new FormData();
+            form.append('file', file);
+            form.append('name', file.name);
+            const res = await fetch(route('audio.projects.media.upload', project.id), {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': csrf(),
+                },
+                body: form,
+            });
+            if (!res.ok) continue;
+            const json = await res.json();
+            uploaded.push({
+                name: json.name,
+                source: json.url,
+                storageKey: json.storageKey,
+                duration: 0,
+                startOffset: 0,
+                startTime: 0,
+                sourceDuration: 0,
+                volume: 1,
+                type: 'audio',
+            });
+        }
+        return uploaded;
+    };
+
     const handleFileUpload = async (e) => {
-        const fileList = Array.from(e.target.files).filter(isAudioFile);
-
-        const files = await Promise.all(
-            fileList.map(
-                (file) =>
-                    new Promise((resolve) => {
-                        const reader = new FileReader();
-                        reader.onload = () =>
-                            resolve({
-                                name: file.name,
-                                source: reader.result,
-                                duration: 0,
-                                startOffset: 0,
-                                startTime: 0,
-                                sourceDuration: 0,
-                                volume: 1,
-                                type: 'audio',
-                            });
-                        reader.readAsDataURL(file);
-                    })
-            )
-        );
-
-        setMediaFiles((prev) => [...prev, ...files]);
+        const selected = Array.from(e.target.files || []).filter(isAudioFile);
+        if (!selected.length) return;
+        const serverFiles = await uploadToServer(selected);
+        if (!serverFiles.length) return;
+        setMediaFiles((prev) => [...prev, ...serverFiles]);
     };
 
     const getTimeFromEvent = (e) => {
@@ -157,7 +137,7 @@ export default function AudioEditor({ project }) {
         e.preventDefault();
         const index = parseInt(e.dataTransfer.getData('index'));
         const file = mediaFiles[index];
-               if (!file || !isAudioFile(file)) return;
+        if (!file || !isAudioFile(file)) return;
         const previewDuration = toNumber(file.duration || file.sourceDuration, 0) || 10;
         setGhostClip({
             name: file.name,
@@ -169,20 +149,12 @@ export default function AudioEditor({ project }) {
     const handleSave = () => {
         const tracksToSave = tracks.map(({ storageKey, source, ...rest }) => {
             const payload = { ...rest };
-
             if (storageKey) {
                 payload.storageKey = storageKey;
                 payload.source = storageKey;
-                if (typeof source === 'string' && source.startsWith('data:')) {
-                    payload.fallbackSource = source;
-                }
             } else if (typeof source === 'string') {
                 payload.source = source;
-                if (source.startsWith('data:')) {
-                    payload.fallbackSource = source;
-                }
             }
-
             return payload;
         });
 
@@ -526,7 +498,6 @@ export default function AudioEditor({ project }) {
                         </div>
                     </div>
 
-
                     <div className="editor-area">
                         <div className="audio-player-controls">
                             <button className="play-btn" onClick={togglePlay}>
@@ -540,7 +511,6 @@ export default function AudioEditor({ project }) {
                                 ✂️ Split
                             </button>
                         </div>
-
 
                         <div className="audio-time-ruler">
                             <div

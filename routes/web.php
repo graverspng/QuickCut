@@ -35,6 +35,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/audio-editor/{audioProject}', [AudioProjectController::class, 'show'])->name('audio.editor');
     Route::get('/audio-projects/{audioProject}/export', [AudioProjectExportController::class, 'showExport'])->name('audio.projects.export');
     Route::get('/audio-projects/{audioProject}/export/download', [AudioProjectExportController::class, 'downloadExport'])->name('audio.projects.export.download');
+    Route::post('/audio-projects/{audioProject}/media', [AudioProjectController::class, 'uploadMedia'])->name('audio.projects.media.upload');
 
     // -.- User Profile -.-
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

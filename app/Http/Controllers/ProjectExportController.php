@@ -25,21 +25,24 @@ class ProjectExportController extends Controller
         Gate::authorize('view', $project);
     }
 
-    protected function buildWindowData(Project $project): array
-    {
-        $recentWindow = $this->recentWindowSeconds();
-        $lastSavedAt = $project->updated_at ?? $project->created_at ?? now();
-        $secondsSinceSave = max(0, $lastSavedAt->diffInSeconds(now()));
-        $allowed = $secondsSinceSave <= $recentWindow;
+protected function buildWindowData(Project $project): array
+{
+    $recentWindow = $this->recentWindowSeconds();
+    $lastSavedAt = $project->updated_at ?? $project->created_at ?? now();
+    $expiresAt = $lastSavedAt->copy()->addSeconds($recentWindow);
+    $secondsSinceSave = max(0, $lastSavedAt->diffInSeconds(now()));
+    $allowed = now()->lte($expiresAt);
 
-        return [
-            'allowed' => $allowed,
-            'recent_window_seconds' => $recentWindow,
-            'seconds_since_save' => $secondsSinceSave,
-            'last_saved_at' => $lastSavedAt->toIso8601String(),
-            'last_saved_for_humans' => $lastSavedAt->diffForHumans(),
-        ];
-    }
+    return [
+        'allowed' => $allowed,
+        'recent_window_seconds' => $recentWindow,
+        'seconds_since_save' => $secondsSinceSave,
+        'last_saved_at' => $lastSavedAt->toIso8601String(),
+        'export_expires_at' => $expiresAt->toIso8601String(),
+        'last_saved_for_humans' => $lastSavedAt->diffForHumans(),
+    ];
+}
+
 
     public function show(Project $project)
     {
@@ -91,22 +94,25 @@ class ProjectExportController extends Controller
         return $cached = (file_exists($fallback) ? $fallback : null);
     }
 
-    protected function escapeFilterValue(string $value): string
-    {
-        $escaped = strtr($value, [
-            '\\' => '\\\\',
-            ':' => '\\:',
-            "'" => "\\'",
-            '[' => '\\[',
-            ']' => '\\]',
-            ',' => '\\,',
-            ';' => '\\;',
-            '%' => '\\%',
-        ]);
-        $escaped = str_replace(["\r\n", "\r"], "\n", $escaped);
+protected function escapeFilterValue(string $value): string
+{
+    $escaped = strtr($value, [
+        '\\' => '\\\\',
+        ':'  => '\\:',
+        '='  => '\\=',
+        ' '  => '\\ ',
+        "'"  => "\\'",
+        '['  => '\\[',
+        ']'  => '\\]',
+        ','  => '\\,',
+        ';'  => '\\;',
+        '%'  => '\\%',
+        "\r" => '',
+    ]);
 
-        return str_replace("\n", '\\n', $escaped);
-    }
+    return str_replace("\n", '\\n', $escaped);
+}
+
 
     protected function quoteFilterValue(string $value): string
     {
@@ -396,31 +402,32 @@ class ProjectExportController extends Controller
         return null;
     }
 
-    protected function runProcess(array $arguments): bool
-    {
-        if (!empty($arguments)) {
-            if ($arguments[0] === 'ffmpeg') {
-                $arguments[0] = $this->ffmpegBinary();
-            } elseif ($arguments[0] === 'ffprobe') {
-                $arguments[0] = $this->ffprobeBinary();
-            }
+protected function runProcess(array $arguments): bool
+{
+    if (!empty($arguments)) {
+        if ($arguments[0] === 'ffmpeg') {
+            $arguments[0] = $this->ffmpegBinary();
+        } elseif ($arguments[0] === 'ffprobe') {
+            $arguments[0] = $this->ffprobeBinary();
         }
-
-        $process = new Process($arguments);
-        $process->setTimeout(300);
-        $process->run();
-
-        if ($process->isSuccessful()) {
-            return true;
-        }
-
-        Log::warning('FFmpeg command failed during export.', [
-            'command' => $process->getCommandLine(),
-            'output' => $process->getErrorOutput(),
-        ]);
-
-        return false;
     }
+
+    $process = new Process($arguments);
+    $process->setTimeout($this->processTimeout());
+    $process->run();
+
+    if ($process->isSuccessful()) {
+        return true;
+    }
+
+    Log::warning('FFmpeg command failed during export.', [
+        'command' => $process->getCommandLine(),
+        'output'  => $process->getErrorOutput(),
+    ]);
+
+    return false;
+}
+
 
     protected function ensureEvenDimension(int $value): int
     {
@@ -717,6 +724,62 @@ class ProjectExportController extends Controller
             'had_failures' => $hadFailures,
         ];
     }
+
+
+protected function processTimeout(): int
+{
+    return (int) config('quickcut.export.process_timeout', 1800);
+}
+
+protected function isAllowedUrl(string $url): bool
+{
+    $parsed = parse_url($url);
+    if (!in_array(strtolower($parsed['scheme'] ?? ''), ['http', 'https'], true)) {
+        return false;
+    }
+    $host = strtolower($parsed['host'] ?? '');
+    if ($host === '') return false;
+
+    $whitelist = array_map('strtolower', (array) config('quickcut.export.allowed_asset_hosts', []));
+    return in_array($host, $whitelist, true);
+}
+
+protected function downloadToTemp(string $url, string $directory, string $prefix): ?string
+{
+    if (!$this->isAllowedUrl($url)) {
+        Log::warning('Blocked remote media download: host not allowed', ['url' => $url]);
+        return null;
+    }
+
+    $maxBytes = (int) config('quickcut.export.remote_download_max_bytes', 50_000_000);
+    $response = Http::timeout(20)->withOptions(['stream' => true])->get($url);
+    if (!$response->ok()) return null;
+
+    $tmpPath = $directory . DIRECTORY_SEPARATOR . $prefix . '_' . Str::random(6);
+    $fh = @fopen($tmpPath, 'wb');
+    if (!$fh) return null;
+
+    $received = 0;
+    try {
+        foreach ($response->body() as $chunk) {
+            $received += strlen($chunk);
+            if ($received > $maxBytes) {
+                Log::warning('Remote media exceeded size cap', ['url' => $url, 'cap' => $maxBytes]);
+                fclose($fh);
+                @unlink($tmpPath);
+                return null;
+            }
+            fwrite($fh, $chunk);
+        }
+    } catch (\Throwable $e) {
+        fclose($fh);
+        @unlink($tmpPath);
+        return null;
+    }
+    fclose($fh);
+    return $tmpPath;
+}
+
 
     protected function buildTransitionMap(Project $project): array
     {
@@ -1088,37 +1151,41 @@ class ProjectExportController extends Controller
             if (!preg_match('/^[0-9a-fA-F]{6}$/', $color)) {
                 $color = 'FCFFFC';
             }
-            $fontSize = (float) Arr::get($overlay, 'fontSize', 32);
-            $canvasHeight = (float) Arr::get($overlay, 'canvasHeight', 0);
-            $canvasWidth = (float) Arr::get($overlay, 'canvasWidth', 0);
-            $displayVideoWidth = (float) Arr::get($overlay, 'displayVideoWidth', $canvasWidth);
-            $displayVideoHeight = (float) Arr::get($overlay, 'displayVideoHeight', $canvasHeight);
-            $displayOffsetX = (float) Arr::get($overlay, 'displayVideoOffsetX', max(0.0, ($canvasWidth - $displayVideoWidth) / 2));
-            $displayOffsetY = (float) Arr::get($overlay, 'displayVideoOffsetY', max(0.0, ($canvasHeight - $displayVideoHeight) / 2));
+$fontSize = (float) Arr::get($overlay, 'fontSize', 32);
+$canvasHeight = (float) Arr::get($overlay, 'canvasHeight', 0);
+$canvasWidth  = (float) Arr::get($overlay, 'canvasWidth', 0);
+$displayVideoWidth  = (float) Arr::get($overlay, 'displayVideoWidth', $canvasWidth);
+$displayVideoHeight = (float) Arr::get($overlay, 'displayVideoHeight', $canvasHeight);
 
-            $scaleApplied = null;
-            if (is_array($videoDimensions)) {
-                $videoWidth = (float) ($videoDimensions['width'] ?? 0);
-                $videoHeight = (float) ($videoDimensions['height'] ?? 0);
+$scaleApplied = null;
+if (is_array($videoDimensions)) {
+    $videoWidth  = (float) ($videoDimensions['width'] ?? 0);
+    $videoHeight = (float) ($videoDimensions['height'] ?? 0);
+    $sx = ($displayVideoWidth  > 0 && $videoWidth  > 0) ? ($videoWidth  / $displayVideoWidth)  : null;
+    $sy = ($displayVideoHeight > 0 && $videoHeight > 0) ? ($videoHeight / $displayVideoHeight) : null;
 
-                if ($displayVideoHeight > 0 && $videoHeight > 0) {
-                    $fontSize *= $videoHeight / $displayVideoHeight;
-                    $scaleApplied = 'height';
-                } elseif ($displayVideoWidth > 0 && $videoWidth > 0) {
-                    $fontSize *= $videoWidth / $displayVideoWidth;
-                    $scaleApplied = 'width';
-                }
-            }
+    if ($sx && $sy) {
+        $fontSize *= min($sx, $sy);
+        $scaleApplied = 'xy-min';
+    } elseif ($sy) {
+        $fontSize *= $sy;
+        $scaleApplied = 'height';
+    } elseif ($sx) {
+        $fontSize *= $sx;
+        $scaleApplied = 'width';
+    }
+}
 
-            if ($displayVideoHeight <= 0 && $displayVideoWidth <= 0 && is_array($videoDimensions)) {
-                $fallbackHeight = (float) ($videoDimensions['height'] ?? 0);
-                if ($fallbackHeight > 0) {
-                    $fontSize *= max(1.0, $fallbackHeight / 720.0);
-                    $scaleApplied = 'fallback';
-                }
-            }
+if ($displayVideoHeight <= 0 && $displayVideoWidth <= 0 && is_array($videoDimensions)) {
+    $fallbackHeight = (float) ($videoDimensions['height'] ?? 0);
+    if ($fallbackHeight > 0) {
+        $fontSize *= max(1.0, $fallbackHeight / 720.0);
+        $scaleApplied = 'fallback';
+    }
+}
 
-            $fontSize = max(10, (int) round($fontSize));
+$fontSize = (int) max(10, min(300, round($fontSize)));
+
             $stageWidth = $canvasWidth > 0 ? $canvasWidth : max($displayVideoWidth, 1);
             $stageHeight = $canvasHeight > 0 ? $canvasHeight : max($displayVideoHeight, 1);
 
@@ -1235,49 +1302,46 @@ class ProjectExportController extends Controller
             $filterLines[] = '[v_out]format=yuv420p[video_export]';
         }
 
-        $audioFilters = [];
-        $audioLabels = [];
-        $audioOutputLabel = null;
-        if ($needsMusic || $hasBaseAudio) {
-            if ($hasBaseAudio) {
-                $audioFilters[] = '[0:a]aresample=async=1,apad[a_base]';
-                $audioLabels[] = 'a_base';
-            }
+$audioFilters = [];
+$audioLabels  = [];
+$audioOutputLabel = null;
 
-            foreach ($musicTracks as $index => $track) {
-                $inputIndex = $index + 1;
-                $startOffset = max(0.0, (float) $track['start_offset']);
-                $startTime = max(0.0, (float) $track['start_time']);
-                $duration = max(0.0, (float) $track['duration']);
-                if ($duration <= 0) {
-                    continue;
-                }
+if ($needsMusic || $hasBaseAudio) {
+    if ($hasBaseAudio) {
+        $audioFilters[] = '[0:a]aresample=async=1:sample_rate=48000,apad[a_base]';
+        $audioLabels[] = 'a_base';
+    }
 
-                $endOffset = $startOffset + $duration;
-                $delayMs = (int) round($startTime * 1000);
-                $label = 'a_track_' . $index;
+    foreach ($musicTracks as $index => $track) {
+        $inputIndex  = $index + 1;
+        $startOffset = max(0.0, (float) $track['start_offset']);
+        $startTime   = max(0.0, (float) $track['start_time']);
+        $duration    = max(0.0, (float) $track['duration']);
+        if ($duration <= 0) continue;
 
-                $audioFilters[] = sprintf(
-                    '[%d:a]atrim=start=%0.3f:end=%0.3f,asetpts=PTS-STARTPTS,adelay=%d|%d,apad[%s]',
-                    $inputIndex,
-                    $startOffset,
-                    $endOffset,
-                    $delayMs,
-                    $delayMs,
-                    $label
-                );
-                $audioLabels[] = $label;
-            }
+        $endOffset = $startOffset + $duration;
+        $delayMs   = (int) round($startTime * 1000);
+        $label     = 'a_track_' . $index;
 
-            if (!empty($audioLabels)) {
-                $audioOutputLabel = 'audio_mix';
-                $audioFilters[] = implode('', array_map(fn ($label) => '[' . $label . ']', $audioLabels))
-                    . 'amix=inputs=' . count($audioLabels) . ':normalize=0[' . $audioOutputLabel . ']';
-            }
-        }
-        if (!empty($audioFilters)) {
-            $filterLines = array_merge($filterLines, $audioFilters);
-        }
+        $audioFilters[] = sprintf(
+            '[%d:a]aresample=async=1:sample_rate=48000,atrim=start=%0.3f:end=%0.3f,' .
+            'asetpts=PTS-STARTPTS,adelay=%d|%d,apad[%s]',
+            $inputIndex, $startOffset, $endOffset, $delayMs, $delayMs, $label
+        );
+        $audioLabels[] = $label;
+    }
+
+    if (!empty($audioLabels)) {
+        $audioOutputLabel = 'audio_mix';
+        $audioFilters[] = implode('', array_map(fn ($l) => '['.$l.']', $audioLabels))
+            . 'amix=inputs=' . count($audioLabels) . ':normalize=1[' . $audioOutputLabel . ']';
+    }
+}
+
+if (!empty($audioFilters)) {
+    $filterLines = array_merge($filterLines, $audioFilters);
+}
+
 
         if (!empty($filterLines)) {
             $args[] = '-filter_complex';

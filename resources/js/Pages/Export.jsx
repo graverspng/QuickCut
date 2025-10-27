@@ -51,20 +51,24 @@ export default function Export({ project, exportWindow }) {
     setIsAllowed(Boolean(exportWindow?.allowed) && initial > 0);
   }, [exportWindow]);
 
-  useEffect(() => {
-    if (!isAllowed) return undefined;
-    const timer = setInterval(() => {
-      setRemainingSeconds((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          setIsAllowed(false);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [isAllowed]);
+useEffect(() => {
+  const expiresAtIso = exportWindow?.export_expires_at;
+  if (!expiresAtIso) {
+    setIsAllowed(Boolean(exportWindow?.allowed));
+    setRemainingSeconds(0);
+    return;
+  }
+  const tick = () => {
+    const now = Date.now();
+    const expires = new Date(expiresAtIso).getTime();
+    const delta = Math.max(0, Math.floor((expires - now) / 1000));
+    setRemainingSeconds(delta);
+    setIsAllowed(delta >= 0);
+  };
+  tick();
+  const id = setInterval(tick, 1000);
+  return () => clearInterval(id);
+}, [exportWindow]);
 
   const handleDownload = async () => {
     if (downloading) return;
