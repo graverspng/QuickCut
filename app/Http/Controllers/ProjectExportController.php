@@ -1385,131 +1385,172 @@ if (!empty($audioFilters)) {
         return $this->runProcess($args);
     }
 
-    public function download(Request $request, Project $project)
-    {
-        if (function_exists('set_time_limit')) {
-            @set_time_limit(0);
+public function download(Request $request, Project $project)
+{
+    if (function_exists('set_time_limit')) {
+        @set_time_limit(0);
+    }
+    @ini_set('max_execution_time', '0');
+
+    $this->ensureOwner($project);
+
+    // Always compute window so we can include it in any error response
+    $window = $this->buildWindowData($project);
+
+    // Gate: must be recently saved
+    if (!$window['allowed'] && !$request->boolean('force')) {
+        return response()->json([
+            'code'         => 'RECENT_SAVE_REQUIRED',
+            'message'      => 'Please save your project in the editor before exporting.',
+            'exportWindow' => $window,
+        ], 409);
+    }
+
+    $exportId  = Str::uuid()->toString();
+    $directory = storage_path('app/exports');
+    $this->ensureOutputDirectory($directory);
+
+    $fileSafeName  = Str::slug($project->name ?: 'quickcut-project');
+    $timestamp     = now()->format('Ymd_His');
+    $videoFileName = $fileSafeName
+        ? $fileSafeName . "-{$timestamp}-{$exportId}.mp4"
+        : "quickcut-project-{$timestamp}-{$exportId}.mp4";
+    $videoPath = $directory . DIRECTORY_SEPARATOR . $videoFileName;
+
+    // Prepare clips
+    $prepared    = $this->prepareClipSegments($project, $directory);
+    $segments    = $prepared['segments'] ?? [];
+    $rawSources  = $prepared['raw_sources'] ?? [];
+    $hadFailures = (bool)($prepared['had_failures'] ?? false);
+    $cleanup     = $prepared['cleanup'] ?? [];
+
+    if (empty($segments) && empty($rawSources)) {
+        return response()->json([
+            'code'         => 'NO_CLIPS',
+            'message'      => 'This project does not contain any video clips to export.',
+            'exportWindow' => $window,
+        ], 422);
+    }
+
+    if ($hadFailures) {
+        Log::error('Export aborted: one or more clip segments failed to render.', [
+            'project_id' => $project->id,
+            'clip_count' => count($project->clips ?? []),
+        ]);
+
+        return response()->json([
+            'code'         => 'SEGMENT_RENDER_FAILED',
+            'message'      => 'Unable to build video export: one or more clip segments failed to render. Please verify FFmpeg is installed and check the logs.',
+            'exportWindow' => $window,
+        ], 500);
+    }
+
+    $intermediate  = null;
+    $basePath      = null;
+    $hasBaseAudio  = false;
+
+    try {
+        // Base video (concatenate/transition if we have segments, else first raw source)
+        if (!empty($segments)) {
+            $transitionMap = $this->buildTransitionMap($project);
+            $combined      = $this->combineSegmentsWithTransitions($segments, $transitionMap, $directory);
+            $intermediate  = $combined['path'];
+            $cleanup       = array_merge($cleanup, $combined['cleanup'] ?? []);
+            $basePath      = $intermediate;
+        } else {
+            $basePath = $rawSources[0] ?? null;
         }
-        @ini_set('max_execution_time', '0');
 
-        $this->ensureOwner($project);
-
-        $window = $this->buildWindowData($project);
-        if (!$window['allowed']) {
+        if (!$basePath || !file_exists($basePath)) {
             return response()->json([
-                'message' => 'Please save your project in the editor before exporting.',
+                'code'         => 'BASE_ASSEMBLY_FAILED',
+                'message'      => 'Unable to assemble base video for export.',
                 'exportWindow' => $window,
-            ], 409);
+            ], 500);
         }
 
-        $exportId = Str::uuid()->toString();
-        $directory = storage_path('app/exports');
-        $this->ensureOutputDirectory($directory);
+        $hasBaseAudio = $this->hasAudioStream($basePath);
 
-        $fileSafeName = Str::slug($project->name ?: 'quickcut-project');
-        $timestamp = now()->format('Ymd_His');
-        $videoFileName = $fileSafeName
-            ? $fileSafeName . "-{$timestamp}-{$exportId}.mp4"
-            : "quickcut-project-{$timestamp}-{$exportId}.mp4";
-        $videoPath = $directory . DIRECTORY_SEPARATOR . $videoFileName;
+        // Music + overlays
+        $music   = $this->gatherMusicSources($project, $directory);
+        $cleanup = array_merge($cleanup, $music['cleanup'] ?? []);
 
-        $prepared = $this->prepareClipSegments($project, $directory);
-        $segments = $prepared['segments'];
-        $rawSources = $prepared['raw_sources'] ?? [];
-        $hadFailures = $prepared['had_failures'] ?? false;
-
-        if (empty($segments) && empty($rawSources)) {
-            abort(422, 'This project does not contain any video clips to export.');
+        if (!$this->applyTimelineOverlays(
+            $basePath,
+            $videoPath,
+            is_array($project->effects) ? $project->effects : [],
+            is_array($project->text_overlays) ? $project->text_overlays : [],
+            $music['tracks'] ?? [],
+            $hasBaseAudio
+        )) {
+            return response()->json([
+                'code'         => 'OVERLAY_APPLY_FAILED',
+                'message'      => 'Unable to apply effects/text/music during export. See logs for FFmpeg output.',
+                'exportWindow' => $window,
+            ], 500);
         }
+    } catch (\Throwable $e) {
+        Log::error('Export threw exception', [
+            'project_id' => $project->id,
+            'error'      => $e->getMessage(),
+            'trace'      => $e->getTraceAsString(),
+        ]);
 
-        if ($hadFailures) {
-            Log::error('Export aborted because one or more clip segments failed to render.', [
-                'project_id' => $project->id,
-                'clip_count' => count($project->clips ?? []),
-            ]);
-            abort(500, 'Unable to build video export. Please verify FFmpeg is installed and check the logs for details.');
+        return response()->json([
+            'code'         => 'EXCEPTION',
+            'message'      => 'An unexpected error occurred while exporting. Check logs for details.',
+            'exportWindow' => $window,
+        ], 500);
+    } finally {
+        // cleanup intermediates
+        foreach ($cleanup as $tempPath) {
+            if (is_string($tempPath) && $tempPath && file_exists($tempPath)) {
+                @unlink($tempPath);
+            }
         }
+        if (isset($intermediate) && $intermediate && file_exists($intermediate) && $intermediate !== $videoPath) {
+            @unlink($intermediate);
+        }
+    }
 
-        $cleanup = $prepared['cleanup'] ?? [];
-        $intermediate = null;
-        $basePath = null;
-        $hasBaseAudio = false;
+    if (!file_exists($videoPath)) {
+        return response()->json([
+            'code'         => 'MISSING_OUTPUT',
+            'message'      => 'Export finished without producing an output file.',
+            'exportWindow' => $window,
+        ], 500);
+    }
 
+    $downloadName = $fileSafeName ? $fileSafeName . '-quickcut-export.mp4' : 'quickcut-export.mp4';
+    $fileSize     = @filesize($videoPath) ?: null;
+
+    // Stream the file; delete after streaming
+    $response = response()->streamDownload(function () use ($videoPath) {
+        $handle = @fopen($videoPath, 'rb');
+        if (!$handle) {
+            return;
+        }
         try {
-            if (!empty($segments)) {
-                $transitionMap = $this->buildTransitionMap($project);
-                $combined = $this->combineSegmentsWithTransitions($segments, $transitionMap, $directory);
-                $intermediate = $combined['path'];
-                $cleanup = array_merge($cleanup, $combined['cleanup']);
-                $basePath = $intermediate;
-            } else {
-                $basePath = $rawSources[0];
-            }
-
-            if (!$basePath || !file_exists($basePath)) {
-                abort(500, 'Unable to build video export.');
-            }
-
-            $hasBaseAudio = $this->hasAudioStream($basePath);
-
-            $music = $this->gatherMusicSources($project, $directory);
-            $cleanup = array_merge($cleanup, $music['cleanup']);
-
-            if (!$this->applyTimelineOverlays(
-                $basePath,
-                $videoPath,
-                is_array($project->effects) ? $project->effects : [],
-                is_array($project->text_overlays) ? $project->text_overlays : [],
-                $music['tracks'] ?? [],
-                $hasBaseAudio
-            )) {
-                abort(500, 'Unable to build video export.');
+            while (!feof($handle)) {
+                echo fread($handle, 1024 * 512);
+                if (function_exists('ob_flush')) {
+                    @ob_flush();
+                }
+                flush();
             }
         } finally {
-            foreach ($cleanup as $tempPath) {
-                if (is_string($tempPath) && $tempPath && file_exists($tempPath)) {
-                    @unlink($tempPath);
-                }
-            }
-            if ($intermediate && file_exists($intermediate) && $intermediate !== $videoPath) {
-                @unlink($intermediate);
-            }
+            fclose($handle);
+            @unlink($videoPath);
         }
+    }, $downloadName, array_filter([
+        'Content-Type'   => 'video/mp4',
+        'Content-Length' => $fileSize,
+    ]));
 
-        if (!file_exists($videoPath)) {
-            abort(500, 'Unable to build video export.');
-        }
-
-        $downloadName = $fileSafeName ? $fileSafeName . '-quickcut-export.mp4' : 'quickcut-export.mp4';
-        $fileSize = @filesize($videoPath) ?: null;
-
-        $response = response()->streamDownload(function () use ($videoPath) {
-            $handle = @fopen($videoPath, 'rb');
-            if (!$handle) {
-                return;
-            }
-
-            try {
-                while (!feof($handle)) {
-                    echo fread($handle, 1024 * 512);
-                    if (function_exists('ob_flush')) {
-                        @ob_flush();
-                    }
-                    flush();
-                }
-            } finally {
-                fclose($handle);
-                @unlink($videoPath);
-            }
-        }, $downloadName, array_filter([
-            'Content-Type' => 'video/mp4',
-            'Content-Length' => $fileSize,
-        ]));
-
-        if ($fileSize !== null) {
-            $response->headers->set('Accept-Ranges', 'bytes');
-        }
-
-        return $response;
+    if ($fileSize !== null) {
+        $response->headers->set('Accept-Ranges', 'bytes');
     }
+
+    return $response;
+}
 }
