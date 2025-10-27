@@ -1152,6 +1152,7 @@ protected function buildTextFilters(array $textOverlays, ?array $videoDimensions
             $color = 'FCFFFC';
         }
 
+
         $fontSize = (float) Arr::get($overlay, 'fontSize', 32);
         $canvasHeight = (float) Arr::get($overlay, 'canvasHeight', 0);
         $canvasWidth  = (float) Arr::get($overlay, 'canvasWidth', 0);
@@ -1205,7 +1206,7 @@ protected function buildTextFilters(array $textOverlays, ?array $videoDimensions
         $stagePosX = ($stagePercentX / 100) * $stageWidth;
         $stagePosY = ($stagePercentY / 100) * $stageHeight;
 
-        // ✅ Added: offsets needed for proper positioning when the displayed video is letterboxed/pillarboxed
+
         $displayOffsetX = (float) Arr::get($overlay, 'displayVideoOffsetX', 0);
         $displayOffsetY = (float) Arr::get($overlay, 'displayVideoOffsetY', 0);
 
@@ -1224,6 +1225,7 @@ protected function buildTextFilters(array $textOverlays, ?array $videoDimensions
 
         $xExpr = sprintf('(w*%0.6f)-(text_w/2)', $videoRatioX);
         $yExpr = sprintf('(h*%0.6f)-(text_h/2)', $videoRatioY);
+
 
         $nextLabel = 'v_text_' . $counter++;
         $drawtextOptions = [
@@ -1266,6 +1268,7 @@ protected function buildTextFilters(array $textOverlays, ?array $videoDimensions
 
     return $filters;
 }
+
     protected function applyTimelineOverlays(
         string $inputPath,
         string $outputPath,
