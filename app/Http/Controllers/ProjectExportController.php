@@ -1114,154 +1114,158 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
         return $filters;
     }
 
-    protected function buildTextFilters(array $textOverlays, ?array $videoDimensions = null): array
-    {
-        if (empty($textOverlays)) {
-            return [];
+protected function buildTextFilters(array $textOverlays, ?array $videoDimensions = null): array
+{
+    if (empty($textOverlays)) {
+        return [];
+    }
+
+    $filters = [];
+    $currentLabel = 'v_out';
+    $counter = 0;
+    $fontPath = $this->resolveDefaultFontPath();
+    $fontDirective = $fontPath
+        ? 'fontfile=' . $this->quoteFilterValue($fontPath)
+        : 'font=DejaVuSans';
+
+    foreach ($textOverlays as $index => $overlay) {
+        if (!is_array($overlay)) {
+            continue;
         }
 
-        $filters = [];
-        $currentLabel = 'v_out';
-        $counter = 0;
-        $fontPath = $this->resolveDefaultFontPath();
-        $fontDirective = $fontPath
-            ? 'fontfile=' . $this->quoteFilterValue($fontPath)
-            : 'font=DejaVuSans';
-
-        foreach ($textOverlays as $index => $overlay) {
-            if (!is_array($overlay)) {
-                continue;
-            }
-
-            $start = max(0.0, (float) Arr::get($overlay, 'startTime', 0));
-            $duration = max(0.0, (float) Arr::get($overlay, 'duration', 0));
-            if ($duration <= 0) {
-                continue;
-            }
-
-            $end = $start + $duration;
-            $enable = $this->escapeFilterValue(sprintf('between(t,%.3f,%.3f)', $start, $end));
-            $text = Arr::get($overlay, 'content', '');
-            if ($text === '') {
-                continue;
-            }
-
-            $quotedText = $this->quoteFilterValue($text);
-            $color = ltrim((string) Arr::get($overlay, 'color', '#FCFFFC'), '#');
-            if (!preg_match('/^[0-9a-fA-F]{6}$/', $color)) {
-                $color = 'FCFFFC';
-            }
-$fontSize = (float) Arr::get($overlay, 'fontSize', 32);
-$canvasHeight = (float) Arr::get($overlay, 'canvasHeight', 0);
-$canvasWidth  = (float) Arr::get($overlay, 'canvasWidth', 0);
-$displayVideoWidth  = (float) Arr::get($overlay, 'displayVideoWidth', $canvasWidth);
-$displayVideoHeight = (float) Arr::get($overlay, 'displayVideoHeight', $canvasHeight);
-
-$scaleApplied = null;
-if (is_array($videoDimensions)) {
-    $videoWidth  = (float) ($videoDimensions['width'] ?? 0);
-    $videoHeight = (float) ($videoDimensions['height'] ?? 0);
-    $sx = ($displayVideoWidth  > 0 && $videoWidth  > 0) ? ($videoWidth  / $displayVideoWidth)  : null;
-    $sy = ($displayVideoHeight > 0 && $videoHeight > 0) ? ($videoHeight / $displayVideoHeight) : null;
-
-    if ($sx && $sy) {
-        $fontSize *= min($sx, $sy);
-        $scaleApplied = 'xy-min';
-    } elseif ($sy) {
-        $fontSize *= $sy;
-        $scaleApplied = 'height';
-    } elseif ($sx) {
-        $fontSize *= $sx;
-        $scaleApplied = 'width';
-    }
-}
-
-if ($displayVideoHeight <= 0 && $displayVideoWidth <= 0 && is_array($videoDimensions)) {
-    $fallbackHeight = (float) ($videoDimensions['height'] ?? 0);
-    if ($fallbackHeight > 0) {
-        $fontSize *= max(1.0, $fallbackHeight / 720.0);
-        $scaleApplied = 'fallback';
-    }
-}
-
-$fontSize = (int) max(10, min(300, round($fontSize)));
-
-            $stageWidth = $canvasWidth > 0 ? $canvasWidth : max($displayVideoWidth, 1);
-            $stageHeight = $canvasHeight > 0 ? $canvasHeight : max($displayVideoHeight, 1);
-
-            $displayWidthSafe = $displayVideoWidth > 0 ? $displayVideoWidth : $stageWidth;
-            $displayHeightSafe = $displayVideoHeight > 0 ? $displayVideoHeight : $stageHeight;
-
-            $stagePercentXMeta = Arr::get($overlay, 'stagePercentX');
-            $stagePercentYMeta = Arr::get($overlay, 'stagePercentY');
-            $stagePercentX = is_numeric($stagePercentXMeta)
-                ? max(0, min(100, (float) $stagePercentXMeta))
-                : max(0, min(100, (float) Arr::get($overlay, 'x', 50)));
-            $stagePercentY = is_numeric($stagePercentYMeta)
-                ? max(0, min(100, (float) $stagePercentYMeta))
-                : max(0, min(100, (float) Arr::get($overlay, 'y', 50)));
-
-            $stagePosX = ($stagePercentX / 100) * $stageWidth;
-            $stagePosY = ($stagePercentY / 100) * $stageHeight;
-
-            $videoPercentX = $displayWidthSafe > 0
-                ? (($stagePosX - $displayOffsetX) / $displayWidthSafe) * 100
-                : max(0, min(100, (float) Arr::get($overlay, 'x', 50)));
-            $videoPercentY = $displayHeightSafe > 0
-                ? (($stagePosY - $displayOffsetY) / $displayHeightSafe) * 100
-                : max(0, min(100, (float) Arr::get($overlay, 'y', 50)));
-
-            $videoPercentX = max(0, min(100, $videoPercentX));
-            $videoPercentY = max(0, min(100, $videoPercentY));
-
-            $videoRatioX = $videoPercentX / 100;
-            $videoRatioY = $videoPercentY / 100;
-
-            $xExpr = sprintf('(w*%0.6f)-(text_w/2)', $videoRatioX);
-            $yExpr = sprintf('(h*%0.6f)-(text_h/2)', $videoRatioY);
-
-            $nextLabel = 'v_text_' . $counter++;
-            $drawtextOptions = [
-                'text=' . $quotedText,
-                $fontDirective,
-                'fontcolor=0x' . strtoupper($color),
-                'fontsize=' . $fontSize,
-                'x=' . $this->escapeFilterValue($xExpr),
-                'y=' . $this->escapeFilterValue($yExpr),
-                'enable=' . $enable,
-            ];
-            $filters[] = sprintf(
-                '[%s]drawtext=%s[%s]',
-                $currentLabel,
-                implode(':', $drawtextOptions),
-                $nextLabel
-            );
-            $currentLabel = $nextLabel;
-
-            Log::debug('Export text overlay', [
-                'overlay_index' => $index,
-                'content_preview' => Str::limit($text, 40),
-                'font_size_final' => $fontSize,
-                'scale_applied' => $scaleApplied,
-                'canvas_width' => $canvasWidth,
-                'canvas_height' => $canvasHeight,
-                'display_video_width' => $displayVideoWidth,
-                'display_video_height' => $displayVideoHeight,
-                'display_video_offset_x' => $displayOffsetX,
-                'display_video_offset_y' => $displayOffsetY,
-                'video_dimensions' => $videoDimensions,
-                'position_percent' => [
-                    'video' => ['x' => $videoPercentX, 'y' => $videoPercentY],
-                    'stage' => ['x' => $stagePercentX, 'y' => $stagePercentY],
-                ],
-            ]);
+        $start = max(0.0, (float) Arr::get($overlay, 'startTime', 0));
+        $duration = max(0.0, (float) Arr::get($overlay, 'duration', 0));
+        if ($duration <= 0) {
+            continue;
         }
 
-        $filters[] = '[' . $currentLabel . ']format=yuv420p[video_export]';
+        $end = $start + $duration;
+        $enable = $this->escapeFilterValue(sprintf('between(t,%.3f,%.3f)', $start, $end));
+        $text = Arr::get($overlay, 'content', '');
+        if ($text === '') {
+            continue;
+        }
 
-        return $filters;
+        $quotedText = $this->quoteFilterValue($text);
+        $color = ltrim((string) Arr::get($overlay, 'color', '#FCFFFC'), '#');
+        if (!preg_match('/^[0-9a-fA-F]{6}$/', $color)) {
+            $color = 'FCFFFC';
+        }
+
+        $fontSize = (float) Arr::get($overlay, 'fontSize', 32);
+        $canvasHeight = (float) Arr::get($overlay, 'canvasHeight', 0);
+        $canvasWidth  = (float) Arr::get($overlay, 'canvasWidth', 0);
+        $displayVideoWidth  = (float) Arr::get($overlay, 'displayVideoWidth', $canvasWidth);
+        $displayVideoHeight = (float) Arr::get($overlay, 'displayVideoHeight', $canvasHeight);
+
+        $scaleApplied = null;
+        if (is_array($videoDimensions)) {
+            $videoWidth  = (float) ($videoDimensions['width'] ?? 0);
+            $videoHeight = (float) ($videoDimensions['height'] ?? 0);
+            $sx = ($displayVideoWidth  > 0 && $videoWidth  > 0) ? ($videoWidth  / $displayVideoWidth)  : null;
+            $sy = ($displayVideoHeight > 0 && $videoHeight > 0) ? ($videoHeight / $displayVideoHeight) : null;
+
+            if ($sx && $sy) {
+                $fontSize *= min($sx, $sy);
+                $scaleApplied = 'xy-min';
+            } elseif ($sy) {
+                $fontSize *= $sy;
+                $scaleApplied = 'height';
+            } elseif ($sx) {
+                $fontSize *= $sx;
+                $scaleApplied = 'width';
+            }
+        }
+
+        if ($displayVideoHeight <= 0 && $displayVideoWidth <= 0 && is_array($videoDimensions)) {
+            $fallbackHeight = (float) ($videoDimensions['height'] ?? 0);
+            if ($fallbackHeight > 0) {
+                $fontSize *= max(1.0, $fallbackHeight / 720.0);
+                $scaleApplied = 'fallback';
+            }
+        }
+
+        $fontSize = (int) max(10, min(300, round($fontSize)));
+
+        $stageWidth = $canvasWidth > 0 ? $canvasWidth : max($displayVideoWidth, 1);
+        $stageHeight = $canvasHeight > 0 ? $canvasHeight : max($displayVideoHeight, 1);
+
+        $displayWidthSafe = $displayVideoWidth > 0 ? $displayVideoWidth : $stageWidth;
+        $displayHeightSafe = $displayVideoHeight > 0 ? $displayVideoHeight : $stageHeight;
+
+        $stagePercentXMeta = Arr::get($overlay, 'stagePercentX');
+        $stagePercentYMeta = Arr::get($overlay, 'stagePercentY');
+        $stagePercentX = is_numeric($stagePercentXMeta)
+            ? max(0, min(100, (float) $stagePercentXMeta))
+            : max(0, min(100, (float) Arr::get($overlay, 'x', 50)));
+        $stagePercentY = is_numeric($stagePercentYMeta)
+            ? max(0, min(100, (float) $stagePercentYMeta))
+            : max(0, min(100, (float) Arr::get($overlay, 'y', 50)));
+
+        $stagePosX = ($stagePercentX / 100) * $stageWidth;
+        $stagePosY = ($stagePercentY / 100) * $stageHeight;
+
+        // ✅ Added: offsets needed for proper positioning when the displayed video is letterboxed/pillarboxed
+        $displayOffsetX = (float) Arr::get($overlay, 'displayVideoOffsetX', 0);
+        $displayOffsetY = (float) Arr::get($overlay, 'displayVideoOffsetY', 0);
+
+        $videoPercentX = $displayWidthSafe > 0
+            ? (($stagePosX - $displayOffsetX) / $displayWidthSafe) * 100
+            : max(0, min(100, (float) Arr::get($overlay, 'x', 50)));
+        $videoPercentY = $displayHeightSafe > 0
+            ? (($stagePosY - $displayOffsetY) / $displayHeightSafe) * 100
+            : max(0, min(100, (float) Arr::get($overlay, 'y', 50)));
+
+        $videoPercentX = max(0, min(100, $videoPercentX));
+        $videoPercentY = max(0, min(100, $videoPercentY));
+
+        $videoRatioX = $videoPercentX / 100;
+        $videoRatioY = $videoPercentY / 100;
+
+        $xExpr = sprintf('(w*%0.6f)-(text_w/2)', $videoRatioX);
+        $yExpr = sprintf('(h*%0.6f)-(text_h/2)', $videoRatioY);
+
+        $nextLabel = 'v_text_' . $counter++;
+        $drawtextOptions = [
+            'text=' . $quotedText,
+            $fontDirective,
+            'fontcolor=0x' . strtoupper($color),
+            'fontsize=' . $fontSize,
+            'x=' . $this->escapeFilterValue($xExpr),
+            'y=' . $this->escapeFilterValue($yExpr),
+            'enable=' . $enable,
+        ];
+        $filters[] = sprintf(
+            '[%s]drawtext=%s[%s]',
+            $currentLabel,
+            implode(':', $drawtextOptions),
+            $nextLabel
+        );
+        $currentLabel = $nextLabel;
+
+        Log::debug('Export text overlay', [
+            'overlay_index' => $index,
+            'content_preview' => Str::limit($text, 40),
+            'font_size_final' => $fontSize,
+            'scale_applied' => $scaleApplied,
+            'canvas_width' => $canvasWidth,
+            'canvas_height' => $canvasHeight,
+            'display_video_width' => $displayVideoWidth,
+            'display_video_height' => $displayVideoHeight,
+            'display_video_offset_x' => $displayOffsetX,
+            'display_video_offset_y' => $displayOffsetY,
+            'video_dimensions' => $videoDimensions,
+            'position_percent' => [
+                'video' => ['x' => $videoPercentX, 'y' => $videoPercentY],
+                'stage' => ['x' => $stagePercentX, 'y' => $stagePercentY],
+            ],
+        ]);
     }
 
+    $filters[] = '[' . $currentLabel . ']format=yuv420p[video_export]';
+
+    return $filters;
+}
     protected function applyTimelineOverlays(
         string $inputPath,
         string $outputPath,
