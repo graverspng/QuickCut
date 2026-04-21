@@ -89,6 +89,10 @@ useEffect(() => {
 
       if (!response.ok) {
         let message = 'Export failed. Please try again after saving.';
+        if (response.status === 504) {
+          message =
+            'Export timed out (504). Your server/proxy ended the request before the video finished rendering. Increase Nginx/PHP timeouts or run exports in the background.';
+        }
         try {
           const data = await response.json();
           if (data?.message) message = data.message;
