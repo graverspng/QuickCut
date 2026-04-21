@@ -1653,88 +1653,6 @@ public function download(Request $request, Project $project)
     if (function_exists('set_time_limit')) {
         @set_time_limit(0);
     }
-
-    /**
-     * Download a completed export file for the given project.
-     * If an export id is provided via query `export_id` it will attempt to download that export,
-     * otherwise it will locate the most recent completed export for the project and current user.
-     */
-    public function downloadFile(Request $request, Project $project)
-    {
-        $this->ensureOwner($project);
-
-        $exportId = $request->query('export_id');
-
-        if ($exportId) {
-            $export = ExportModel::where('id', $exportId)->where('project_id', $project->id)->first();
-        } else {
-            $export = ExportModel::where('project_id', $project->id)
-                ->when(optional(auth()->user())->id, fn ($q, $userId) => $q->where('user_id', $userId))
-                ->where('status', 'completed')
-                ->orderByDesc('created_at')
-                ->first();
-        }
-
-        if (!$export) {
-            return response()->json([
-                'code' => 'EXPORT_NOT_FOUND',
-                'message' => 'No completed export found for this project.',
-            ], 404);
-        }
-
-        if ($export->status !== 'completed') {
-            return response()->json([
-                'code' => 'EXPORT_NOT_READY',
-                'message' => 'Export is not yet ready for download.',
-                'status' => $export->status,
-            ], 409);
-        }
-
-        $videoPath = $export->file_path;
-        if (!$videoPath || !file_exists($videoPath)) {
-            return response()->json([
-                'code' => 'MISSING_OUTPUT',
-                'message' => 'Export file is missing on disk.',
-            ], 500);
-        }
-
-        $downloadName = $export->file_name ?: (basename($videoPath) ?: 'quickcut-export.mp4');
-        $fileSize = @filesize($videoPath) ?: null;
-
-        // Stream the file; delete after streaming and mark export as downloaded
-        $response = response()->streamDownload(function () use ($videoPath) {
-            $handle = @fopen($videoPath, 'rb');
-            if (!$handle) {
-                return;
-            }
-            try {
-                while (!feof($handle)) {
-                    echo fread($handle, 1024 * 512);
-                    if (function_exists('ob_flush')) {
-                        @ob_flush();
-                    }
-                    flush();
-                }
-            } finally {
-                fclose($handle);
-                @unlink($videoPath);
-            }
-        }, $downloadName, array_filter([
-            'Content-Type'   => 'video/mp4',
-            'Content-Length' => $fileSize,
-        ]));
-
-        // mark as downloaded
-        $export->status = 'downloaded';
-        $export->save();
-
-        if ($fileSize !== null) {
-            $response->headers->set('Accept-Ranges', 'bytes');
-        }
-        $response->headers->set('X-Accel-Buffering', 'no');
-
-        return $response;
-    }
     @ini_set('max_execution_time', '0');
 
     $this->ensureOwner($project);
@@ -1875,4 +1793,87 @@ public function buildExportForJob(Project $project, string $exportUuid, string $
         'fileSize' => @filesize($videoPath) ?: null,
     ];
 }
+
+    /**
+     * Download a completed export file for the given project.
+     * If an export id is provided via query `export_id` it will attempt to download that export,
+     * otherwise it will locate the most recent completed export for the project and current user.
+     */
+    public function downloadFile(Request $request, Project $project)
+    {
+        $this->ensureOwner($project);
+
+        $exportId = $request->query('export_id');
+
+        if ($exportId) {
+            $export = ExportModel::where('id', $exportId)->where('project_id', $project->id)->first();
+        } else {
+            $export = ExportModel::where('project_id', $project->id)
+                ->when(optional(auth()->user())->id, fn ($q, $userId) => $q->where('user_id', $userId))
+                ->where('status', 'completed')
+                ->orderByDesc('created_at')
+                ->first();
+        }
+
+        if (!$export) {
+            return response()->json([
+                'code' => 'EXPORT_NOT_FOUND',
+                'message' => 'No completed export found for this project.',
+            ], 404);
+        }
+
+        if ($export->status !== 'completed') {
+            return response()->json([
+                'code' => 'EXPORT_NOT_READY',
+                'message' => 'Export is not yet ready for download.',
+                'status' => $export->status,
+            ], 409);
+        }
+
+        $videoPath = $export->file_path;
+        if (!$videoPath || !file_exists($videoPath)) {
+            return response()->json([
+                'code' => 'MISSING_OUTPUT',
+                'message' => 'Export file is missing on disk.',
+            ], 500);
+        }
+
+        $downloadName = $export->file_name ?: (basename($videoPath) ?: 'quickcut-export.mp4');
+        $fileSize = @filesize($videoPath) ?: null;
+
+        // Stream the file; delete after streaming and mark export as downloaded
+        $response = response()->streamDownload(function () use ($videoPath) {
+            $handle = @fopen($videoPath, 'rb');
+            if (!$handle) {
+                return;
+            }
+            try {
+                while (!feof($handle)) {
+                    echo fread($handle, 1024 * 512);
+                    if (function_exists('ob_flush')) {
+                        @ob_flush();
+                    }
+                    flush();
+                }
+            } finally {
+                fclose($handle);
+                @unlink($videoPath);
+            }
+        }, $downloadName, array_filter([
+            'Content-Type'   => 'video/mp4',
+            'Content-Length' => $fileSize,
+        ]));
+
+        // mark as downloaded
+        $export->status = 'downloaded';
+        $export->save();
+
+        if ($fileSize !== null) {
+            $response->headers->set('Accept-Ranges', 'bytes');
+        }
+        $response->headers->set('X-Accel-Buffering', 'no');
+
+        return $response;
+    }
+
 }
