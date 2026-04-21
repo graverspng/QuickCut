@@ -62,6 +62,13 @@ const TRANSITION_TYPES = [
 
 const getTransitionLabel = (type) => TRANSITION_TYPES.find((t) => t.value === type)?.label || 'Fade';
 
+const formatTime = (seconds) => {
+  const s = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+};
+
 export default function Editor({ project }) {
   const BASE_PX_PER_SEC = 20;
   const MIN_TIMELINE_SECONDS = 12;
@@ -182,6 +189,8 @@ export default function Editor({ project }) {
   const [selectedEffectIndex, setSelectedEffectIndex] = useState(null);
   const [selectedTextIndex, setSelectedTextIndex] = useState(null);
   const [selectedTransitionId, setSelectedTransitionId] = useState(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [uploadError, setUploadError] = useState('');
 
   const [currentTime, setCurrentTime] = useState(0);
 
@@ -232,6 +241,19 @@ export default function Editor({ project }) {
         URL.revokeObjectURL(current.objectUrl);
         videoSourceRef.current = { url: null, objectUrl: null, file: null };
       }
+    };
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    video.addEventListener('play', onPlay);
+    video.addEventListener('pause', onPause);
+    return () => {
+      video.removeEventListener('play', onPlay);
+      video.removeEventListener('pause', onPause);
     };
   }, []);
 
@@ -613,9 +635,7 @@ export default function Editor({ project }) {
       const serverMessage =
         error?.response?.data?.message ||
         error?.response?.data?.error ||
-        error?.response?.data?.errors
-          ? JSON.stringify(error.response.data.errors)
-          : null;
+        (error?.response?.data?.errors ? JSON.stringify(error.response.data.errors) : null);
       let message = 'Uploading media failed. Please try again.';
       if (status === 413) {
         message = 'Upload too large for the server (HTTP 413). Try a smaller file or contact support.';
@@ -628,7 +648,7 @@ export default function Editor({ project }) {
       } else if (serverMessage) {
         message = serverMessage;
       }
-      alert(message);
+      setUploadError(message);
     } finally {
       setIsUploadingMedia(false);
       if (input?.target?.value !== undefined) {
@@ -1480,6 +1500,7 @@ export default function Editor({ project }) {
         cancelAnimationFrame(state.frameId);
       }
       manualPlaybackRef.current = null;
+      setIsPlaying(false);
       if (shouldSyncAudio) {
         syncAudio(globalTime != null ? globalTime : currentTime, false);
       }
@@ -1551,6 +1572,7 @@ export default function Editor({ project }) {
       };
 
       manualPlaybackRef.current = { ...initialState };
+      setIsPlaying(true);
       setActiveClipIndex(clipIndex);
       setCurrentTime(targetTime);
       syncVisuals(targetTime);
@@ -1740,6 +1762,7 @@ export default function Editor({ project }) {
 
             if (!musicStillPlaying) {
               video.pause();
+              setIsPlaying(false);
               setActiveClipIndex(0);
               setCurrentTime(0);
               syncVisuals(0);
@@ -2110,7 +2133,22 @@ export default function Editor({ project }) {
                 </button>
               </div>
             )}
-            <button onClick={handleCut} className="cut-btn">✂️ Cut</button>
+            <button onClick={handleCut} className="cut-btn">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+              Cut
+            </button>
+            {(selectedClipIndex !== null || selectedMusicIndex !== null || selectedEffectIndex !== null || selectedTextIndex !== null || selectedTransitionId !== null) && (
+              <button className="delete-selected-btn" onClick={() => {
+                if (selectedClipIndex !== null) { setClips((prev) => normalizeClipsLocal(prev.filter((_, i) => i !== selectedClipIndex))); setSelectedClipIndex(null); setActiveClipIndex(null); }
+                else if (selectedMusicIndex !== null) { setMusicTracks((prev) => prev.filter((_, i) => i !== selectedMusicIndex)); setSelectedMusicIndex(null); }
+                else if (selectedEffectIndex !== null) { setEffects((prev) => prev.filter((_, i) => i !== selectedEffectIndex)); setSelectedEffectIndex(null); }
+                else if (selectedTextIndex !== null) { updateTextOverlays((prev) => prev.filter((_, i) => i !== selectedTextIndex)); setSelectedTextIndex(null); }
+                else if (selectedTransitionId) { setTransitions((prev) => prev.filter((t) => t.id !== selectedTransitionId)); setSelectedTransitionId(null); }
+              }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                Delete
+              </button>
+            )}
             <button onClick={goBack} className="back-btn">Back</button>
             <button onClick={handleSave} className="save-btn">Save</button>
             <Link href={route('projects.export', project.id)} className="export-btn">Export</Link>
@@ -2127,11 +2165,16 @@ export default function Editor({ project }) {
               onDrop={(e) => { e.preventDefault(); handleFileUpload(e); }}
               onClick={() => document.getElementById('hiddenFileInput').click()}
             >
-              <p style={{ fontSize: '10px' }}>
-                {isUploadingMedia ? 'Uploading...' : 'Drop files here or click to upload'}
+              <p style={{ fontSize: '12px', margin: 0 }}>
+                {isUploadingMedia ? 'Uploading…' : 'Drop files or click to upload'}
               </p>
               <input id="hiddenFileInput" type="file" multiple style={{ display: 'none' }} onChange={handleFileUpload} />
             </div>
+            {uploadError && (
+              <div className="upload-error-msg" onClick={() => setUploadError('')}>
+                {uploadError}
+              </div>
+            )}
 
             <div className="media-section effects-section">
               <h4>✨ Effects</h4>
@@ -2173,6 +2216,7 @@ export default function Editor({ project }) {
                     onChange={(e) => setNewTextColor(e.target.value)}
                   />
                 </div>
+                <button className="text-add-btn" onClick={addTextAtPlayhead} style={{ marginTop: 4 }}>+ Add at Playhead</button>
               </div>
               {selectedTextIndex !== null && textOverlays[selectedTextIndex] && (
                 <div className="text-edit-panel">
@@ -2304,9 +2348,27 @@ export default function Editor({ project }) {
                   );
                 })}
               </div>
-              <button className="play-btn" onClick={togglePlay}>Play / Pause</button>
+              <div className="player-controls">
+                <button className="play-btn" onClick={togglePlay} aria-label={isPlaying ? 'Pause' : 'Play'}>
+                  {isPlaying ? (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+                  )}
+                </button>
+                <div className="time-display">
+                  {formatTime(currentTime)} / {formatTime(totalDuration)}
+                </div>
+              </div>
             </div>
 
+            <div className="timeline-outer">
+              <div className="timeline-labels">
+                <div className="tl-label" style={{ height: 90 }}>FX</div>
+                <div className="tl-label" style={{ height: 80 }}>TEXT</div>
+                <div className="tl-label" style={{ height: 100 }}>VIDEO</div>
+                <div className="tl-label" style={{ height: 80 }}>AUDIO</div>
+              </div>
             <div
               ref={timelineScrollRef}
               className="timeline-scroll"
@@ -2508,6 +2570,7 @@ export default function Editor({ project }) {
                 </div>
               </div>
             </div>
+            </div>{/* timeline-outer */}
           </div>
         </div>
       </div>

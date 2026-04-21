@@ -352,21 +352,50 @@
   box-shadow: 0 16px 36px rgba(43,168,74,0.42);
 }
 
-.video-player .play-btn {
+.player-controls {
   position: absolute;
   bottom: 18px;
-  left: 18px;
-  background: linear-gradient(90deg, var(--green-1), var(--green-2));
-  color: var(--light);
-  padding: 8px 14px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 800;
-  cursor: pointer;
-  transition: transform .2s ease, box-shadow .25s ease;
-  box-shadow: 0 10px 24px rgba(43,168,74,0.32);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
-.video-player .play-btn:hover { transform: translateY(-1px); box-shadow: 0 16px 36px rgba(43,168,74,0.4); }
+
+.video-player .play-btn {
+  width: 44px;
+  height: 44px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1.5px solid rgba(43, 168, 74, 0.45);
+  color: var(--green-2);
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  flex-shrink: 0;
+}
+.video-player .play-btn:hover {
+  background: rgba(0, 0, 0, 0.8);
+  border-color: rgba(43, 168, 74, 0.85);
+  transform: scale(1.06);
+}
+
+.time-display {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(252, 255, 252, 0.65);
+  font-variant-numeric: tabular-nums;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 5px 11px;
+  border-radius: 7px;
+  backdrop-filter: blur(6px);
+  border: 0.5px solid rgba(255,255,255,0.07);
+  white-space: nowrap;
+}
 
 .timeline-scroll { overflow-x: auto; overflow-y: hidden; white-space: nowrap; position: relative; display: flex; flex-direction: column; }
 
@@ -439,7 +468,7 @@
   padding: 0 8px;
 }
 .clip:hover { transform: translateY(-1px); opacity: 0.95; }
-.clip.selected { border: 2px solid #ff5555; background: #c0392b !important; box-shadow: 0 0 15px rgba(255,85,85,0.4); }
+.clip.selected { border: 2px solid #60a5fa; box-shadow: 0 0 0 3px rgba(96,165,250,0.2), 0 0 14px rgba(96,165,250,0.3); }
 
 .track {
   position: absolute;
@@ -518,6 +547,82 @@
 @keyframes slideDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes slideInLeft { from { opacity: 0; transform: translateX(-40px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ── Timeline outer with lane labels ────────────────────── */
+.timeline-outer {
+  display: flex;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.timeline-labels {
+  flex-shrink: 0;
+  width: 48px;
+  background: #080808;
+  border-right: 1px solid rgba(255,255,255,0.05);
+  display: flex;
+  flex-direction: column;
+}
+
+.tl-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #3a3a3a;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.timeline-outer .timeline-scroll {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Delete selected button ──────────────────────────────── */
+.delete-selected-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(127, 29, 29, 0.5);
+  border: 1px solid rgba(185, 28, 28, 0.6);
+  color: #fca5a5;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 9px;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.delete-selected-btn:hover {
+  background: rgba(185, 28, 28, 0.55);
+  border-color: rgba(239, 68, 68, 0.7);
+}
+
+/* ── Upload error message ────────────────────────────────── */
+.upload-error-msg {
+  background: rgba(127, 29, 29, 0.4);
+  border: 0.5px solid rgba(185, 28, 28, 0.5);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: #fca5a5;
+  margin-bottom: 12px;
+  cursor: pointer;
+  line-height: 1.5;
+}
+.upload-error-msg:hover { background: rgba(127, 29, 29, 0.55); }
+
+/* ── Cut button icon alignment ───────────────────────────── */
+.cut-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 
 @media (max-width: 900px) {
   .media-library { width: 260px; }
