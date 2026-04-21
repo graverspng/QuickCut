@@ -894,12 +894,37 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
         return $map;
     }
 
-    protected function combineSegmentsWithTransitions(array $segments, array $transitionMap, string $directory): array
+    protected function quoteConcatDemuxerPath(string $path): string
     {
-        if (empty($segments)) {
-            return ['path' => null, 'cleanup' => [], 'duration' => 0.0];
+        $escaped = str_replace(['\\', "'"], ['\\\\', "\\'"], $path);
+
+        return "'" . $escaped . "'";
+    }
+
+    /**
+     * @param array<int, array{path: string, duration?: float|int|string}> $segments
+     */
+    protected function writeConcatListFile(array $segments, string $directory): string
+    {
+        $listPath = $directory . DIRECTORY_SEPARATOR . 'concat_' . Str::random(8) . '.txt';
+        $lines = [];
+
+        foreach ($segments as $segment) {
+            $path = $segment['path'] ?? null;
+            if (!is_string($path) || $path === '') {
+                continue;
+            }
+
+            $lines[] = 'file ' . $this->quoteConcatDemuxerPath($path);
         }
 
+        file_put_contents($listPath, implode("\n", $lines) . "\n");
+
+        return $listPath;
+    }
+
+    protected function combineSegmentsWithTransitionsSequential(array $segments, array $transitionMap, string $directory): array
+    {
         $currentPath = $segments[0]['path'];
         $currentDuration = (float) $segments[0]['duration'];
         $cleanup = [];
@@ -983,6 +1008,161 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
         }
 
         return ['path' => $currentPath, 'cleanup' => $cleanup, 'duration' => $currentDuration];
+    }
+
+    protected function combineSegmentsWithTransitions(array $segments, array $transitionMap, string $directory): array
+    {
+        if (empty($segments)) {
+            return ['path' => null, 'cleanup' => [], 'duration' => 0.0];
+        }
+
+        if (count($segments) === 1) {
+            return [
+                'path' => $segments[0]['path'],
+                'cleanup' => [],
+                'duration' => (float) $segments[0]['duration'],
+            ];
+        }
+
+        $hasTransitions = !empty($transitionMap);
+        if (!$hasTransitions) {
+            $concatOutputPath = $directory . DIRECTORY_SEPARATOR . 'merged_concat_' . Str::random(8) . '.mp4';
+            $listPath = $this->writeConcatListFile($segments, $directory);
+
+            $args = [
+                $this->ffmpegBinary(),
+                '-y',
+                '-f', 'concat',
+                '-safe', '0',
+                '-i', $listPath,
+                '-c', 'copy',
+                '-movflags', '+faststart',
+                $concatOutputPath,
+            ];
+
+            if ($this->runProcess($args) && file_exists($concatOutputPath)) {
+                $duration = 0.0;
+                foreach ($segments as $segment) {
+                    $duration += (float) ($segment['duration'] ?? 0);
+                }
+
+                return [
+                    'path' => $concatOutputPath,
+                    'cleanup' => [$listPath],
+                    'duration' => $duration,
+                ];
+            }
+
+            @unlink($concatOutputPath);
+            @unlink($listPath);
+        }
+
+        // Single-pass combine (1 encode) with transitions/concats, falling back to sequential if needed.
+        $outputPath = $directory . DIRECTORY_SEPARATOR . 'merged_' . count($segments) . '_' . Str::random(8) . '.mp4';
+
+        $args = [$this->ffmpegBinary(), '-y'];
+        foreach ($segments as $segment) {
+            $args[] = '-i';
+            $args[] = $segment['path'];
+        }
+
+        $filters = [];
+        foreach ($segments as $index => $segment) {
+            $filters[] = sprintf('[%d:v]format=yuv420p,setpts=PTS-STARTPTS[v%d]', $index, $index);
+            $filters[] = sprintf('[%d:a]aresample=async=1:sample_rate=48000,asetpts=PTS-STARTPTS[a%d]', $index, $index);
+        }
+
+        $vCurrent = 'v0';
+        $aCurrent = 'a0';
+        $currentDuration = (float) ($segments[0]['duration'] ?? 0.0);
+
+        for ($i = 1; $i < count($segments); $i++) {
+            $nextDuration = (float) ($segments[$i]['duration'] ?? 0.0);
+            $transition = $transitionMap[$i - 1] ?? null;
+
+            if ($transition) {
+                $transitionDuration = min((float) $transition['duration'], $currentDuration, $nextDuration);
+                $offset = max(0.0, $currentDuration - $transitionDuration);
+                $xfadeType = match ($transition['type']) {
+                    'dip-black' => 'fadeblack',
+                    'dip-white' => 'fadewhite',
+                    default => 'fade',
+                };
+
+                $vOut = 'vxf_' . $i;
+                $aOut = 'axf_' . $i;
+
+                $filters[] = sprintf(
+                    '[%s][v%d]xfade=transition=%s:duration=%.3f:offset=%.3f[%s]',
+                    $vCurrent,
+                    $i,
+                    $xfadeType,
+                    $transitionDuration,
+                    $offset,
+                    $vOut
+                );
+                $filters[] = sprintf(
+                    '[%s][a%d]acrossfade=d=%.3f[%s]',
+                    $aCurrent,
+                    $i,
+                    $transitionDuration,
+                    $aOut
+                );
+
+                $vCurrent = $vOut;
+                $aCurrent = $aOut;
+                $currentDuration = $currentDuration + $nextDuration - $transitionDuration;
+                continue;
+            }
+
+            $vOut = 'vcat_' . $i;
+            $aOut = 'acat_' . $i;
+
+            $filters[] = sprintf(
+                '[%s][%s][v%d][a%d]concat=n=2:v=1:a=1[%s][%s]',
+                $vCurrent,
+                $aCurrent,
+                $i,
+                $i,
+                $vOut,
+                $aOut
+            );
+
+            $vCurrent = $vOut;
+            $aCurrent = $aOut;
+            $currentDuration += $nextDuration;
+        }
+
+        $finalVideo = $vCurrent;
+        if ($finalVideo !== 'video_combined') {
+            $filters[] = sprintf('[%s]format=yuv420p[video_combined]', $finalVideo);
+            $finalVideo = 'video_combined';
+        }
+
+        $args[] = '-filter_complex';
+        $args[] = implode(';', $filters);
+        $args[] = '-map';
+        $args[] = '[' . $finalVideo . ']';
+        $args[] = '-map';
+        $args[] = '[' . $aCurrent . ']';
+        $args = array_merge($args, [
+            '-c:v', 'libx264',
+            '-preset', 'veryfast',
+            '-crf', '20',
+            '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            '-movflags', '+faststart',
+            $outputPath,
+        ]);
+
+        if ($this->runProcess($args) && file_exists($outputPath)) {
+            return ['path' => $outputPath, 'cleanup' => [], 'duration' => $currentDuration];
+        }
+
+        @unlink($outputPath);
+
+        return $this->combineSegmentsWithTransitionsSequential($segments, $transitionMap, $directory);
     }
 
     protected function gatherMusicSources(Project $project, string $directory): array
@@ -1553,6 +1733,7 @@ public function download(Request $request, Project $project)
     if ($fileSize !== null) {
         $response->headers->set('Accept-Ranges', 'bytes');
     }
+    $response->headers->set('X-Accel-Buffering', 'no');
 
     return $response;
 }

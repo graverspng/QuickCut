@@ -81,7 +81,7 @@ useEffect(() => {
     }
 
     setDownloading(true);
-    setProgress(0);
+    setProgress(null);
     try {
       const response = await fetch(route('projects.export.download', project.id), {
         headers: { 'X-Requested-With': 'XMLHttpRequest' },

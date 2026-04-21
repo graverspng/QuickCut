@@ -127,6 +127,7 @@ class AudioProjectExportController extends ProjectExportController
         if ($fileSize !== null) {
             $response->headers->set('Accept-Ranges', 'bytes');
         }
+        $response->headers->set('X-Accel-Buffering', 'no');
 
         return $response;
     }

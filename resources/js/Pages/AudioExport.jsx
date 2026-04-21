@@ -86,7 +86,7 @@ export default function AudioExport({ project, exportWindow }) {
     }
 
     setDownloading(true);
-    setProgress(0);
+    setProgress(null);
 
     try {
       const response = await fetch(route('audio.projects.export.download', project.id), {
