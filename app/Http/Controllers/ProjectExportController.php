@@ -89,9 +89,26 @@ protected function buildWindowData(Project $project): array
             return $cached = $projectFont;
         }
 
-        $fallback = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+        $candidates = [
+            // Linux
+            '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+            '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+            // macOS system
+            '/System/Library/Fonts/Supplemental/Arial.ttf',
+            '/Library/Fonts/Arial.ttf',
+            '/System/Library/Fonts/Helvetica.ttc',
+            '/System/Library/Fonts/SFNSText.ttf',
+            '/System/Library/Fonts/SFNS.ttf',
+            '/System/Library/Fonts/Supplemental/Verdana.ttf',
+        ];
 
-        return $cached = (file_exists($fallback) ? $fallback : null);
+        foreach ($candidates as $candidate) {
+            if (file_exists($candidate)) {
+                return $cached = $candidate;
+            }
+        }
+
+        return $cached = null;
     }
 
 protected function escapeFilterValue(string $value): string
@@ -1294,6 +1311,49 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
         return $filters;
     }
 
+    /**
+     * Write overlay text to temp files to avoid filter escaping issues (e.g. `;`, `:`).
+     *
+     * @param array<int, mixed> $textOverlays
+     * @return array{overlays: array<int, mixed>, cleanup: array<int, string>}
+     */
+    protected function prepareTextOverlayFiles(array $textOverlays, string $directory): array
+    {
+        $this->ensureOutputDirectory($directory);
+
+        $cleanup = [];
+        $overlays = [];
+
+        foreach ($textOverlays as $index => $overlay) {
+            if (!is_array($overlay)) {
+                $overlays[] = $overlay;
+                continue;
+            }
+
+            $text = Arr::get($overlay, 'content', '');
+            if (!is_string($text) || $text === '') {
+                $overlays[] = $overlay;
+                continue;
+            }
+
+            $path = $directory . DIRECTORY_SEPARATOR . 'text_' . $index . '_' . Str::random(8) . '.txt';
+            $written = @file_put_contents($path, $text);
+            if ($written === false) {
+                $overlays[] = $overlay;
+                continue;
+            }
+
+            $overlay['_textfile'] = $path;
+            $cleanup[] = $path;
+            $overlays[] = $overlay;
+        }
+
+        return [
+            'overlays' => $overlays,
+            'cleanup' => $cleanup,
+        ];
+    }
+
 protected function buildTextFilters(array $textOverlays, ?array $videoDimensions = null): array
 {
     if (empty($textOverlays)) {
@@ -1326,7 +1386,10 @@ protected function buildTextFilters(array $textOverlays, ?array $videoDimensions
             continue;
         }
 
-        $quotedText = $this->quoteFilterValue($text);
+        $textFile = Arr::get($overlay, '_textfile');
+        $textDirective = (is_string($textFile) && $textFile !== '' && file_exists($textFile))
+            ? 'textfile=' . $this->quoteFilterValue($textFile)
+            : 'text=' . $this->quoteFilterValue($text);
         $color = ltrim((string) Arr::get($overlay, 'color', '#FCFFFC'), '#');
         if (!preg_match('/^[0-9a-fA-F]{6}$/', $color)) {
             $color = 'FCFFFC';
@@ -1409,7 +1472,7 @@ protected function buildTextFilters(array $textOverlays, ?array $videoDimensions
 
         $nextLabel = 'v_text_' . $counter++;
         $drawtextOptions = [
-            'text=' . $quotedText,
+            $textDirective,
             $fontDirective,
             'fontcolor=0x' . strtoupper($color),
             'fontsize=' . $fontSize,
@@ -1465,29 +1528,37 @@ protected function buildTextFilters(array $textOverlays, ?array $videoDimensions
             return copy($inputPath, $outputPath);
         }
 
-        $args = [$this->ffmpegBinary(), '-y', '-i', $inputPath];
-        foreach ($musicTracks as $track) {
-            $args[] = '-i';
-            $args[] = $track['path'];
+        $textCleanup = [];
+        if ($needsText) {
+            $prepared = $this->prepareTextOverlayFiles($textOverlays, dirname($outputPath));
+            $textOverlays = $prepared['overlays'] ?? $textOverlays;
+            $textCleanup = $prepared['cleanup'] ?? [];
         }
 
-        $filterLines = [];
-        $videoDimensions = $this->probeVideoDimensions($inputPath);
+        try {
+            $args = [$this->ffmpegBinary(), '-y', '-i', $inputPath];
+            foreach ($musicTracks as $track) {
+                $args[] = '-i';
+                $args[] = $track['path'];
+            }
 
-        $effectFilters = $this->buildEffectFilters($effects);
-        if (!empty($effectFilters)) {
-            $filterLines = array_merge($filterLines, $effectFilters);
-        } else {
-            $filterLines[] = '[0:v]format=yuv420p[v_out]';
-        }
+            $filterLines = [];
+            $videoDimensions = $this->probeVideoDimensions($inputPath);
+
+            $effectFilters = $this->buildEffectFilters($effects);
+            if (!empty($effectFilters)) {
+                $filterLines = array_merge($filterLines, $effectFilters);
+            } else {
+                $filterLines[] = '[0:v]format=yuv420p[v_out]';
+            }
 
 
-        $textFilters = $this->buildTextFilters($textOverlays, $videoDimensions);
-        if (!empty($textFilters)) {
-            $filterLines = array_merge($filterLines, $textFilters);
-        } else {
-            $filterLines[] = '[v_out]format=yuv420p[video_export]';
-        }
+            $textFilters = $this->buildTextFilters($textOverlays, $videoDimensions);
+            if (!empty($textFilters)) {
+                $filterLines = array_merge($filterLines, $textFilters);
+            } else {
+                $filterLines[] = '[v_out]format=yuv420p[video_export]';
+            }
 
 $audioFilters = [];
 $audioLabels  = [];
@@ -1565,7 +1636,14 @@ if (!empty($audioFilters)) {
         $args[] = '-shortest';
         $args[] = $outputPath;
 
-        return $this->runProcess($args);
+            return $this->runProcess($args);
+        } finally {
+            foreach ($textCleanup as $path) {
+                if (is_string($path) && $path !== '' && file_exists($path)) {
+                    @unlink($path);
+                }
+            }
+        }
     }
 
 public function download(Request $request, Project $project)
@@ -1591,48 +1669,51 @@ public function download(Request $request, Project $project)
 
     $exportId  = Str::uuid()->toString();
     $directory = storage_path('app/exports');
-    $this->ensureOutputDirectory($directory);
-
-    $fileSafeName  = Str::slug($project->name ?: 'quickcut-project');
-    $timestamp     = now()->format('Ymd_His');
-    $videoFileName = $fileSafeName
-        ? $fileSafeName . "-{$timestamp}-{$exportId}.mp4"
-        : "quickcut-project-{$timestamp}-{$exportId}.mp4";
-    $videoPath = $directory . DIRECTORY_SEPARATOR . $videoFileName;
-
-    // Prepare clips
-    $prepared    = $this->prepareClipSegments($project, $directory);
-    $segments    = $prepared['segments'] ?? [];
-    $rawSources  = $prepared['raw_sources'] ?? [];
-    $hadFailures = (bool)($prepared['had_failures'] ?? false);
-    $cleanup     = $prepared['cleanup'] ?? [];
-
-    if (empty($segments) && empty($rawSources)) {
-        return response()->json([
-            'code'         => 'NO_CLIPS',
-            'message'      => 'This project does not contain any video clips to export.',
-            'exportWindow' => $window,
-        ], 422);
-    }
-
-    if ($hadFailures) {
-        Log::error('Export aborted: one or more clip segments failed to render.', [
-            'project_id' => $project->id,
-            'clip_count' => count($project->clips ?? []),
-        ]);
-
-        return response()->json([
-            'code'         => 'SEGMENT_RENDER_FAILED',
-            'message'      => 'Unable to build video export: one or more clip segments failed to render. Please verify FFmpeg is installed and check the logs.',
-            'exportWindow' => $window,
-        ], 500);
-    }
-
+    $videoFileName = '';
+    $videoPath     = '';
     $intermediate  = null;
-    $basePath      = null;
-    $hasBaseAudio  = false;
+    $cleanup       = [];
 
     try {
+        $this->ensureOutputDirectory($directory);
+
+        $fileSafeName  = Str::slug($project->name ?: 'quickcut-project');
+        $timestamp     = now()->format('Ymd_His');
+        $videoFileName = $fileSafeName
+            ? $fileSafeName . "-{$timestamp}-{$exportId}.mp4"
+            : "quickcut-project-{$timestamp}-{$exportId}.mp4";
+        $videoPath = $directory . DIRECTORY_SEPARATOR . $videoFileName;
+
+        // Prepare clips
+        $prepared    = $this->prepareClipSegments($project, $directory);
+        $segments    = $prepared['segments'] ?? [];
+        $rawSources  = $prepared['raw_sources'] ?? [];
+        $hadFailures = (bool)($prepared['had_failures'] ?? false);
+        $cleanup     = $prepared['cleanup'] ?? [];
+
+        if (empty($segments) && empty($rawSources)) {
+            return response()->json([
+                'code'         => 'NO_CLIPS',
+                'message'      => 'This project does not contain any video clips to export.',
+                'exportWindow' => $window,
+            ], 422);
+        }
+
+        if ($hadFailures) {
+            Log::error('Export aborted: one or more clip segments failed to render.', [
+                'project_id' => $project->id,
+                'clip_count' => count($project->clips ?? []),
+            ]);
+
+            return response()->json([
+                'code'         => 'SEGMENT_RENDER_FAILED',
+                'message'      => 'Unable to build video export: one or more clip segments failed to render. Please verify FFmpeg is installed and check the logs.',
+                'exportWindow' => $window,
+            ], 500);
+        }
+
+        $basePath     = null;
+        $hasBaseAudio = false;
         // Base video (concatenate/transition if we have segments, else first raw source)
         if (!empty($segments)) {
             $transitionMap = $this->buildTransitionMap($project);

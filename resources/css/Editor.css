@@ -166,17 +166,17 @@
 .text-section { background: rgba(43,168,74,0.1); border: 1px solid rgba(43,168,74,0.35); }
 .text-section h4 { color: var(--green-2); font-weight: 900; }
 
-.editor-area { flex: 1; display: flex; flex-direction: column; background: var(--dark); animation: fadeIn .6s ease; }
+.editor-area { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--dark); animation: fadeIn .6s ease; }
 
 .video-player {
   flex: 1;
+  min-height: 0;
   position: relative;
   background: #0a0a0a;
   display: flex;
   align-items: center;
   justify-content: center;
   border-bottom: 1px solid rgba(255,255,255,0.06);
-  min-height: 420px;
 }
 .video-player video,
 .video-player .image-player {
@@ -628,4 +628,3 @@
   .media-library { width: 260px; }
   .overlay-text { font-size: 28px; }
 }
-
