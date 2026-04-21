@@ -191,6 +191,8 @@ export default function Editor({ project }) {
   const [selectedTransitionId, setSelectedTransitionId] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
 
   const [currentTime, setCurrentTime] = useState(0);
 
@@ -753,40 +755,54 @@ export default function Editor({ project }) {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    setSaveMsg('');
+
     const mediaToSave = prepareItemsForSave(mediaFiles);
     const clipsToSave = prepareItemsForSave(clips);
     const tracksToSave = prepareItemsForSave(musicTracks);
     const effectsToSave = effects.map((effect) => ({ ...effect }));
     const textsToSave = textOverlays.map((t) => ({ ...t }));
     const transitionsToSave = transitions
-    .map((transition) => {
-      const fromIndex = clips.findIndex((clip) => clip._localId === transition.fromClipLocalId);
-      const toIndex = clips.findIndex((clip) => clip._localId === transition.toClipLocalId);
-      if (fromIndex === -1 || toIndex === -1) return null;
-      const fromClip = clips[fromIndex];
-      const toClip = clips[toIndex];
-      return {
-        id: transition.id,
-        type: transition.type,
-        duration: transition.duration,
-        from_clip_index: fromIndex,
-        to_clip_index: toIndex,
-        from_clip_id: fromClip?.id ?? null,
-        to_clip_id: toClip?.id ?? null,
-        from_clip_local_id: transition.fromClipLocalId,
-        to_clip_local_id: transition.toClipLocalId
-      };
-    })
-    .filter(Boolean);
-    router.put(route('projects.update', project.id), {
-      media_files: mediaToSave,
-      clips: clipsToSave,
-      music_tracks: tracksToSave,
-      effects: effectsToSave,
-      text_overlays: textsToSave,
-      transitions: transitionsToSave
-    });
+      .map((transition) => {
+        const fromIndex = clips.findIndex((clip) => clip._localId === transition.fromClipLocalId);
+        const toIndex = clips.findIndex((clip) => clip._localId === transition.toClipLocalId);
+        if (fromIndex === -1 || toIndex === -1) return null;
+        const fromClip = clips[fromIndex];
+        const toClip = clips[toIndex];
+        return {
+          id: transition.id,
+          type: transition.type,
+          duration: transition.duration,
+          from_clip_index: fromIndex,
+          to_clip_index: toIndex,
+          from_clip_id: fromClip?.id ?? null,
+          to_clip_id: toClip?.id ?? null,
+          from_clip_local_id: transition.fromClipLocalId,
+          to_clip_local_id: transition.toClipLocalId
+        };
+      })
+      .filter(Boolean);
+
+    try {
+      await axios.put(route('projects.update', project.id), {
+        media_files: mediaToSave,
+        clips: clipsToSave,
+        music_tracks: tracksToSave,
+        effects: effectsToSave,
+        text_overlays: textsToSave,
+        transitions: transitionsToSave,
+      });
+      setSaveMsg('saved');
+    } catch (err) {
+      const msg = err.response?.data?.message || err.response?.data?.error || 'Save failed. Try again.';
+      setSaveMsg('error:' + msg);
+    } finally {
+      setSaving(false);
+      setTimeout(() => setSaveMsg(''), 4000);
+    }
   };
 
   const handleCut = () => {
@@ -2150,7 +2166,12 @@ export default function Editor({ project }) {
               </button>
             )}
             <button onClick={goBack} className="back-btn">Back</button>
-            <button onClick={handleSave} className="save-btn">Save</button>
+            <button onClick={handleSave} className={`save-btn${saving ? ' saving' : ''}`} disabled={saving}>
+              {saving ? 'Saving…' : saveMsg === 'saved' ? '✓ Saved' : 'Save'}
+            </button>
+            {saveMsg.startsWith('error:') && (
+              <span className="save-error-msg">{saveMsg.slice(6)}</span>
+            )}
             <Link href={route('projects.export', project.id)} className="export-btn">Export</Link>
           </div>
         </div>

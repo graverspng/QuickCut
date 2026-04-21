@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Head, Link } from '@inertiajs/react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import '@/../css/Export.css';
@@ -12,152 +12,105 @@ const formatSeconds = (seconds) => {
   return `${mins}m ${secs}s`;
 };
 
-const slugify = (name) =>
-  (name || 'quickcut-project')
-    .toString()
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-');
-
-const parseDispositionFilename = (header) => {
-  if (!header) return null;
-  const match = header.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
-  if (!match) return null;
-  const value = decodeURIComponent(match[1] || match[2] || '');
-  return value || null;
-};
-
 export default function Export({ project, exportWindow }) {
-  const [downloading, setDownloading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [progress, setProgress] = useState(null);
-  const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [isAllowed, setIsAllowed] = useState(Boolean(exportWindow?.allowed));
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const lastSavedLabel = exportWindow?.last_saved_for_humans?.toLowerCase() ?? 'recently';
+
+  // Queue job state
+  const [renderId, setRenderId] = useState(null);
+  const [renderStatus, setRenderStatus] = useState(null); // pending | processing | done | failed
+  const [renderError, setRenderError] = useState('');
+  const [dispatching, setDispatching] = useState(false);
+  const [dispatchError, setDispatchError] = useState('');
+  const pollRef = useRef(null);
+
+  // Export window countdown
+  useEffect(() => {
+    const expiresAtIso = exportWindow?.export_expires_at;
+    if (!expiresAtIso) {
+      setIsAllowed(Boolean(exportWindow?.allowed));
+      setRemainingSeconds(0);
+      return;
+    }
+    const tick = () => {
+      const delta = Math.max(0, Math.floor((new Date(expiresAtIso).getTime() - Date.now()) / 1000));
+      setRemainingSeconds(delta);
+      setIsAllowed(delta > 0);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [exportWindow]);
+
+  // Poll render status
+  useEffect(() => {
+    if (!renderId || renderStatus === 'done' || renderStatus === 'failed') {
+      clearInterval(pollRef.current);
+      return;
+    }
+    const poll = async () => {
+      try {
+        const res = await fetch(
+          route('projects.export.render.status', { project: project.id, render: renderId }),
+          { headers: { 'X-Requested-With': 'XMLHttpRequest' } },
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        setRenderStatus(data.status);
+        if (data.status === 'failed') {
+          setRenderError(data.error_message || 'Export failed. Please try again.');
+          clearInterval(pollRef.current);
+        } else if (data.status === 'done') {
+          clearInterval(pollRef.current);
+        }
+      } catch (_) {}
+    };
+    clearInterval(pollRef.current);
+    pollRef.current = setInterval(poll, 2000);
+    poll();
+    return () => clearInterval(pollRef.current);
+  }, [renderId, renderStatus]);
+
+  const startExport = async () => {
+    if (dispatching) return;
+    setDispatching(true);
+    setDispatchError('');
+    setRenderId(null);
+    setRenderStatus(null);
+    setRenderError('');
+    try {
+      const res = await fetch(route('projects.export.queue', project.id), {
+        method: 'POST',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.head.querySelector('meta[name="csrf-token"]')?.content ?? '',
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setDispatchError(data?.message || 'Failed to start export. Please try again.');
+        return;
+      }
+      setRenderId(data.render_id);
+      setRenderStatus(data.status ?? 'pending');
+    } catch (_) {
+      setDispatchError('Network error. Please try again.');
+    } finally {
+      setDispatching(false);
+    }
+  };
+
+  const retry = () => {
+    setRenderId(null);
+    setRenderStatus(null);
+    setRenderError('');
+    setDispatchError('');
+  };
 
   const summary = useMemo(() => project?.summary ?? {}, [project]);
   const description = project?.description?.trim();
-  const lastSavedLabel = useMemo(() => {
-    if (!exportWindow?.last_saved_for_humans) return 'recently';
-    return exportWindow.last_saved_for_humans.toLowerCase();
-  }, [exportWindow]);
-
-  useEffect(() => {
-    const initial = Math.max(
-      0,
-      (exportWindow?.recent_window_seconds ?? 0) - (exportWindow?.seconds_since_save ?? 0),
-    );
-    setRemainingSeconds(initial);
-    setIsAllowed(Boolean(exportWindow?.allowed) && initial > 0);
-  }, [exportWindow]);
-
-useEffect(() => {
-  const expiresAtIso = exportWindow?.export_expires_at;
-  if (!expiresAtIso) {
-    setIsAllowed(Boolean(exportWindow?.allowed));
-    setRemainingSeconds(0);
-    return;
-  }
-  const tick = () => {
-    const now = Date.now();
-    const expires = new Date(expiresAtIso).getTime();
-    const delta = Math.max(0, Math.floor((expires - now) / 1000));
-    setRemainingSeconds(delta);
-    setIsAllowed(delta >= 0);
-  };
-  tick();
-  const id = setInterval(tick, 1000);
-  return () => clearInterval(id);
-}, [exportWindow]);
-
-  const handleDownload = async () => {
-    if (downloading) return;
-    setError('');
-    setSuccess('');
-
-    if (!isAllowed) {
-      setError('Please save your project in the editor before exporting.');
-      return;
-    }
-
-    setDownloading(true);
-    setProgress(null);
-    try {
-      const response = await fetch(route('projects.export.download', project.id), {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      });
-
-      if (!response.ok) {
-        let message = 'Export failed. Please try again after saving.';
-        if (response.status === 504) {
-          message =
-            'Export timed out (504). Your server/proxy ended the request before the video finished rendering. Increase Nginx/PHP timeouts or run exports in the background.';
-        }
-        try {
-          const data = await response.json();
-          if (data?.message) message = data.message;
-          if (data?.exportWindow) {
-            const initial = Math.max(
-              0,
-              (data.exportWindow.recent_window_seconds ?? 0) -
-                (data.exportWindow.seconds_since_save ?? 0),
-            );
-            setRemainingSeconds(initial);
-            setIsAllowed(Boolean(data.exportWindow.allowed) && initial > 0);
-          }
-        } catch (parseError) {
-          // Ignore JSON parse issues
-        }
-        throw new Error(message);
-      }
-
-      const contentType = response.headers.get('Content-Type') || 'video/mp4';
-      const contentLengthHeader = response.headers.get('Content-Length');
-      const totalBytes = contentLengthHeader ? Number.parseInt(contentLengthHeader, 10) : Number.NaN;
-      let blob;
-
-      if (response.body && Number.isFinite(totalBytes) && totalBytes > 0) {
-        const reader = response.body.getReader();
-        const chunks = [];
-        let received = 0;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (value) {
-            chunks.push(value);
-            received += value.length;
-            const percent = Math.min(100, Math.max(0, Math.round((received / totalBytes) * 100)));
-            setProgress(percent);
-          }
-        }
-
-        blob = new Blob(chunks, { type: contentType });
-        setProgress(100);
-      } else {
-        setProgress(null);
-        blob = await response.blob();
-        setProgress(100);
-      }
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      const headerName = parseDispositionFilename(response.headers.get('Content-Disposition'));
-      const fallback = `${slugify(project?.name ?? 'quickcut-project')}-quickcut-export.mp4`;
-      link.download = headerName || fallback;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      setSuccess('Export ready! Your download should begin automatically.');
-    } catch (err) {
-      setError(err.message || 'Export failed.');
-      setProgress(null);
-    } finally {
-      setDownloading(false);
-      setTimeout(() => setProgress(null), 800);
-    }
-  };
 
   const chips = [
     { label: 'Clips', value: summary?.clips ?? 0 },
@@ -176,6 +129,10 @@ useEffect(() => {
     return `${mins}m ${secs < 10 ? '0' : ''}${secs}s`;
   }, [summary]);
 
+  const isProcessing = renderStatus === 'pending' || renderStatus === 'processing';
+  const isDone = renderStatus === 'done';
+  const isFailed = renderStatus === 'failed';
+
   return (
     <AuthenticatedLayout>
       <Head title="Export Project" />
@@ -190,37 +147,51 @@ useEffect(() => {
             <Link className="export-secondary" href={route('editor', project.id)}>
               Back to Editor
             </Link>
-            <button
-              type="button"
-              className="export-primary"
-              onClick={handleDownload}
-              disabled={!isAllowed || downloading}
-            >
-              {downloading ? 'Rendering…' : 'Download Video'}
-            </button>
-            {(downloading || progress !== null) && (
-              <div
-                className="export-progress"
-                role="status"
-                aria-live="polite"
-                aria-label="Export progress"
+
+            {/* Not yet started or after a failed retry */}
+            {!renderId && (
+              <button
+                type="button"
+                className="export-primary"
+                onClick={startExport}
+                disabled={!isAllowed || dispatching}
               >
-                <div
-                  className="export-progress-ring"
-                  style={{ '--progress': progress ?? 0 }}
-                  data-indeterminate={progress === null}
-                >
-                  <span className="export-progress-value">
-                    {progress === null ? '•••' : `${progress}%`}
-                  </span>
+                {dispatching ? 'Queuing…' : 'Start Export'}
+              </button>
+            )}
+
+            {/* Processing spinner */}
+            {isProcessing && (
+              <div className="export-progress" role="status" aria-live="polite" aria-label="Export progress">
+                <div className="export-progress-ring" data-indeterminate="true">
+                  <span className="export-progress-value">•••</span>
                 </div>
                 <div className="export-progress-copy">
-                  <span className="export-progress-title">Rendering export…</span>
+                  <span className="export-progress-title">
+                    {renderStatus === 'pending' ? 'Queued…' : 'Rendering…'}
+                  </span>
                   <span className="export-progress-subtitle">
-                    {progress === null ? 'Preparing your download' : `${progress}% complete`}
+                    {renderStatus === 'pending' ? 'Waiting for a worker' : 'FFmpeg is processing your video'}
                   </span>
                 </div>
               </div>
+            )}
+
+            {/* Done — download */}
+            {isDone && (
+              <a
+                className="export-primary"
+                href={route('projects.export.render.download', { project: project.id, render: renderId })}
+              >
+                Download Video
+              </a>
+            )}
+
+            {/* Failed — retry */}
+            {isFailed && (
+              <button type="button" className="export-primary" onClick={retry}>
+                Try Again
+              </button>
             )}
           </div>
         </div>
@@ -241,6 +212,30 @@ useEffect(() => {
           </div>
 
           <div className="export-card">
+            <h2>Render Status</h2>
+            {!renderId ? (
+              <p className="export-timestamp">No export started yet.</p>
+            ) : (
+              <>
+                <div className={`export-status ${isDone ? 'ready' : isFailed ? 'blocked' : 'ready'}`}>
+                  <span className="status-indicator" aria-hidden="true" />
+                  <span>
+                    {renderStatus === 'pending' && 'Queued — waiting for worker'}
+                    {renderStatus === 'processing' && 'Rendering in background…'}
+                    {renderStatus === 'done' && 'Done — ready to download'}
+                    {renderStatus === 'failed' && 'Export failed'}
+                  </span>
+                </div>
+                {isDone && (
+                  <p className="export-timer">Your video is ready. Click Download Video above.</p>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="export-status-grid">
+          <div className="export-card">
             <h2>Timeline Summary</h2>
             <div className="export-chips">
               {chips.map((chip) => (
@@ -255,26 +250,36 @@ useEffect(() => {
               <span className="duration-value">{durationLabel}</span>
             </div>
           </div>
+
+          <div className="export-card">
+            <h2>What&apos;s Included</h2>
+            <ul className="export-includes">
+              <li>
+                <strong>MP4 Video</strong> — a rendered export of your timeline, ready to share or archive.
+              </li>
+              <li>
+                <strong>Clips &amp; Audio</strong> — combined in the exported video based on your project timeline.
+              </li>
+            </ul>
+            <p className="export-note">
+              Tip: If any media is missing, re-upload it in the editor and save to include it in the next export.
+            </p>
+            <p className="export-note" style={{ marginTop: '0.75rem' }}>
+              Exports run as background jobs — FFmpeg processes your video in the background.
+              Start a fresh export anytime.
+            </p>
+          </div>
         </div>
 
-        <div className="export-card">
-          <h2>What&apos;s Included</h2>
-          <ul className="export-includes">
-            <li>
-            <strong>MP4 Video</strong> — a rendered export of your timeline, ready to share or archive.
-            </li>
-            <li>
-              <strong>Clips &amp; Audio</strong> — combined in the exported video based on your project timeline.
-            </li>
-          </ul>
-          <p className="export-note">
-            Tip: If any media is missing, re-upload it in the editor and save to include it in the next export.
-          </p>
-        </div>
+        {(dispatchError || renderError) && (
+          <div className="export-feedback error" role="alert">
+            {dispatchError || renderError}
+          </div>
+        )}
 
-        {(error || success) && (
-          <div className={`export-feedback ${error ? 'error' : 'success'}`} role="alert">
-            {error || success}
+        {isDone && (
+          <div className="export-feedback success" role="status">
+            Export ready! Click <strong>Download Video</strong> above to save your file.
           </div>
         )}
       </div>

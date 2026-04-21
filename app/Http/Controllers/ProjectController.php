@@ -64,6 +64,10 @@ class ProjectController extends Controller
 
         $project->update($payload);
 
+        if ($request->wantsJson()) {
+            return response()->json(['success' => true, 'message' => 'Project saved successfully!']);
+        }
+
         return back()->with('success', 'Project saved successfully!');
     }
 
