@@ -427,8 +427,7 @@ protected function runProcess(array $arguments): bool
         if ($arguments[0] === 'ffmpeg') {
             $arguments[0] = $this->ffmpegBinary();
             // Suppress progress stats so PHP doesn't buffer MB of output.
-            // Limit threads to reduce per-thread frame buffer memory usage.
-            array_splice($arguments, 1, 0, ['-nostats', '-loglevel', 'error', '-threads', '2']);
+            array_splice($arguments, 1, 0, ['-nostats', '-loglevel', 'error']);
         } elseif ($arguments[0] === 'ffprobe') {
             $arguments[0] = $this->ffprobeBinary();
         }
@@ -468,7 +467,7 @@ protected function runProcess(array $arguments): bool
 
     protected function maxExportWidth(): int
     {
-        return (int) config('quickcut.export.max_width', 1280);
+        return (int) config('quickcut.export.max_width', 1920);
     }
 
     protected function capDimensionsToMax(array $dimensions): array
