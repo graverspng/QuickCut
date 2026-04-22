@@ -518,10 +518,8 @@ protected function runProcess(array $arguments): bool
             $args = array_merge($args, ['-t', sprintf('%.3f', max(0, $duration))]);
         }
 
-        $filter = $this->buildScalingFilter($targetDimensions);
-        if ($filter) {
-            $args = array_merge($args, ['-vf', $filter]);
-        }
+        $filter = $this->buildScalingFilter($targetDimensions) ?? 'scale=trunc(iw/2)*2:trunc(ih/2)*2';
+        $args = array_merge($args, ['-vf', $filter]);
 
         $args = array_merge($args, [
             '-c:v', 'libx264',
@@ -981,6 +979,8 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
                     '-pix_fmt', 'yuv420p',
                     '-c:a', 'aac',
                     '-b:a', '192k',
+                    '-r', '30',
+                    '-video_track_timescale', '15360',
                     '-movflags', '+faststart',
                     $outputPath,
                 ];
@@ -1006,6 +1006,8 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
                     '-pix_fmt', 'yuv420p',
                     '-c:a', 'aac',
                     '-b:a', '192k',
+                    '-r', '30',
+                    '-video_track_timescale', '15360',
                     '-movflags', '+faststart',
                     $outputPath,
                 ];
@@ -1169,6 +1171,8 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
             '-pix_fmt', 'yuv420p',
             '-c:a', 'aac',
             '-b:a', '192k',
+            '-r', '30',
+            '-video_track_timescale', '15360',
             '-movflags', '+faststart',
             $outputPath,
         ]);
@@ -1281,11 +1285,10 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
                     $blendExpr = $this->escapeFilterValue(sprintf('A*(1-(%1$s))+B*(%1$s)', $alphaExpr));
 
                     $filters[] = sprintf(
-                        '[%s][%s]blend=all_expr=%s:enable=%s[%s]',
+                        '[%s][%s]blend=all_expr=%s[%s]',
                         $baseLabel,
                         $brightAppliedLabel,
                         $blendExpr,
-                        $enable,
                         $nextLabel
                     );
                     break;
@@ -1295,8 +1298,12 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
                     $baseLabel = 'v' . $counter++ . 'base';
                     $opacity = max(0.1, min(1.0, $intensity));
                     $filters[] = sprintf('[%s]split=2[%s][%s]', $currentLabel, $baseLabel, $blurLabel);
-                    $filters[] = sprintf('[%s]boxblur=luma_radius=20:luma_power=2:enable=%s[%s]', $blurLabel, $enable, $glowLabel);
-                    $filters[] = sprintf('[%s][%s]blend=all_mode=screen:all_opacity=%0.3f:enable=%s[%s]', $baseLabel, $glowLabel, $opacity, $enable, $nextLabel);
+                    $filters[] = sprintf('[%s]boxblur=luma_radius=20:luma_power=2[%s]', $blurLabel, $glowLabel);
+                    $glowExpr = $this->escapeFilterValue(sprintf(
+                        'if(between(T,%.3f,%.3f),A+%0.6f*(B-A*B/255),A)',
+                        $start, $end, $opacity
+                    ));
+                    $filters[] = sprintf('[%s][%s]blend=all_expr=%s[%s]', $baseLabel, $glowLabel, $glowExpr, $nextLabel);
                     break;
                 default:
                     $nextLabel = $currentLabel;

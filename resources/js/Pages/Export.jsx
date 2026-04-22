@@ -63,7 +63,7 @@ useEffect(() => {
     const expires = new Date(expiresAtIso).getTime();
     const delta = Math.max(0, Math.floor((expires - now) / 1000));
     setRemainingSeconds(delta);
-    setIsAllowed(delta >= 0);
+    setIsAllowed(now < expires);
   };
   tick();
   const id = setInterval(tick, 1000);
