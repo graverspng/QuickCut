@@ -466,14 +466,35 @@ protected function runProcess(array $arguments): bool
         return $value % 2 === 0 ? $value : $value + 1;
     }
 
+    protected function maxExportWidth(): int
+    {
+        return (int) config('quickcut.export.max_width', 1280);
+    }
+
+    protected function capDimensionsToMax(array $dimensions): array
+    {
+        $maxW = $this->maxExportWidth();
+        $w = (int) ($dimensions['width'] ?? 0);
+        $h = (int) ($dimensions['height'] ?? 0);
+        if ($w <= 0 || $h <= 0 || $w <= $maxW) {
+            return $dimensions;
+        }
+        $scale = $maxW / $w;
+        return [
+            'width'  => $this->ensureEvenDimension((int) round($w * $scale)),
+            'height' => $this->ensureEvenDimension((int) round($h * $scale)),
+        ];
+    }
+
     protected function buildScalingFilter(?array $targetDimensions): ?string
     {
         if (!is_array($targetDimensions)) {
             return null;
         }
 
-        $width = (int) ($targetDimensions['width'] ?? 0);
-        $height = (int) ($targetDimensions['height'] ?? 0);
+        $dims = $this->capDimensionsToMax($targetDimensions);
+        $width = (int) ($dims['width'] ?? 0);
+        $height = (int) ($dims['height'] ?? 0);
 
         if ($width <= 0 || $height <= 0) {
             return null;
@@ -1243,7 +1264,7 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
         return ['tracks' => $tracks, 'cleanup' => $cleanup];
     }
 
-    protected function buildEffectFilters(array $effects): array
+    protected function buildEffectFilters(array $effects, string $inputLabel = '0:v'): array
     {
         if (empty($effects)) {
             return [];
@@ -1251,7 +1272,7 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
 
         $filters = [];
         $currentLabel = 'v0';
-        $filters[] = '[0:v]format=yuv420p[' . $currentLabel . ']';
+        $filters[] = '[' . $inputLabel . ']format=yuv420p[' . $currentLabel . ']';
         $counter = 1;
 
         foreach ($effects as $effect) {
@@ -1565,13 +1586,23 @@ protected function buildTextFilters(array $textOverlays, ?array $videoDimensions
             }
 
             $filterLines = [];
-            $videoDimensions = $this->probeVideoDimensions($inputPath);
+            $rawDimensions   = $this->probeVideoDimensions($inputPath);
+            $videoDimensions = $rawDimensions ? $this->capDimensionsToMax($rawDimensions) : null;
 
-            $effectFilters = $this->buildEffectFilters($effects);
+            // Scale down to max resolution before any filter work to save memory.
+            $scaleFilter = $this->buildScalingFilter($videoDimensions);
+            $preScaleLabel = 'v_scaled';
+            if ($scaleFilter) {
+                $filterLines[] = '[0:v]' . $scaleFilter . '[' . $preScaleLabel . ']';
+            } else {
+                $filterLines[] = '[0:v]null[' . $preScaleLabel . ']';
+            }
+
+            $effectFilters = $this->buildEffectFilters($effects, $preScaleLabel);
             if (!empty($effectFilters)) {
                 $filterLines = array_merge($filterLines, $effectFilters);
             } else {
-                $filterLines[] = '[0:v]format=yuv420p[v_out]';
+                $filterLines[] = '[' . $preScaleLabel . ']format=yuv420p[v_out]';
             }
 
 

@@ -174,9 +174,14 @@ useEffect(() => {
       renderId = queued.render_id;
       setPhase('processing');
 
-      // 2. Poll until done or failed
+      // 2. Poll until done or failed (10 min timeout)
       await new Promise((resolve, reject) => {
+        const deadline = Date.now() + 10 * 60 * 1000;
         const poll = async () => {
+          if (Date.now() > deadline) {
+            reject(new Error('Export timed out after 10 minutes. The server may be low on memory — try again or simplify your project.'));
+            return;
+          }
           try {
             const statusRes = await fetch(
               route('projects.export.render.status', { project: project.id, render: renderId }),
