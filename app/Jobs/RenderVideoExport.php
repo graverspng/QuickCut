@@ -41,19 +41,26 @@ class RenderVideoExport implements ShouldQueue
             return;
         }
 
-        $render->update(['status' => 'processing']);
+        $render->update(['status' => 'processing', 'progress_step' => 'Starting export…']);
+
+        $onProgress = function (string $step) use ($render): void {
+            Log::info('[Export] ' . $step, ['render_id' => $render->id, 'project_id' => $this->projectId]);
+            $render->update(['progress_step' => $step]);
+        };
 
         try {
-            $result = app(ProjectExportController::class)->executeExport($project);
+            $result = app(ProjectExportController::class)->executeExport($project, $onProgress);
 
             if ($result['ok']) {
                 $render->update([
-                    'status'      => 'done',
-                    'output_path' => $result['path'],
+                    'status'        => 'done',
+                    'progress_step' => 'Done',
+                    'output_path'   => $result['path'],
                 ]);
             } else {
                 $render->update([
                     'status'        => 'failed',
+                    'progress_step' => 'Failed',
                     'error_message' => $result['message'],
                     'error_code'    => $result['code'] ?? 'EXPORT_FAILED',
                 ]);
@@ -66,6 +73,7 @@ class RenderVideoExport implements ShouldQueue
             ]);
             $render->update([
                 'status'        => 'failed',
+                'progress_step' => 'Exception: ' . $e->getMessage(),
                 'error_message' => $e->getMessage(),
                 'error_code'    => 'JOB_EXCEPTION',
             ]);
@@ -76,6 +84,7 @@ class RenderVideoExport implements ShouldQueue
     {
         ExportRender::where('id', $this->exportRenderId)->update([
             'status'        => 'failed',
+            'progress_step' => 'Job failed: ' . $exception->getMessage(),
             'error_message' => $exception->getMessage(),
             'error_code'    => 'JOB_FAILED',
         ]);

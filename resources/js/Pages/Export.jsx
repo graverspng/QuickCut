@@ -32,6 +32,7 @@ export default function Export({ project, exportWindow }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [progress, setProgress] = useState(null);
+  const [progressStep, setProgressStep] = useState('');
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [isAllowed, setIsAllowed] = useState(Boolean(exportWindow?.allowed));
 
@@ -142,6 +143,7 @@ useEffect(() => {
 
     setDownloading(true);
     setProgress(null);
+    setProgressStep('');
     setPhase('queued');
 
     let renderId = null;
@@ -188,6 +190,10 @@ useEffect(() => {
 
             const status = await statusRes.json();
 
+            if (status.progress_step) {
+              setProgressStep(status.progress_step);
+            }
+
             if (status.status === 'done') {
               resolve();
             } else if (status.status === 'failed') {
@@ -211,7 +217,7 @@ useEffect(() => {
     } finally {
       setDownloading(false);
       setPhase('idle');
-      setTimeout(() => setProgress(null), 800);
+      setTimeout(() => { setProgress(null); setProgressStep(''); }, 800);
     }
   };
 
@@ -281,10 +287,10 @@ useEffect(() => {
                     {phase === 'idle' && 'Exporting…'}
                   </span>
                   <span className="export-progress-subtitle">
-                    {phase === 'queued' && 'Queuing render job'}
-                    {phase === 'processing' && 'FFmpeg is encoding your timeline'}
-                    {phase === 'downloading' && (progress === null ? 'Preparing file' : `${progress}% complete`)}
-                    {phase === 'idle' && (progress === null ? 'Please wait' : `${progress}% complete`)}
+                    {phase === 'queued' && 'Queuing render job…'}
+                    {phase === 'processing' && (progressStep || 'FFmpeg is encoding your timeline…')}
+                    {phase === 'downloading' && (progress === null ? 'Preparing file…' : `${progress}% complete`)}
+                    {phase === 'idle' && (progress === null ? 'Please wait…' : `${progress}% complete`)}
                   </span>
                 </div>
               </div>

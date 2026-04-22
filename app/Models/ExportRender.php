@@ -13,6 +13,7 @@ class ExportRender extends Model
         'project_id',
         'user_id',
         'status',
+        'progress_step',
         'output_path',
         'error_message',
         'error_code',

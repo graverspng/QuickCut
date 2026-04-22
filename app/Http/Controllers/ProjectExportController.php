@@ -1659,8 +1659,15 @@ if (!empty($audioFilters)) {
     // Core pipeline — usable by both the direct download and the queue job
     // -------------------------------------------------------------------------
 
-    public function executeExport(Project $project): array
+    public function executeExport(Project $project, ?\Closure $onProgress = null): array
     {
+        $step = function (string $msg) use ($onProgress, $project): void {
+            Log::info('[Export] ' . $msg, ['project_id' => $project->id]);
+            if ($onProgress) {
+                ($onProgress)($msg);
+            }
+        };
+
         if (function_exists('set_time_limit')) {
             @set_time_limit(0);
         }
@@ -1674,6 +1681,7 @@ if (!empty($audioFilters)) {
         $cleanup      = [];
 
         try {
+            $step('Checking output directory…');
             $this->ensureOutputDirectory($directory);
 
             $fileSafeName  = Str::slug($project->name ?: 'quickcut-project');
@@ -1683,11 +1691,15 @@ if (!empty($audioFilters)) {
                 : "quickcut-project-{$timestamp}-{$exportId}.mp4";
             $videoPath = $directory . DIRECTORY_SEPARATOR . $videoFileName;
 
+            $clipCount = count($project->clips ?? []);
+            $step("Preparing {$clipCount} clip segment(s)…");
             $prepared    = $this->prepareClipSegments($project, $directory);
             $segments    = $prepared['segments'] ?? [];
             $rawSources  = $prepared['raw_sources'] ?? [];
             $hadFailures = (bool)($prepared['had_failures'] ?? false);
             $cleanup     = $prepared['cleanup'] ?? [];
+
+            $step('Segments prepared: ' . count($segments) . ' encoded, ' . count($rawSources) . ' raw sources.');
 
             if (empty($segments) && empty($rawSources)) {
                 return ['ok' => false, 'code' => 'NO_CLIPS', 'message' => 'This project does not contain any video clips to export.'];
@@ -1704,23 +1716,34 @@ if (!empty($audioFilters)) {
             $hasBaseAudio = false;
 
             if (!empty($segments)) {
+                $step('Building transition map…');
                 $transitionMap = $this->buildTransitionMap($project);
+                $step('Combining ' . count($segments) . ' segment(s) with transitions…');
                 $combined      = $this->combineSegmentsWithTransitions($segments, $transitionMap, $directory);
                 $intermediate  = $combined['path'];
                 $cleanup       = array_merge($cleanup, $combined['cleanup'] ?? []);
                 $basePath      = $intermediate;
+                $step('Segments combined → ' . ($basePath ? basename($basePath) : 'none'));
             } else {
                 $basePath = $rawSources[0] ?? null;
+                $step('Using raw source: ' . ($basePath ? basename($basePath) : 'none'));
             }
 
             if (!$basePath || !file_exists($basePath)) {
                 return ['ok' => false, 'code' => 'BASE_ASSEMBLY_FAILED', 'message' => 'Unable to assemble base video for export.'];
             }
 
+            $step('Checking base video audio stream…');
             $hasBaseAudio = $this->hasAudioStream($basePath);
 
+            $step('Gathering music tracks…');
             $music   = $this->gatherMusicSources($project, $directory);
             $cleanup = array_merge($cleanup, $music['cleanup'] ?? []);
+
+            $effectCount = count(is_array($project->effects) ? $project->effects : []);
+            $textCount   = count(is_array($project->text_overlays) ? $project->text_overlays : []);
+            $musicCount  = count($music['tracks'] ?? []);
+            $step("Applying overlays: {$effectCount} effect(s), {$textCount} text(s), {$musicCount} music track(s)…");
 
             if (!$this->applyTimelineOverlays(
                 $basePath,
@@ -1732,6 +1755,8 @@ if (!empty($audioFilters)) {
             )) {
                 return ['ok' => false, 'code' => 'OVERLAY_APPLY_FAILED', 'message' => 'Unable to apply effects/text/music during export. See logs for FFmpeg output.'];
             }
+
+            $step('Overlays applied. Verifying output file…');
 
         } catch (\Throwable $e) {
             Log::error('executeExport exception', [
@@ -1866,9 +1891,12 @@ if (!empty($audioFilters)) {
             abort(403);
         }
 
+        $render->refresh();
+
         return response()->json([
             'render_id'     => $render->id,
             'status'        => $render->status,
+            'progress_step' => $render->progress_step,
             'error_message' => $render->status === 'failed' ? $render->error_message : null,
             'error_code'    => $render->status === 'failed' ? $render->error_code : null,
             'has_file'      => $render->status === 'done'
