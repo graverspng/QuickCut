@@ -624,6 +624,19 @@
   gap: 6px;
 }
 
+.save-btn.saving { opacity: 0.75; cursor: not-allowed; }
+.save-btn:disabled { opacity: 0.75; cursor: not-allowed; }
+
+.save-error-msg {
+  color: #ff9999;
+  font-size: 0.78rem;
+  background: rgba(180,0,0,0.18);
+  border: 1px solid rgba(255,80,80,0.3);
+  border-radius: 8px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
 @media (max-width: 900px) {
   .media-library { width: 260px; }
   .overlay-text { font-size: 28px; }

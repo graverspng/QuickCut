@@ -26,6 +26,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/editor/{project}', [EditorController::class, 'show'])->name('editor');
     Route::get('/projects/{project}/export', [ProjectExportController::class, 'show'])->name('projects.export');
     Route::get('/projects/{project}/export/download', [ProjectExportController::class, 'download'])->name('projects.export.download');
+    Route::post('/projects/{project}/export/queue', [ProjectExportController::class, 'queue'])->name('projects.export.queue');
+    Route::get('/projects/{project}/export/renders/{render}', [ProjectExportController::class, 'jobStatus'])->name('projects.export.render.status');
+    Route::get('/projects/{project}/export/renders/{render}/download', [ProjectExportController::class, 'jobDownload'])->name('projects.export.render.download');
 
     // -.- Audio Projects -.-
     Route::get('/audio-projects', [AudioProjectController::class, 'index'])->name('audio.projects');
