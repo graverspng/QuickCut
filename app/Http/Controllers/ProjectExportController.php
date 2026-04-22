@@ -1600,7 +1600,7 @@ $audioOutputLabel = null;
 
 if ($needsMusic || $hasBaseAudio) {
     if ($hasBaseAudio) {
-        $audioFilters[] = '[0:a]aresample=async=1:sample_rate=48000,apad[a_base]';
+        $audioFilters[] = '[0:a]aresample=async=1:sample_rate=48000[a_base]';
         $audioLabels[] = 'a_base';
     }
 
@@ -1626,7 +1626,7 @@ if ($needsMusic || $hasBaseAudio) {
     if (!empty($audioLabels)) {
         $audioOutputLabel = 'audio_mix';
         $audioFilters[] = implode('', array_map(fn ($l) => '['.$l.']', $audioLabels))
-            . 'amix=inputs=' . count($audioLabels) . ':normalize=1[' . $audioOutputLabel . ']';
+            . 'amix=inputs=' . count($audioLabels) . ':normalize=1:duration=first[' . $audioOutputLabel . ']';
     }
 }
 
