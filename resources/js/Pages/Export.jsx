@@ -70,6 +70,66 @@ useEffect(() => {
   return () => clearInterval(id);
 }, [exportWindow]);
 
+  const [phase, setPhase] = useState('idle'); // idle | queued | processing | downloading
+
+  const triggerBlobDownload = (blob, contentType, dispositionHeader) => {
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const headerName = parseDispositionFilename(dispositionHeader);
+    const fallback = `${slugify(project?.name ?? 'quickcut-project')}-quickcut-export.mp4`;
+    link.download = headerName || fallback;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
+  const streamDownload = async (renderId) => {
+    setPhase('downloading');
+    setProgress(null);
+
+    const response = await fetch(
+      route('projects.export.render.download', { project: project.id, render: renderId }),
+      { headers: { 'X-Requested-With': 'XMLHttpRequest' } },
+    );
+
+    if (!response.ok) {
+      let message = 'Download failed. Please try again.';
+      try {
+        const data = await response.json();
+        if (data?.message) message = data.message;
+      } catch (_) {}
+      throw new Error(message);
+    }
+
+    const contentType = response.headers.get('Content-Type') || 'video/mp4';
+    const totalBytes = Number.parseInt(response.headers.get('Content-Length') ?? '', 10);
+    let blob;
+
+    if (response.body && Number.isFinite(totalBytes) && totalBytes > 0) {
+      const reader = response.body.getReader();
+      const chunks = [];
+      let received = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          received += value.length;
+          setProgress(Math.min(100, Math.round((received / totalBytes) * 100)));
+        }
+      }
+      blob = new Blob(chunks, { type: contentType });
+      setProgress(100);
+    } else {
+      blob = await response.blob();
+      setProgress(100);
+    }
+
+    triggerBlobDownload(blob, contentType, response.headers.get('Content-Disposition'));
+  };
+
   const handleDownload = async () => {
     if (downloading) return;
     setError('');
@@ -82,79 +142,75 @@ useEffect(() => {
 
     setDownloading(true);
     setProgress(null);
+    setPhase('queued');
+
+    let renderId = null;
+
     try {
-      const response = await fetch(route('projects.export.download', project.id), {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      // 1. Enqueue the render job
+      const queueRes = await fetch(route('projects.export.queue', project.id), {
+        method: 'POST',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+        },
       });
 
-      if (!response.ok) {
-        let message = 'Export failed. Please try again after saving.';
-        if (response.status === 504) {
-          message =
-            'Export timed out (504). Your server/proxy ended the request before the video finished rendering. Increase Nginx/PHP timeouts or run exports in the background.';
-        }
+      if (!queueRes.ok) {
+        let message = 'Could not start export. Please save and try again.';
         try {
-          const data = await response.json();
+          const data = await queueRes.json();
           if (data?.message) message = data.message;
           if (data?.exportWindow) {
-            const initial = Math.max(
-              0,
-              (data.exportWindow.recent_window_seconds ?? 0) -
-                (data.exportWindow.seconds_since_save ?? 0),
-            );
-            setRemainingSeconds(initial);
-            setIsAllowed(Boolean(data.exportWindow.allowed) && initial > 0);
+            setIsAllowed(Boolean(data.exportWindow.allowed));
           }
-        } catch (parseError) {
-          // Ignore JSON parse issues
-        }
+        } catch (_) {}
         throw new Error(message);
       }
 
-      const contentType = response.headers.get('Content-Type') || 'video/mp4';
-      const contentLengthHeader = response.headers.get('Content-Length');
-      const totalBytes = contentLengthHeader ? Number.parseInt(contentLengthHeader, 10) : Number.NaN;
-      let blob;
+      const queued = await queueRes.json();
+      renderId = queued.render_id;
+      setPhase('processing');
 
-      if (response.body && Number.isFinite(totalBytes) && totalBytes > 0) {
-        const reader = response.body.getReader();
-        const chunks = [];
-        let received = 0;
+      // 2. Poll until done or failed
+      await new Promise((resolve, reject) => {
+        const poll = async () => {
+          try {
+            const statusRes = await fetch(
+              route('projects.export.render.status', { project: project.id, render: renderId }),
+              { headers: { 'X-Requested-With': 'XMLHttpRequest' } },
+            );
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (value) {
-            chunks.push(value);
-            received += value.length;
-            const percent = Math.min(100, Math.max(0, Math.round((received / totalBytes) * 100)));
-            setProgress(percent);
+            if (!statusRes.ok) {
+              reject(new Error('Lost connection to render job.'));
+              return;
+            }
+
+            const status = await statusRes.json();
+
+            if (status.status === 'done') {
+              resolve();
+            } else if (status.status === 'failed') {
+              reject(new Error(status.error_message || 'Render failed. Please try again.'));
+            } else {
+              setTimeout(poll, 2500);
+            }
+          } catch (err) {
+            reject(err);
           }
-        }
+        };
+        poll();
+      });
 
-        blob = new Blob(chunks, { type: contentType });
-        setProgress(100);
-      } else {
-        setProgress(null);
-        blob = await response.blob();
-        setProgress(100);
-      }
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      const headerName = parseDispositionFilename(response.headers.get('Content-Disposition'));
-      const fallback = `${slugify(project?.name ?? 'quickcut-project')}-quickcut-export.mp4`;
-      link.download = headerName || fallback;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      // 3. Stream the finished file
+      await streamDownload(renderId);
       setSuccess('Export ready! Your download should begin automatically.');
     } catch (err) {
       setError(err.message || 'Export failed.');
       setProgress(null);
     } finally {
       setDownloading(false);
+      setPhase('idle');
       setTimeout(() => setProgress(null), 800);
     }
   };
@@ -196,7 +252,10 @@ useEffect(() => {
               onClick={handleDownload}
               disabled={!isAllowed || downloading}
             >
-              {downloading ? 'Rendering…' : 'Download Video'}
+              {phase === 'queued' && 'Starting…'}
+              {phase === 'processing' && 'Rendering…'}
+              {phase === 'downloading' && 'Downloading…'}
+              {phase === 'idle' && 'Download Video'}
             </button>
             {(downloading || progress !== null) && (
               <div
@@ -215,9 +274,17 @@ useEffect(() => {
                   </span>
                 </div>
                 <div className="export-progress-copy">
-                  <span className="export-progress-title">Rendering export…</span>
+                  <span className="export-progress-title">
+                    {phase === 'queued' && 'Starting export…'}
+                    {phase === 'processing' && 'Rendering video…'}
+                    {phase === 'downloading' && 'Downloading…'}
+                    {phase === 'idle' && 'Exporting…'}
+                  </span>
                   <span className="export-progress-subtitle">
-                    {progress === null ? 'Preparing your download' : `${progress}% complete`}
+                    {phase === 'queued' && 'Queuing render job'}
+                    {phase === 'processing' && 'FFmpeg is encoding your timeline'}
+                    {phase === 'downloading' && (progress === null ? 'Preparing file' : `${progress}% complete`)}
+                    {phase === 'idle' && (progress === null ? 'Please wait' : `${progress}% complete`)}
                   </span>
                 </div>
               </div>
