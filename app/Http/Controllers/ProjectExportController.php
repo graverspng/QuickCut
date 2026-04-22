@@ -426,6 +426,9 @@ protected function runProcess(array $arguments): bool
     if (!empty($arguments)) {
         if ($arguments[0] === 'ffmpeg') {
             $arguments[0] = $this->ffmpegBinary();
+            // Suppress progress stats so PHP doesn't buffer MB of output.
+            // Limit threads to reduce per-thread frame buffer memory usage.
+            array_splice($arguments, 1, 0, ['-nostats', '-loglevel', 'error', '-threads', '2']);
         } elseif ($arguments[0] === 'ffprobe') {
             $arguments[0] = $this->ffprobeBinary();
         }
@@ -433,7 +436,17 @@ protected function runProcess(array $arguments): bool
 
     $process = new Process($arguments);
     $process->setTimeout($this->processTimeout());
-    $process->run();
+
+    $errorOutput = '';
+    $process->run(function (string $type, string $buffer) use (&$errorOutput): void {
+        if ($type === Process::ERR) {
+            $errorOutput .= $buffer;
+            // Cap at 64KB so a runaway process can't OOM via buffering
+            if (strlen($errorOutput) > 65536) {
+                $errorOutput = substr($errorOutput, -65536);
+            }
+        }
+    });
 
     if ($process->isSuccessful()) {
         return true;
@@ -441,7 +454,7 @@ protected function runProcess(array $arguments): bool
 
     Log::warning('FFmpeg command failed during export.', [
         'command' => $process->getCommandLine(),
-        'output'  => $process->getErrorOutput(),
+        'output'  => $errorOutput,
     ]);
 
     return false;
