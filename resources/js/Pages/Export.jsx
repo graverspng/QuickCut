@@ -243,6 +243,23 @@ useEffect(() => {
     return `${mins}m ${secs < 10 ? '0' : ''}${secs}s`;
   }, [summary]);
 
+  const estimatedRenderLabel = useMemo(() => {
+    const duration = summary?.duration ?? 0;
+    if (!duration) return null;
+    // Base + per-second of video + per-feature overhead
+    const base = 5;
+    const videoTime = duration * 1.2;
+    const effectTime = (summary?.effects ?? 0) * 4;
+    const transitionTime = (summary?.transitions ?? 0) * 2;
+    const textTime = (summary?.text ?? 0) * 1;
+    const musicTime = (summary?.music ?? 0) * 2;
+    const total = base + videoTime + effectTime + transitionTime + textTime + musicTime;
+    if (total < 60) return `~${Math.round(total)}s`;
+    const mins = Math.floor(total / 60);
+    const secs = Math.round(total % 60);
+    return secs === 0 ? `~${mins}m` : `~${mins}m ${secs}s`;
+  }, [summary]);
+
   return (
     <AuthenticatedLayout>
       <Head title="Export Project" />
@@ -329,9 +346,15 @@ useEffect(() => {
               ))}
             </div>
             <div className="export-duration">
-              <span className="duration-label">Estimated Duration</span>
+              <span className="duration-label">Video Duration</span>
               <span className="duration-value">{durationLabel}</span>
             </div>
+            {estimatedRenderLabel && (
+              <div className="export-duration">
+                <span className="duration-label">Estimated Render Time</span>
+                <span className="duration-value">{estimatedRenderLabel}</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -339,11 +362,31 @@ useEffect(() => {
           <h2>What&apos;s Included</h2>
           <ul className="export-includes">
             <li>
-            <strong>MP4 Video</strong> — a rendered export of your timeline, ready to share or archive.
+              <strong>MP4 Video</strong> —{' '}
+              {summary?.clips > 0
+                ? `${summary.clips} clip${summary.clips !== 1 ? 's' : ''}${summary.transitions > 0 ? ` with ${summary.transitions} transition${summary.transitions !== 1 ? 's' : ''}` : ''}, encoded at up to 1920px wide`
+                : 'your timeline encoded as a single video file'}
             </li>
-            <li>
-              <strong>Clips &amp; Audio</strong> — combined in the exported video based on your project timeline.
-            </li>
+            {summary?.effects > 0 && (
+              <li>
+                <strong>{summary.effects} Visual Effect{summary.effects !== 1 ? 's' : ''}</strong> — brightness, glow, and blur applied directly to the video frames
+              </li>
+            )}
+            {summary?.text > 0 && (
+              <li>
+                <strong>{summary.text} Text Overlay{summary.text !== 1 ? 's' : ''}</strong> — burned into the video at the positions set in the editor
+              </li>
+            )}
+            {summary?.music > 0 && (
+              <li>
+                <strong>{summary.music} Music Track{summary.music !== 1 ? 's' : ''}</strong> — mixed with the clip audio and included in the output
+              </li>
+            )}
+            {!summary?.effects && !summary?.text && !summary?.music && (
+              <li>
+                <strong>Clips &amp; Audio</strong> — combined in timeline order with no additional effects
+              </li>
+            )}
           </ul>
           <p className="export-note">
             Tip: If any media is missing, re-upload it in the editor and save to include it in the next export.
