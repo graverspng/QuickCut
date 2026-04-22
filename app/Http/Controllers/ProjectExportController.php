@@ -1295,52 +1295,34 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
 
             switch ($type) {
                 case 'blur':
-                    $radius = max(1, (int) round(8 * $intensity));
-                    $filters[] = sprintf('[%s]boxblur=luma_radius=%d:luma_power=2:enable=%s[%s]', $currentLabel, $radius, $enable, $nextLabel);
-                    break;
-                case 'brightness':
-                    $brightness = max(-1, min(1, 0.6 * $intensity));
-                    $fadeIn = max(0.0, (float) Arr::get($effect, 'fadeIn', 0));
-                    $fadeOut = max(0.0, (float) Arr::get($effect, 'fadeOut', 0));
-
-                    $baseLabel = 'v' . $counter++ . 'bbase';
-                    $brightLabel = 'v' . $counter++ . 'bbright';
-                    $brightAppliedLabel = 'v' . $counter++ . 'bapply';
-
-                    $filters[] = sprintf('[%s]split[%s][%s]', $currentLabel, $baseLabel, $brightLabel);
-                    $filters[] = sprintf('[%s]eq=brightness=%0.3f[%s]', $brightLabel, $brightness, $brightAppliedLabel);
-
-                    $alphaSegments = [sprintf('(gte(T,%0.3f)*lte(T,%0.3f))', $start, $end)];
-                    if ($fadeIn > 0.0) {
-                        $alphaSegments[] = sprintf('min(1,max(0,(T-%0.3f)/%0.3f))', $start, max($fadeIn, 0.001));
-                    }
-                    if ($fadeOut > 0.0) {
-                        $alphaSegments[] = sprintf('min(1,max(0,(%0.3f-T)/%0.3f))', $end, max($fadeOut, 0.001));
-                    }
-                    $alphaExpr = implode('*', $alphaSegments);
-                    $blendExpr = $this->escapeFilterValue(sprintf('A*(1-(%1$s))+B*(%1$s)', $alphaExpr));
-
+                    $radius = max(2, (int) round(10 * $intensity));
+                    $sigma  = max(1, (int) round(5 * $intensity));
                     $filters[] = sprintf(
-                        '[%s][%s]blend=all_expr=%s[%s]',
-                        $baseLabel,
-                        $brightAppliedLabel,
-                        $blendExpr,
-                        $nextLabel
+                        '[%s]gblur=sigma=%d:enable=%s[%s]',
+                        $currentLabel, $sigma, $enable, $nextLabel
                     );
                     break;
-                case 'glow':
-                    $blurLabel = 'v' . $counter++ . 'b';
-                    $glowLabel = 'v' . $counter++ . 'g';
-                    $baseLabel = 'v' . $counter++ . 'base';
-                    $opacity = max(0.1, min(1.0, $intensity));
-                    $filters[] = sprintf('[%s]split=2[%s][%s]', $currentLabel, $baseLabel, $blurLabel);
-                    $filters[] = sprintf('[%s]boxblur=luma_radius=20:luma_power=2[%s]', $blurLabel, $glowLabel);
-                    $glowExpr = $this->escapeFilterValue(sprintf(
-                        'if(between(T,%.3f,%.3f),A+%0.6f*(B-A*B/255),A)',
-                        $start, $end, $opacity
-                    ));
-                    $filters[] = sprintf('[%s][%s]blend=all_expr=%s[%s]', $baseLabel, $glowLabel, $glowExpr, $nextLabel);
+
+                case 'brightness':
+                    // eq filter is frame-level, no per-pixel expression — orders of magnitude faster
+                    $brightness = max(-0.5, min(0.5, 0.5 * $intensity));
+                    $contrast   = max(0.5, min(2.0, 1.0 + 0.4 * $intensity));
+                    $filters[] = sprintf(
+                        '[%s]eq=brightness=%0.3f:contrast=%0.3f:enable=%s[%s]',
+                        $currentLabel, $brightness, $contrast, $enable, $nextLabel
+                    );
                     break;
+
+                case 'glow':
+                    // unsharp in "glow" mode (negative sharpen = soften + bloom) — single-pass, fast
+                    $amount = max(0.3, min(1.5, $intensity * 1.2));
+                    $msize  = 11; // must be odd
+                    $filters[] = sprintf(
+                        '[%s]unsharp=luma_msize_x=%d:luma_msize_y=%d:luma_amount=%0.2f:enable=%s[%s]',
+                        $currentLabel, $msize, $msize, $amount, $enable, $nextLabel
+                    );
+                    break;
+
                 default:
                     $nextLabel = $currentLabel;
                     break;
