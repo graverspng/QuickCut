@@ -1,251 +1,194 @@
 import Dropdown from '@/Components/Dropdown';
-import NavLink from '@/Components/NavLink';
-import ResponsiveNavLink from '@/Components/ResponsiveNavLink';
 import { Link, usePage } from '@inertiajs/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ReportIssue from '@/Pages/Auth/img/ReportIssue.png';
 import QuickCutCutoutImg from '@/Pages/Auth/img/QuickCut_Cutout.png';
+import '@/../css/navbar.css';
+
+const NavItem = ({ href, routeName, label }) => (
+    <Link
+        href={href}
+        className={`qc-nav-link${route().current(routeName) ? ' qc-nav-link--active' : ''}`}
+    >
+        {label}
+    </Link>
+);
+
+const MobileNavItem = ({ href, routeName, label }) => (
+    <Link
+        href={href}
+        className={`qc-mobile-link${route().current(routeName) ? ' qc-mobile-link--active' : ''}`}
+    >
+        {label}
+    </Link>
+);
 
 export default function AuthenticatedLayout({ header, children, hideNavbar }) {
     const { auth, flash } = usePage().props;
     const user = auth.user;
-    const [showingNavigationDropdown, setShowingNavigationDropdown] = useState(false);
-    const [hasShownReportThanks, setHasShownReportThanks] = useState(false);
+    const [showMenu, setShowMenu]     = useState(false);
+    const [loginToast, setLoginToast] = useState('');
+    const [reportToast, setReportToast] = useState('');
+    const shownLoginRef  = useRef(false);
+    const shownReportRef = useRef(false);
 
     useEffect(() => {
-        if (flash?.reportSubmitted && !hasShownReportThanks) {
-            alert('Thank you for your report!');
-            setHasShownReportThanks(true);
+        if (flash?.loginSuccess && !shownLoginRef.current) {
+            shownLoginRef.current = true;
+            setLoginToast(`Welcome back, ${user.name}!`);
         }
-    }, [flash?.reportSubmitted, hasShownReportThanks]);
+    }, [flash?.loginSuccess]);
+
+    useEffect(() => {
+        if (flash?.reportSubmitted && !shownReportRef.current) {
+            shownReportRef.current = true;
+            setReportToast('Thank you for your report!');
+        }
+    }, [flash?.reportSubmitted]);
+
+    useEffect(() => {
+        if (!loginToast) return;
+        const t = setTimeout(() => setLoginToast(''), 4000);
+        return () => clearTimeout(t);
+    }, [loginToast]);
+
+    useEffect(() => {
+        if (!reportToast) return;
+        const t = setTimeout(() => setReportToast(''), 4000);
+        return () => clearTimeout(t);
+    }, [reportToast]);
 
     return (
         <div className="min-h-screen bg-black text-[#FCFFFC]">
             {!hideNavbar && (
-                <nav className="border-b border-gray-800 bg-[#1a1a1a]">
+                <nav className="qc-nav">
                     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                        <div className="flex h-16 justify-between">
-                            <div className="flex items-center">
-                                <Link href="/">
-                                    <img
-                                        src={QuickCutCutoutImg}
-                                        alt="QuickCut Logo"
-                                        className="h-20 w-auto"
-                                    />
+                        <div className="flex items-center justify-between py-1">
+
+                            {/* Logo */}
+                            <Link href={route('dashboard')} className="flex items-center flex-shrink-0">
+                                <img src={QuickCutCutoutImg} alt="QuickCut" className="h-20 w-auto" />
+                            </Link>
+
+                            {/* Desktop nav links */}
+                            <div className="hidden sm:flex items-center gap-1">
+                                <NavItem href={route('dashboard')}      routeName="dashboard"      label="Media Projects" />
+                                <NavItem href={route('audio.projects')} routeName="audio.projects" label="Audio Projects" />
+                                <NavItem href={route('format.changer')} routeName="format.changer" label="Format Changer" />
+                                <NavItem href={route('about.us')}       routeName="about.us"       label="About Us" />
+                            </div>
+
+                            {/* Right side */}
+                            <div className="hidden sm:flex items-center gap-2">
+                                {/* Report icon */}
+                                <Link
+                                    href={route('reports.create')}
+                                    className="qc-nav-icon-btn"
+                                    aria-label="Report an issue"
+                                >
+                                    <img src={ReportIssue} alt="" className="h-7 w-auto" />
                                 </Link>
-                            </div>
 
-                            <div className="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
-                                <NavLink
-                                    href={route('dashboard')}
-                                    active={route().current('dashboard')}
-                                    className="text-[#2BA84A] hover:text-[#248232] font-semibold transition"
-                                >
-                                    Media Projects
-                                </NavLink>
-
-
-                                <NavLink
-                                    href={route('audio.projects')}
-                                    active={route().current('audio.projects')}
-                                    className="text-[#2BA84A] hover:text-[#248232] font-semibold transition"
-                                >
-                                    Audio Projects
-                                </NavLink>
-
-                                <NavLink
-                                    href={route('format.changer')}
-                                    active={route().current('format.changer')}
-                                    className="text-[#2BA84A] hover:text-[#248232] font-semibold transition"
-                                >
-                                    Format Changer
-                                </NavLink>
-
-                                <NavLink
-                                    href={route('about.us')}
-                                    active={route().current('about.us')}
-                                    className="text-[#2BA84A] hover:text-[#248232] font-semibold transition"
-                                >
-                                    About Us
-                                </NavLink>
-                            </div>
-
-
-                            <div className="hidden sm:ml-6 sm:flex sm:items-center">
-                            <Link
-  href={route('reports.create')}
-  className="mr-3 text-xl group relative focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2BA84A] focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1a1a] rounded-full"
-  aria-label="Report an issue"
->
-  <img
-    src={ReportIssue}
-    alt="Illustration"
-    className="
-      h-9 w-auto
-      transition
-      transform
-      group-hover:scale-105
-      drop-shadow-[0_0_4px_rgba(43,168,74,0.35)]
-      group-hover:drop-shadow-[0_0_14px_rgba(43,168,74,0.9)]
-    "
-  />
-</Link>
-
-                                <div className="relative ms-3">
-                                    <Dropdown>
-                                        <Dropdown.Trigger>
-                                            <span className="inline-flex rounded-md">
-                                                <button
-                                                    type="button"
-                                                    className="inline-flex items-center rounded-md bg-[#1a1a1a] px-3 py-2 text-sm font-medium text-gray-300 transition hover:text-[#2BA84A] focus:outline-none"
-                                                >
-                                                    {user.name}
-                                                    <svg
-                                                        className="-me-0.5 ms-2 h-4 w-4"
-                                                        xmlns="http://www.w3.org/2000/svg"
-                                                        viewBox="0 0 20 20"
-                                                        fill="currentColor"
-                                                    >
-                                                        <path
-                                                            fillRule="evenodd"
-                                                            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                                                            clipRule="evenodd"
-                                                        />
-                                                    </svg>
-                                                </button>
+                                {/* User dropdown */}
+                                <Dropdown>
+                                    <Dropdown.Trigger>
+                                        <button type="button" className="qc-nav-user-btn">
+                                            <span className="qc-nav-avatar">
+                                                {user.name[0]?.toUpperCase()}
                                             </span>
-                                        </Dropdown.Trigger>
+                                            <span>{user.name}</span>
+                                            <svg className="qc-nav-chevron" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                            </svg>
+                                        </button>
+                                    </Dropdown.Trigger>
 
-                                        <Dropdown.Content className="bg-[#1a1a1a] border border-gray-700 rounded-lg shadow-lg">
-                                            <Dropdown.Link
-                                                href={route('profile.edit')}
-                                                className="text-[#2BA84A] hover:text-[#248232] font-semibold"
-                                            >
-                                                Profile
-                                            </Dropdown.Link>
-
-                                            {Boolean(user?.is_admin) && (
-                                                <Dropdown.Link
-                                                    href={route('admin.index')}
-                                                    className="text-[#2BA84A] hover:text-[#248232] font-semibold"
-                                                >
-                                                    Admin Panel
-                                                </Dropdown.Link>
-                                            )}
-
-                                            <Dropdown.Link
-                                                href={route('logout')}
-                                                method="post"
-                                                as="button"
-                                                className="text-red-400 hover:text-red-500"
-                                            >
-                                                Log Out
-                                            </Dropdown.Link>
-                                        </Dropdown.Content>
-                                    </Dropdown>
-                                </div>
-                            </div>
-
-                            <div className="-me-2 flex items-center sm:hidden">
-                                <button
-                                    onClick={() => setShowingNavigationDropdown((prev) => !prev)}
-                                    className="inline-flex items-center justify-center rounded-md p-2 text-gray-300 hover:bg-[#2BA84A] hover:text-black focus:outline-none"
-                                >
-                                    <svg className="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
-                                        <path
-                                            className={!showingNavigationDropdown ? 'inline-flex' : 'hidden'}
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth="2"
-                                            d="M4 6h16M4 12h16M4 18h16"
-                                        />
-                                        <path
-                                            className={showingNavigationDropdown ? 'inline-flex' : 'hidden'}
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth="2"
-                                            d="M6 18L18 6M6 6l12 12"
-                                        />
-                                    </svg>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className={(showingNavigationDropdown ? 'block' : 'hidden') + ' sm:hidden'}>
-                        <div className="space-y-1 pb-3 pt-2 bg-[#1a1a1a]">
-                            <ResponsiveNavLink
-                                href={route('dashboard')}
-                                active={route().current('dashboard')}
-                                className="text-[#2BA84A] hover:text-[#248232] font-semibold"
-                            >
-                                Projects
-                            </ResponsiveNavLink>
-
-                            <ResponsiveNavLink
-                                href={route('audio.projects')}
-                                active={route().current('audio.projects')}
-                                className="text-[#2BA84A] hover:text-[#248232] font-semibold"
-                            >
-                                Audio Projects
-                            </ResponsiveNavLink>
-
-                            <ResponsiveNavLink
-                                href={route('format.changer')}
-                                active={route().current('format.changer')}
-                                className="text-[#2BA84A] hover:text-[#248232] font-semibold"
-                            >
-                                Format Changer
-                            </ResponsiveNavLink>
-
-                            <ResponsiveNavLink
-                                href={route('about.us')}
-                                active={route().current('about.us')}
-                                className="text-[#2BA84A] hover:text-[#248232] font-semibold"
-                            >
-                                About Us
-                            </ResponsiveNavLink>
-                        </div>
-
-                        <div className="border-t border-gray-700 pb-1 pt-4 bg-[#1a1a1a]">
-                            <div className="px-4">
-                                <div className="text-base font-medium text-white">{user.name}</div>
-                                <div className="text-sm font-medium text-gray-400">{user.email}</div>
-                            </div>
-
-                            <div className="mt-3 space-y-1">
-                                <ResponsiveNavLink
-                                    href={route('profile.edit')}
-                                    className="text-[#2BA84A] hover:text-[#248232] font-semibold"
-                                >
-                                    Profile
-                                </ResponsiveNavLink>
-
-                                {user.is_admin && (
-                                    <ResponsiveNavLink
-                                        href={route('admin.index')}
-                                        className="text-[#2BA84A] hover:text-[#248232] font-semibold"
+                                    <Dropdown.Content
+                                        contentClasses="py-1.5 bg-[#0e0e0e] border border-[rgba(43,168,74,0.18)] text-white rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.7)]"
                                     >
-                                        Admin Panel
-                                    </ResponsiveNavLink>
-                                )}
-
-                                <ResponsiveNavLink
-                                    method="post"
-                                    href={route('logout')}
-                                    as="button"
-                                    className="text-red-400 hover:text-red-500"
-                                >
-                                    Log Out
-                                </ResponsiveNavLink>
+                                        <Dropdown.Link
+                                            href={route('profile.edit')}
+                                            className="text-[rgba(252,255,252,0.7)] hover:text-[#FCFFFC] font-medium"
+                                        >
+                                            Profile
+                                        </Dropdown.Link>
+                                        {Boolean(user?.is_admin) && (
+                                            <Dropdown.Link
+                                                href={route('admin.index')}
+                                                className="text-[rgba(252,255,252,0.7)] hover:text-[#FCFFFC] font-medium"
+                                            >
+                                                Admin Panel
+                                            </Dropdown.Link>
+                                        )}
+                                        <Dropdown.Link
+                                            href={route('logout')}
+                                            method="post"
+                                            as="button"
+                                            className="text-red-400 hover:text-red-300 font-medium"
+                                        >
+                                            Log Out
+                                        </Dropdown.Link>
+                                    </Dropdown.Content>
+                                </Dropdown>
                             </div>
+
+                            {/* Mobile hamburger */}
+                            <button
+                                className="sm:hidden qc-nav-hamburger"
+                                onClick={() => setShowMenu(p => !p)}
+                                aria-label="Toggle navigation"
+                            >
+                                <svg className="h-5 w-5" stroke="currentColor" fill="none" viewBox="0 0 24 24">
+                                    <path
+                                        className={!showMenu ? 'block' : 'hidden'}
+                                        strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                                        d="M4 6h16M4 12h16M4 18h16"
+                                    />
+                                    <path
+                                        className={showMenu ? 'block' : 'hidden'}
+                                        strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                                        d="M6 18L18 6M6 6l12 12"
+                                    />
+                                </svg>
+                            </button>
                         </div>
                     </div>
+
+                    {/* Mobile menu */}
+                    {showMenu && (
+                        <div className="sm:hidden qc-mobile-menu">
+                            <MobileNavItem href={route('dashboard')}      routeName="dashboard"      label="Media Projects" />
+                            <MobileNavItem href={route('audio.projects')} routeName="audio.projects" label="Audio Projects" />
+                            <MobileNavItem href={route('format.changer')} routeName="format.changer" label="Format Changer" />
+                            <MobileNavItem href={route('about.us')}       routeName="about.us"       label="About Us" />
+
+                            <div className="qc-mobile-divider" />
+
+                            <div className="qc-mobile-user-section">
+                                <p className="qc-mobile-user-name">{user.name}</p>
+                                <p className="qc-mobile-user-email">{user.email}</p>
+                            </div>
+
+                            <MobileNavItem href={route('profile.edit')} routeName="profile.edit" label="Profile" />
+                            {user.is_admin && (
+                                <MobileNavItem href={route('admin.index')} routeName="admin.index" label="Admin Panel" />
+                            )}
+                            <Link
+                                href={route('logout')}
+                                method="post"
+                                as="button"
+                                className="qc-mobile-link"
+                                style={{ color: 'rgba(248,113,113,0.85)' }}
+                            >
+                                Log Out
+                            </Link>
+                        </div>
+                    )}
                 </nav>
             )}
 
             {header && (
-                <header className="bg-[#1a1a1a] shadow">
+                <header className="bg-[#111] border-b border-[rgba(255,255,255,0.05)] shadow">
                     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 text-[#FCFFFC]">
                         {header}
                     </div>
@@ -253,6 +196,22 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
             )}
 
             <main>{children}</main>
+
+            {/* Login toast */}
+            {loginToast && (
+                <div className="qc-toast" role="status" aria-live="polite">
+                    <span className="qc-toast-dot" aria-hidden="true" />
+                    <span>{loginToast}</span>
+                </div>
+            )}
+
+            {/* Report submitted toast */}
+            {reportToast && (
+                <div className="qc-toast" role="status" aria-live="polite">
+                    <span className="qc-toast-dot" aria-hidden="true" />
+                    <span>{reportToast}</span>
+                </div>
+            )}
         </div>
     );
 }

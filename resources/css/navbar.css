@@ -1,0 +1,183 @@
+/* ── QuickCut Navbar ─────────────────────────────────────────────────────── */
+
+@keyframes qc-toast-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+/* ── Nav shell ───────────────────────────────────────────────────────────── */
+.qc-nav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: rgba(5, 5, 5, 0.88);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-bottom: 1px solid rgba(43, 168, 74, 0.14);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.03),
+    0 6px 28px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Nav links ───────────────────────────────────────────────────────────── */
+.qc-nav-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 13px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgba(252, 255, 252, 0.46);
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: color 130ms, background 130ms, border-color 130ms;
+  white-space: nowrap;
+}
+.qc-nav-link:hover {
+  color: rgba(252, 255, 252, 0.82);
+  background: rgba(255, 255, 255, 0.05);
+}
+.qc-nav-link--active {
+  color: #3CCF65;
+  background: rgba(43, 168, 74, 0.1);
+  border-color: rgba(43, 168, 74, 0.22);
+  text-shadow: 0 0 10px rgba(43, 168, 74, 0.35);
+}
+
+/* ── User dropdown trigger ───────────────────────────────────────────────── */
+.qc-nav-user-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  color: rgba(252, 255, 252, 0.62);
+  font-size: 0.83rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 130ms, border-color 130ms, color 130ms;
+}
+.qc-nav-user-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(43, 168, 74, 0.3);
+  color: rgba(252, 255, 252, 0.9);
+}
+
+.qc-nav-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #248232, #2BA84A);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 900;
+  color: #fff;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px rgba(43, 168, 74, 0.3);
+}
+
+.qc-nav-chevron {
+  width: 14px;
+  height: 14px;
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+/* ── Report icon button ──────────────────────────────────────────────────── */
+.qc-nav-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  transition: background 130ms, border-color 130ms;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+.qc-nav-icon-btn:hover {
+  background: rgba(43, 168, 74, 0.1);
+  border-color: rgba(43, 168, 74, 0.3);
+}
+
+/* ── Hamburger (mobile) ──────────────────────────────────────────────────── */
+.qc-nav-hamburger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(252, 255, 252, 0.65);
+  cursor: pointer;
+  transition: background 130ms, border-color 130ms, color 130ms;
+}
+.qc-nav-hamburger:hover {
+  background: rgba(43, 168, 74, 0.1);
+  border-color: rgba(43, 168, 74, 0.3);
+  color: #FCFFFC;
+}
+
+/* ── Mobile menu ─────────────────────────────────────────────────────────── */
+.qc-mobile-menu {
+  border-top: 1px solid rgba(43, 168, 74, 0.1);
+  background: rgba(5, 5, 5, 0.96);
+  padding: 8px 0 14px;
+}
+.qc-mobile-link {
+  display: block;
+  padding: 10px 20px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgba(252, 255, 252, 0.5);
+  text-decoration: none;
+  transition: color 120ms, background 120ms;
+}
+.qc-mobile-link:hover { color: #FCFFFC; background: rgba(255, 255, 255, 0.04); }
+.qc-mobile-link--active { color: #3CCF65; }
+
+.qc-mobile-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.05);
+  margin: 8px 16px;
+}
+.qc-mobile-user-section { padding: 10px 20px; }
+.qc-mobile-user-name  { font-size: 0.88rem; font-weight: 700; color: #FCFFFC; margin: 0; }
+.qc-mobile-user-email { font-size: 0.78rem; color: rgba(252, 255, 252, 0.4); margin: 2px 0 0; }
+
+/* ── Toast ───────────────────────────────────────────────────────────────── */
+.qc-toast {
+  position: fixed;
+  bottom: 26px;
+  right: 26px;
+  background: linear-gradient(180deg, rgba(24, 24, 24, 0.97), rgba(16, 16, 16, 0.97));
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  color: #FCFFFC;
+  padding: 13px 18px;
+  border-radius: 14px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(43,168,74,0.08) inset;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  z-index: 60;
+  font-size: 0.9rem;
+  font-weight: 600;
+  animation: qc-toast-in 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  pointer-events: none;
+}
+.qc-toast-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: linear-gradient(90deg, #248232, #2BA84A);
+  box-shadow: 0 0 10px rgba(43, 168, 74, 0.55);
+  flex-shrink: 0;
+}
