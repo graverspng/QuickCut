@@ -80,6 +80,32 @@ class AudioProjectController extends Controller
         return back()->with('success', 'Audio project saved.');
     }
 
+    public function cleanupMedia(Request $request, AudioProject $audioProject)
+    {
+        $this->authorize('update', $audioProject);
+
+        $storageKeys = array_filter((array) $request->input('storageKeys', []), 'is_string');
+        $projectDir  = 'audio/projects/' . $audioProject->id . '/';
+
+        foreach ($storageKeys as $key) {
+            // Only allow deleting files inside this project's own directory
+            if (!str_starts_with($key, $projectDir)) {
+                continue;
+            }
+            Storage::disk('public')->delete($key);
+        }
+
+        // Remove cleaned-up files from the project's media_files array
+        $mediaFiles = is_array($audioProject->media_files) ? $audioProject->media_files : [];
+        $filtered   = array_values(array_filter(
+            $mediaFiles,
+            fn ($f) => !in_array($f['storageKey'] ?? '', $storageKeys, true)
+        ));
+        $audioProject->update(['media_files' => $filtered]);
+
+        return response()->json(['ok' => true]);
+    }
+
     public function destroy(AudioProject $audioProject)
     {
         $this->authorize('delete', $audioProject);

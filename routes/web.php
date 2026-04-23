@@ -42,6 +42,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/audio-projects/{audioProject}/export/renders/{audioRender}', [AudioProjectExportController::class, 'jobStatusAudio'])->name('audio.projects.export.render.status');
     Route::get('/audio-projects/{audioProject}/export/renders/{audioRender}/download', [AudioProjectExportController::class, 'jobDownloadAudio'])->name('audio.projects.export.render.download');
     Route::post('/audio-projects/{audioProject}/media', [AudioProjectController::class, 'uploadMedia'])->name('audio.projects.media.upload');
+    Route::post('/audio-projects/{audioProject}/media/cleanup', [AudioProjectController::class, 'cleanupMedia'])->name('audio.projects.media.cleanup');
 
     // -.- User Profile -.-
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

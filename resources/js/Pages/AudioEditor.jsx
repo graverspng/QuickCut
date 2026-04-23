@@ -1,3 +1,4 @@
+import React from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -60,11 +61,13 @@ export default function AudioEditor({ project }) {
     const [saving, setSaving]               = useState(false);
     const [ghost, setGhost]                 = useState(null); // { name, startTime, duration }
 
-    // drag state: { type: 'move'|'resize', index, startX, orig }
+    // drag state: { type: 'move'|'resize'|'resize-left', index, startX, orig }
     const [drag, setDrag] = useState(null);
 
-    const audioRefs   = useRef([]);
-    const timelineRef = useRef(null);
+    const audioRefs       = useRef([]);
+    const timelineRef     = useRef(null);
+    // storageKeys uploaded this session but not yet saved — cleaned up on leave without saving
+    const freshUploadsRef = useRef([]);
     const [scrollLeft, setScrollLeft] = useState(0);
 
     // ── Derived ──────────────────────────────────────────────────────────────
@@ -195,18 +198,45 @@ export default function AudioEditor({ project }) {
         seekTo(getTimeFromEvent(e));
     };
 
-    // ── Track drag (move / resize) ────────────────────────────────────────────
+    // ── Cleanup unsaved uploads ───────────────────────────────────────────────
+    const cleanupFreshUploads = useCallback(() => {
+        const keys = freshUploadsRef.current;
+        if (!keys.length) return;
+        const form = new FormData();
+        form.append('_token', csrf());
+        keys.forEach(k => form.append('storageKeys[]', k));
+        navigator.sendBeacon(route('audio.projects.media.cleanup', project.id), form);
+        freshUploadsRef.current = [];
+    }, [project.id]);
+
+    // Fire cleanup silently when tab/window closes without saving
+    useEffect(() => {
+        const onUnload = () => cleanupFreshUploads();
+        window.addEventListener('pagehide', onUnload);
+        return () => window.removeEventListener('pagehide', onUnload);
+    }, [cleanupFreshUploads]);
+
+    const handleBack = useCallback(() => {
+        if (freshUploadsRef.current.length > 0) {
+            if (!confirm('Uploaded files that haven\'t been saved will be removed. Leave anyway?')) return;
+            cleanupFreshUploads();
+        }
+        router.visit(route('audio.projects'));
+    }, [cleanupFreshUploads]);
+
+    // ── Track drag (move / resize / resize-left) ──────────────────────────────
     const handleTrackMouseDown = (e, index, type) => {
         e.stopPropagation();
         e.preventDefault();
         const track = tracks[index];
         setSelectedIndex(index);
-        setDrag({
-            type,
-            index,
-            startX: e.clientX,
-            orig: type === 'move' ? track.startTime : track.duration,
-        });
+        let orig;
+        if (type === 'resize-left') {
+            orig = { startTime: track.startTime, startOffset: track.startOffset, duration: track.duration };
+        } else {
+            orig = type === 'move' ? track.startTime : track.duration;
+        }
+        setDrag({ type, index, startX: e.clientX, orig });
     };
 
     useEffect(() => {
@@ -218,11 +248,17 @@ export default function AudioEditor({ project }) {
                 const t   = { ...arr[drag.index] };
                 if (drag.type === 'move') {
                     t.startTime = Math.max(0, drag.orig + deltaSec);
-                } else {
+                } else if (drag.type === 'resize') {
                     const maxDur = t.sourceDuration > 0
                         ? t.sourceDuration - (t.startOffset || 0)
                         : Infinity;
                     t.duration = Math.max(0.5, Math.min(drag.orig + deltaSec, maxDur));
+                } else if (drag.type === 'resize-left') {
+                    const maxExpand = Math.min(drag.orig.startTime, drag.orig.startOffset);
+                    const clamped   = Math.max(-maxExpand, Math.min(drag.orig.duration - 0.5, deltaSec));
+                    t.startTime   = drag.orig.startTime + clamped;
+                    t.startOffset = drag.orig.startOffset + clamped;
+                    t.duration    = drag.orig.duration - clamped;
                 }
                 arr[drag.index] = normTrack(t);
                 return arr;
@@ -312,6 +348,9 @@ export default function AudioEditor({ project }) {
                     continue;
                 }
                 const json = await res.json();
+                if (json.storageKey) {
+                    freshUploadsRef.current = [...freshUploadsRef.current, json.storageKey];
+                }
                 uploaded.push({
                     id:             json.id || `media-${Date.now()}`,
                     name:           json.name || f.name,
@@ -379,6 +418,7 @@ export default function AudioEditor({ project }) {
     // ── Save ──────────────────────────────────────────────────────────────────
     const handleSave = () => {
         setSaving(true);
+        freshUploadsRef.current = []; // all uploaded files are now intentionally kept
         const tracksToSave = tracks.map(({ source, storageKey, ...rest }) => {
             const p = { ...rest };
             if (storageKey) { p.storageKey = storageKey; p.source = storageKey; }
@@ -491,7 +531,7 @@ export default function AudioEditor({ project }) {
                         <Link href={route('audio.projects.export', project.id)} className="export-btn">
                             Export
                         </Link>
-                        <Link href={route('audio.projects')} className="back-btn">← Back</Link>
+                        <button onClick={handleBack} className="back-btn">← Back</button>
                     </div>
                 </div>
 
@@ -633,37 +673,67 @@ export default function AudioEditor({ project }) {
                                     const left     = GUTTER_W + secToPx(track.startTime);
                                     const width    = Math.max(4, secToPx(track.duration));
                                     const selected = selectedIndex === i;
+                                    const clipTop  = i * ROW_H + 4;
+                                    const clipH    = TRACK_H - 8;
+                                    // action bar above clip, or below if it's the first row
+                                    const barH = 28;
+                                    const actionTop = clipTop >= barH + 4 ? clipTop - barH : clipTop + clipH + 2;
                                     return (
-                                        <div
-                                            key={i}
-                                            className={`ae-clip${selected ? ' ae-clip--selected' : ''}`}
-                                            style={{
-                                                left,
-                                                width,
-                                                top:    i * ROW_H + 4,
-                                                height: TRACK_H - 8,
-                                            }}
-                                            onMouseDown={e => handleTrackMouseDown(e, i, 'move')}
-                                            onClick={e => { e.stopPropagation(); setSelectedIndex(selected ? null : i); }}
-                                        >
-                                            <span className="ae-clip-name">{track.name}</span>
-                                            {track.duration > 0 && (
-                                                <span className="ae-clip-dur">{fmtTime(track.duration)}</span>
-                                            )}
-
-                                            {/* Resize handle */}
+                                        <React.Fragment key={i}>
                                             <div
-                                                className="ae-resize-handle"
-                                                onMouseDown={e => { e.stopPropagation(); handleTrackMouseDown(e, i, 'resize'); }}
-                                            />
+                                                className={`ae-clip${selected ? ' ae-clip--selected' : ''}`}
+                                                style={{ left, width, top: clipTop, height: clipH }}
+                                                onMouseDown={e => handleTrackMouseDown(e, i, 'move')}
+                                                onClick={e => { e.stopPropagation(); setSelectedIndex(selected ? null : i); }}
+                                            >
+                                                <span className="ae-clip-name">{track.name}</span>
+                                                {track.duration > 0 && (
+                                                    <span className="ae-clip-dur">{fmtTime(track.duration)}</span>
+                                                )}
 
-                                            {/* Hidden audio element */}
-                                            <audio
-                                                ref={el => { audioRefs.current[i] = el; }}
-                                                src={track.source}
-                                                preload="auto"
-                                            />
-                                        </div>
+                                                {/* Left resize handle */}
+                                                <div
+                                                    className="ae-resize-handle ae-resize-handle--left"
+                                                    onMouseDown={e => { e.stopPropagation(); handleTrackMouseDown(e, i, 'resize-left'); }}
+                                                />
+
+                                                {/* Right resize handle */}
+                                                <div
+                                                    className="ae-resize-handle"
+                                                    onMouseDown={e => { e.stopPropagation(); handleTrackMouseDown(e, i, 'resize'); }}
+                                                />
+
+                                                {/* Hidden audio element */}
+                                                <audio
+                                                    ref={el => { audioRefs.current[i] = el; }}
+                                                    src={track.source}
+                                                    preload="auto"
+                                                />
+                                            </div>
+
+                                            {/* Inline action bar for selected clip */}
+                                            {selected && (
+                                                <div
+                                                    className="ae-clip-actions"
+                                                    style={{ left, top: actionTop }}
+                                                    onMouseDown={e => e.stopPropagation()}
+                                                    onClick={e => e.stopPropagation()}
+                                                >
+                                                    <button className="ae-clip-action-btn ae-clip-action-delete" onClick={handleDelete} title="Delete (Del)">✕</button>
+                                                    <div className="ae-clip-action-sep" />
+                                                    <button className="ae-clip-action-btn" onClick={handleSplit} title="Split at playhead (S)">✂</button>
+                                                    <div className="ae-clip-action-sep" />
+                                                    <input
+                                                        type="range" min="0" max="200"
+                                                        value={Math.round((track.volume ?? 1) * 100)}
+                                                        onChange={e => handleVolumeChange(parseFloat(e.target.value) / 100)}
+                                                        className="ae-clip-action-vol"
+                                                        title="Volume"
+                                                    />
+                                                    <span className="ae-clip-action-vol-label">{Math.round((track.volume ?? 1) * 100)}%</span>
+                                                </div>
+                                            )}
+                                        </React.Fragment>
                                     );
                                 })}
                             </div>
