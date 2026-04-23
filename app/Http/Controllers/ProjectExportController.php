@@ -1310,9 +1310,10 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
             $fadeIn  = max(0.05, min($duration * 0.25, 0.4));
             $fadeOut = max(0.05, min($duration * 0.25, 0.4));
 
-            // Smooth blend alpha: A+(B-A)*ramp, where ramp goes 0→1→0 around the effect window
+            // Smooth blend alpha: A+(B-A)*ramp, where ramp goes 0→1→0 around the effect window.
+            // Use min/max instead of clamp() — FFmpeg's eval does not have clamp().
             $blendExpr = $this->escapeFilterValue(sprintf(
-                'A+(B-A)*clamp((T-%.3f)/%.3f,0,1)*clamp((%.3f-T)/%.3f,0,1)',
+                'A+(B-A)*min(1,max(0,(T-%.3f)/%.3f))*min(1,max(0,(%.3f-T)/%.3f))',
                 $start, $fadeIn, $end, $fadeOut
             ));
 
