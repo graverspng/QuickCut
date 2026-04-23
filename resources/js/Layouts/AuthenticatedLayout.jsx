@@ -53,7 +53,7 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
             {!hideNavbar && (
                 <nav className="qc-nav">
                     <div className="mx-auto max-w-7xl px-6 lg:px-8">
-                        <div className="flex items-center justify-between py-1 relative">
+                        <div className="flex items-center justify-between py-1">
 
                             {/* Logo */}
                             <Link href={route('dashboard')} className="flex items-center flex-shrink-0">
@@ -68,8 +68,8 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                 <NavItem href={route('about.us')}       routeName="about.us"       label="About Us" />
                             </div>
 
-                            {/* Right side (fixed to top-right for desktop) */}
-                            <div className="flex items-center gap-2 absolute right-6 top-1/2 -translate-y-1/2">
+                            {/* Right side */}
+                            <div className="flex items-center gap-2">
                                 <Link
                                     href={route('reports.create')}
                                     className="qc-nav-icon-btn"
