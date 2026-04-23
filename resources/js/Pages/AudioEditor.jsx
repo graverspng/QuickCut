@@ -1,4 +1,3 @@
-import React from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
@@ -60,6 +59,7 @@ export default function AudioEditor({ project }) {
     const [uploadError, setUploadError]     = useState('');
     const [saving, setSaving]               = useState(false);
     const [ghost, setGhost]                 = useState(null); // { name, startTime, duration }
+    const [libDragOver, setLibDragOver]     = useState(false);
 
     // drag state: { type: 'move'|'resize'|'resize-left', index, startX, orig }
     const [drag, setDrag] = useState(null);
@@ -563,11 +563,12 @@ export default function AudioEditor({ project }) {
                         )}
 
                         <div
-                            className="ae-lib-dropzone"
-                            onDragOver={e => e.preventDefault()}
-                            onDrop={e => { e.preventDefault(); handleUpload(e.dataTransfer.files); }}
+                            className={`ae-lib-dropzone${libDragOver ? ' ae-drag-over' : ''}${uploading ? ' ae-uploading' : ''}`}
+                            onDragOver={e => { e.preventDefault(); setLibDragOver(true); }}
+                            onDragLeave={() => setLibDragOver(false)}
+                            onDrop={e => { e.preventDefault(); setLibDragOver(false); handleUpload(e.dataTransfer.files); }}
                         >
-                            Drop audio here
+                            {uploading ? '⟳ Uploading…' : '+ Drop audio files here\nor click Add above'}
                         </div>
 
                         <div className="ae-lib-list">
@@ -675,65 +676,38 @@ export default function AudioEditor({ project }) {
                                     const selected = selectedIndex === i;
                                     const clipTop  = i * ROW_H + 4;
                                     const clipH    = TRACK_H - 8;
-                                    // action bar above clip, or below if it's the first row
-                                    const barH = 28;
-                                    const actionTop = clipTop >= barH + 4 ? clipTop - barH : clipTop + clipH + 2;
                                     return (
-                                        <React.Fragment key={i}>
-                                            <div
-                                                className={`ae-clip${selected ? ' ae-clip--selected' : ''}`}
-                                                style={{ left, width, top: clipTop, height: clipH }}
-                                                onMouseDown={e => handleTrackMouseDown(e, i, 'move')}
-                                                onClick={e => { e.stopPropagation(); setSelectedIndex(selected ? null : i); }}
-                                            >
-                                                <span className="ae-clip-name">{track.name}</span>
-                                                {track.duration > 0 && (
-                                                    <span className="ae-clip-dur">{fmtTime(track.duration)}</span>
-                                                )}
-
-                                                {/* Left resize handle */}
-                                                <div
-                                                    className="ae-resize-handle ae-resize-handle--left"
-                                                    onMouseDown={e => { e.stopPropagation(); handleTrackMouseDown(e, i, 'resize-left'); }}
-                                                />
-
-                                                {/* Right resize handle */}
-                                                <div
-                                                    className="ae-resize-handle"
-                                                    onMouseDown={e => { e.stopPropagation(); handleTrackMouseDown(e, i, 'resize'); }}
-                                                />
-
-                                                {/* Hidden audio element */}
-                                                <audio
-                                                    ref={el => { audioRefs.current[i] = el; }}
-                                                    src={track.source}
-                                                    preload="auto"
-                                                />
-                                            </div>
-
-                                            {/* Inline action bar for selected clip */}
-                                            {selected && (
-                                                <div
-                                                    className="ae-clip-actions"
-                                                    style={{ left, top: actionTop }}
-                                                    onMouseDown={e => e.stopPropagation()}
-                                                    onClick={e => e.stopPropagation()}
-                                                >
-                                                    <button className="ae-clip-action-btn ae-clip-action-delete" onClick={handleDelete} title="Delete (Del)">✕</button>
-                                                    <div className="ae-clip-action-sep" />
-                                                    <button className="ae-clip-action-btn" onClick={handleSplit} title="Split at playhead (S)">✂</button>
-                                                    <div className="ae-clip-action-sep" />
-                                                    <input
-                                                        type="range" min="0" max="200"
-                                                        value={Math.round((track.volume ?? 1) * 100)}
-                                                        onChange={e => handleVolumeChange(parseFloat(e.target.value) / 100)}
-                                                        className="ae-clip-action-vol"
-                                                        title="Volume"
-                                                    />
-                                                    <span className="ae-clip-action-vol-label">{Math.round((track.volume ?? 1) * 100)}%</span>
-                                                </div>
+                                        <div
+                                            key={i}
+                                            className={`ae-clip${selected ? ' ae-clip--selected' : ''}`}
+                                            style={{ left, width, top: clipTop, height: clipH }}
+                                            onMouseDown={e => handleTrackMouseDown(e, i, 'move')}
+                                            onClick={e => { e.stopPropagation(); setSelectedIndex(selected ? null : i); }}
+                                        >
+                                            <span className="ae-clip-name">{track.name}</span>
+                                            {track.duration > 0 && (
+                                                <span className="ae-clip-dur">{fmtTime(track.duration)}</span>
                                             )}
-                                        </React.Fragment>
+
+                                            {/* Left resize handle */}
+                                            <div
+                                                className="ae-resize-handle ae-resize-handle--left"
+                                                onMouseDown={e => { e.stopPropagation(); handleTrackMouseDown(e, i, 'resize-left'); }}
+                                            />
+
+                                            {/* Right resize handle */}
+                                            <div
+                                                className="ae-resize-handle"
+                                                onMouseDown={e => { e.stopPropagation(); handleTrackMouseDown(e, i, 'resize'); }}
+                                            />
+
+                                            {/* Hidden audio element */}
+                                            <audio
+                                                ref={el => { audioRefs.current[i] = el; }}
+                                                src={track.source}
+                                                preload="auto"
+                                            />
+                                        </div>
                                     );
                                 })}
                             </div>
