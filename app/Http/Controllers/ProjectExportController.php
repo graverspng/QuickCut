@@ -1100,152 +1100,49 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
             ];
         }
 
-        $hasTransitions = !empty($transitionMap);
-        if (!$hasTransitions) {
-            $concatOutputPath = $directory . DIRECTORY_SEPARATOR . 'merged_concat_' . Str::random(8) . '.mp4';
-            $listPath = $this->writeConcatListFile($segments, $directory);
-
-            $args = [
-                $this->ffmpegBinary(),
-                '-y',
-                '-f', 'concat',
-                '-safe', '0',
-                '-i', $listPath,
-                '-c', 'copy',
-                '-movflags', '+faststart',
-                $concatOutputPath,
-            ];
-
-            if ($this->runProcess($args) && file_exists($concatOutputPath)) {
-                $duration = 0.0;
-                foreach ($segments as $segment) {
-                    $duration += (float) ($segment['duration'] ?? 0);
-                }
-
-                return [
-                    'path' => $concatOutputPath,
-                    'cleanup' => [$listPath],
-                    'duration' => $duration,
-                ];
-            }
-
-            @unlink($concatOutputPath);
-            @unlink($listPath);
+        // When transitions are present, go straight to the per-pair sequential approach.
+        // The single-pass filter_complex (xfade + acrossfade in one graph) is unreliable
+        // across FFmpeg versions; sequential is simpler and guaranteed correct.
+        if (!empty($transitionMap)) {
+            return $this->combineSegmentsWithTransitionsSequential($segments, $transitionMap, $directory);
         }
 
-        // Single-pass combine (1 encode) with transitions/concats, falling back to sequential if needed.
-        $outputPath = $directory . DIRECTORY_SEPARATOR . 'merged_' . count($segments) . '_' . Str::random(8) . '.mp4';
+        // No transitions: fastest path is a stream-copy concat.
+        $concatOutputPath = $directory . DIRECTORY_SEPARATOR . 'merged_concat_' . Str::random(8) . '.mp4';
+        $listPath = $this->writeConcatListFile($segments, $directory);
 
-        $args = [$this->ffmpegBinary(), '-y'];
-        foreach ($segments as $segment) {
-            $args[] = '-i';
-            $args[] = $segment['path'];
-        }
-
-        $filters = [];
-        foreach ($segments as $index => $segment) {
-            $filters[] = sprintf('[%d:v]format=yuv420p,setpts=PTS-STARTPTS[v%d]', $index, $index);
-            $filters[] = sprintf('[%d:a]aresample=async=1:sample_rate=48000,asetpts=PTS-STARTPTS[a%d]', $index, $index);
-        }
-
-        $vCurrent = 'v0';
-        $aCurrent = 'a0';
-        $currentDuration = (float) ($segments[0]['duration'] ?? 0.0);
-
-        for ($i = 1; $i < count($segments); $i++) {
-            $nextDuration = (float) ($segments[$i]['duration'] ?? 0.0);
-            $transition = $transitionMap[$i - 1] ?? null;
-
-            if ($transition) {
-                $transitionDuration = min((float) $transition['duration'], $currentDuration, $nextDuration);
-                $offset = max(0.0, $currentDuration - $transitionDuration);
-                $xfadeType = match ($transition['type']) {
-                    'dip-black' => 'fadeblack',
-                    'dip-white' => 'fadewhite',
-                    default => 'fade',
-                };
-
-                $vOut = 'vxf_' . $i;
-                $aOut = 'axf_' . $i;
-
-                $filters[] = sprintf(
-                    '[%s][v%d]xfade=transition=%s:duration=%.3f:offset=%.3f[%s]',
-                    $vCurrent,
-                    $i,
-                    $xfadeType,
-                    $transitionDuration,
-                    $offset,
-                    $vOut
-                );
-                $filters[] = sprintf(
-                    '[%s][a%d]acrossfade=d=%.3f[%s]',
-                    $aCurrent,
-                    $i,
-                    $transitionDuration,
-                    $aOut
-                );
-
-                $vCurrent = $vOut;
-                $aCurrent = $aOut;
-                $currentDuration = $currentDuration + $nextDuration - $transitionDuration;
-                continue;
-            }
-
-            $vOut = 'vcat_' . $i;
-            $aOut = 'acat_' . $i;
-
-            $filters[] = sprintf(
-                '[%s][%s][v%d][a%d]concat=n=2:v=1:a=1[%s][%s]',
-                $vCurrent,
-                $aCurrent,
-                $i,
-                $i,
-                $vOut,
-                $aOut
-            );
-
-            $vCurrent = $vOut;
-            $aCurrent = $aOut;
-            $currentDuration += $nextDuration;
-        }
-
-        $finalVideo = $vCurrent;
-        if ($finalVideo !== 'video_combined') {
-            $filters[] = sprintf('[%s]format=yuv420p[video_combined]', $finalVideo);
-            $finalVideo = 'video_combined';
-        }
-
-        $args[] = '-filter_complex';
-        $args[] = implode(';', $filters);
-        $args[] = '-map';
-        $args[] = '[' . $finalVideo . ']';
-        $args[] = '-map';
-        $args[] = '[' . $aCurrent . ']';
-        $args = array_merge($args, [
-            '-c:v', 'libx264',
-            '-preset', 'veryfast',
-            '-crf', '20',
-            '-pix_fmt', 'yuv420p',
-            '-c:a', 'aac',
-            '-b:a', '192k',
-            '-r', '30',
-            '-video_track_timescale', '15360',
+        $args = [
+            $this->ffmpegBinary(),
+            '-y',
+            '-f', 'concat',
+            '-safe', '0',
+            '-i', $listPath,
+            '-c', 'copy',
             '-movflags', '+faststart',
-            $outputPath,
-        ]);
+            $concatOutputPath,
+        ];
 
-        if ($this->runProcess($args) && file_exists($outputPath)) {
-            return ['path' => $outputPath, 'cleanup' => [], 'duration' => $currentDuration];
+        if ($this->runProcess($args) && file_exists($concatOutputPath)) {
+            $duration = 0.0;
+            foreach ($segments as $segment) {
+                $duration += (float) ($segment['duration'] ?? 0);
+            }
+            return [
+                'path'     => $concatOutputPath,
+                'cleanup'  => [$listPath],
+                'duration' => $duration,
+            ];
         }
 
-        @unlink($outputPath);
+        @unlink($concatOutputPath);
+        @unlink($listPath);
 
-        Log::warning('[Export] Multi-pass combine failed; falling back to sequential per-pair encode.', [
-            'segment_count'   => count($segments),
-            'transition_count' => count($transitionMap),
+        // Concat copy failed (codec mismatch etc.) — fall back to sequential re-encode.
+        Log::warning('[Export] Concat copy failed; falling back to sequential re-encode.', [
+            'segment_count' => count($segments),
         ]);
 
-        return $this->combineSegmentsWithTransitionsSequential($segments, $transitionMap, $directory);
+        return $this->combineSegmentsWithTransitionsSequential($segments, [], $directory);
     }
 
     protected function gatherMusicSources(Project $project, string $directory): array

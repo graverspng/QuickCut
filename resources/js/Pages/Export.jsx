@@ -247,12 +247,12 @@ useEffect(() => {
     const duration = summary?.duration ?? 0;
     if (!duration) return null;
     // Base + per-second of video + per-feature overhead
-    const base = 5;
-    const videoTime = duration * 1.2;
-    const effectTime = (summary?.effects ?? 0) * 4;
-    const transitionTime = (summary?.transitions ?? 0) * 2;
-    const textTime = (summary?.text ?? 0) * 1;
-    const musicTime = (summary?.music ?? 0) * 2;
+    const base = 15;
+    const videoTime = duration * 2;
+    const effectTime = (summary?.effects ?? 0) * 60;
+    const transitionTime = (summary?.transitions ?? 0) * 20;
+    const textTime = (summary?.text ?? 0) * 3;
+    const musicTime = (summary?.music ?? 0) * 5;
     const total = base + videoTime + effectTime + transitionTime + textTime + musicTime;
     if (total < 60) return `~${Math.round(total)}s`;
     const mins = Math.floor(total / 60);
