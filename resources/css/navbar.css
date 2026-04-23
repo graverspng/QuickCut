@@ -126,12 +126,18 @@
   color: #FCFFFC;
 }
 
+/* Hide hamburger for desktop-only site */
+.qc-nav-hamburger { display: none !important; }
+
 /* ── Mobile menu ─────────────────────────────────────────────────────────── */
 .qc-mobile-menu {
   border-top: 1px solid rgba(43, 168, 74, 0.1);
   background: rgba(5, 5, 5, 0.96);
   padding: 8px 0 14px;
 }
+
+/* Ensure mobile menu is not shown on this desktop-only site */
+.qc-mobile-menu { display: none !important; }
 .qc-mobile-link {
   display: block;
   padding: 10px 20px;

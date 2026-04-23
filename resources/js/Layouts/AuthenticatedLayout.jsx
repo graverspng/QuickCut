@@ -14,20 +14,10 @@ const NavItem = ({ href, routeName, label }) => (
     </Link>
 );
 
-const MobileNavItem = ({ href, routeName, label }) => (
-    <Link
-        href={href}
-        className={`qc-mobile-link${route().current(routeName) ? ' qc-mobile-link--active' : ''}`}
-    >
-        {label}
-    </Link>
-);
-
 export default function AuthenticatedLayout({ header, children, hideNavbar }) {
     const { auth, flash } = usePage().props;
     const user = auth.user;
-    const [showMenu, setShowMenu]     = useState(false);
-    const [loginToast, setLoginToast] = useState('');
+    const [loginToast,  setLoginToast]  = useState('');
     const [reportToast, setReportToast] = useState('');
     const shownLoginRef  = useRef(false);
     const shownReportRef = useRef(false);
@@ -62,25 +52,24 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
         <div className="min-h-screen bg-black text-[#FCFFFC]">
             {!hideNavbar && (
                 <nav className="qc-nav">
-                    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                        <div className="flex items-center justify-between py-1">
+                    <div className="mx-auto max-w-7xl px-6 lg:px-8">
+                        <div className="flex items-center justify-between py-1 relative">
 
                             {/* Logo */}
                             <Link href={route('dashboard')} className="flex items-center flex-shrink-0">
                                 <img src={QuickCutCutoutImg} alt="QuickCut" className="h-20 w-auto" />
                             </Link>
 
-                            {/* Desktop nav links */}
-                            <div className="hidden sm:flex items-center gap-1">
+                            {/* Nav links */}
+                            <div className="flex items-center gap-1">
                                 <NavItem href={route('dashboard')}      routeName="dashboard"      label="Media Projects" />
                                 <NavItem href={route('audio.projects')} routeName="audio.projects" label="Audio Projects" />
                                 <NavItem href={route('format.changer')} routeName="format.changer" label="Format Changer" />
                                 <NavItem href={route('about.us')}       routeName="about.us"       label="About Us" />
                             </div>
 
-                            {/* Right side */}
-                            <div className="hidden sm:flex items-center gap-2">
-                                {/* Report icon */}
+                            {/* Right side (fixed to top-right for desktop) */}
+                            <div className="flex items-center gap-2 absolute right-6 top-1/2 -translate-y-1/2">
                                 <Link
                                     href={route('reports.create')}
                                     className="qc-nav-icon-btn"
@@ -89,7 +78,6 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                     <img src={ReportIssue} alt="" className="h-7 w-auto" />
                                 </Link>
 
-                                {/* User dropdown */}
                                 <Dropdown>
                                     <Dropdown.Trigger>
                                         <button type="button" className="qc-nav-user-btn">
@@ -131,59 +119,8 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                                     </Dropdown.Content>
                                 </Dropdown>
                             </div>
-
-                            {/* Mobile hamburger */}
-                            <button
-                                className="sm:hidden qc-nav-hamburger"
-                                onClick={() => setShowMenu(p => !p)}
-                                aria-label="Toggle navigation"
-                            >
-                                <svg className="h-5 w-5" stroke="currentColor" fill="none" viewBox="0 0 24 24">
-                                    <path
-                                        className={!showMenu ? 'block' : 'hidden'}
-                                        strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                                        d="M4 6h16M4 12h16M4 18h16"
-                                    />
-                                    <path
-                                        className={showMenu ? 'block' : 'hidden'}
-                                        strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                                        d="M6 18L18 6M6 6l12 12"
-                                    />
-                                </svg>
-                            </button>
                         </div>
                     </div>
-
-                    {/* Mobile menu */}
-                    {showMenu && (
-                        <div className="sm:hidden qc-mobile-menu">
-                            <MobileNavItem href={route('dashboard')}      routeName="dashboard"      label="Media Projects" />
-                            <MobileNavItem href={route('audio.projects')} routeName="audio.projects" label="Audio Projects" />
-                            <MobileNavItem href={route('format.changer')} routeName="format.changer" label="Format Changer" />
-                            <MobileNavItem href={route('about.us')}       routeName="about.us"       label="About Us" />
-
-                            <div className="qc-mobile-divider" />
-
-                            <div className="qc-mobile-user-section">
-                                <p className="qc-mobile-user-name">{user.name}</p>
-                                <p className="qc-mobile-user-email">{user.email}</p>
-                            </div>
-
-                            <MobileNavItem href={route('profile.edit')} routeName="profile.edit" label="Profile" />
-                            {user.is_admin && (
-                                <MobileNavItem href={route('admin.index')} routeName="admin.index" label="Admin Panel" />
-                            )}
-                            <Link
-                                href={route('logout')}
-                                method="post"
-                                as="button"
-                                className="qc-mobile-link"
-                                style={{ color: 'rgba(248,113,113,0.85)' }}
-                            >
-                                Log Out
-                            </Link>
-                        </div>
-                    )}
                 </nav>
             )}
 
@@ -197,7 +134,6 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
 
             <main>{children}</main>
 
-            {/* Login toast */}
             {loginToast && (
                 <div className="qc-toast" role="status" aria-live="polite">
                     <span className="qc-toast-dot" aria-hidden="true" />
@@ -205,7 +141,6 @@ export default function AuthenticatedLayout({ header, children, hideNavbar }) {
                 </div>
             )}
 
-            {/* Report submitted toast */}
             {reportToast && (
                 <div className="qc-toast" role="status" aria-live="polite">
                     <span className="qc-toast-dot" aria-hidden="true" />
