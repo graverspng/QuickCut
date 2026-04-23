@@ -1,303 +1,126 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router } from '@inertiajs/react';
-import { useState, useRef, useEffect, useMemo } from 'react';
-import '@/../css/Editor.css';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import '@/../css/AudioEditor.css';
 
-const MIN_SESSION_LENGTH = 120;
-const PIXELS_PER_SECOND = 10;
+// ─── Constants ───────────────────────────────────────────────────────────────
+const MIN_SESSION_SECS = 60;
+const PX_PER_SEC       = 80;
+const TRACK_H          = 54;
+const TRACK_GAP        = 6;
+const ROW_H            = TRACK_H + TRACK_GAP;
+const GUTTER_W         = 80; // left label gutter
 
-const toNumber = (value, fallback = 0) => {
-    if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
-    const parsed = parseFloat(value);
-    return Number.isFinite(parsed) ? parsed : fallback;
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+const toNum = (v, fallback = 0) => {
+    if (typeof v === 'number') return Number.isFinite(v) ? v : fallback;
+    const p = parseFloat(v);
+    return Number.isFinite(p) ? p : fallback;
 };
 
-const normalizeTracks = (arr = []) =>
-    arr.map((t) => {
-        const startTime = toNumber(t.startTime, 0);
-        const startOffset = toNumber(t.startOffset, 0);
-        const sourceDuration = toNumber(t.sourceDuration, 0);
-        const duration = toNumber(t.duration ?? sourceDuration, 0);
-        const volume = toNumber(t.volume ?? 1, 1);
-
-        return {
-            ...t,
-            startTime,
-            startOffset,
-            sourceDuration,
-            duration,
-            volume,
-            type: 'audio',
-        };
-    });
-
-const csrf = () =>
-    document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-
-const isAudioFile = (file) => {
-    if (!file) return false;
-    if (file.type && file.type.startsWith('audio')) return true;
-    const ext = file.name?.split('.').pop()?.toLowerCase();
-    return ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a'].includes(ext);
+const fmtTime = (secs) => {
+    const m  = Math.floor(secs / 60);
+    const s  = Math.floor(secs % 60);
+    const ms = Math.floor((secs % 1) * 10);
+    return `${m}:${String(s).padStart(2, '0')}.${ms}`;
 };
 
+const normTrack = (t) => ({
+    ...t,
+    startTime:      toNum(t.startTime, 0),
+    startOffset:    toNum(t.startOffset, 0),
+    sourceDuration: toNum(t.sourceDuration, 0),
+    duration:       toNum(t.duration ?? t.sourceDuration, 0),
+    volume:         Math.max(0, Math.min(2, toNum(t.volume ?? 1, 1))),
+    type:           'audio',
+});
+
+const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+const isAudioFile = (f) => {
+    if (!f) return false;
+    if (f.type?.startsWith('audio')) return true;
+    const ext = f.name?.split('.').pop()?.toLowerCase();
+    return ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'webm', 'opus'].includes(ext);
+};
+
+// ─── Component ───────────────────────────────────────────────────────────────
 export default function AudioEditor({ project }) {
     const [tracks, setTracks] = useState(() =>
-        normalizeTracks(Array.isArray(project.tracks) ? project.tracks : [])
+        (Array.isArray(project.tracks) ? project.tracks : []).map(normTrack)
     );
-    const [mediaFiles, setMediaFiles] = useState([]);
-    const [selectedTrackIndex, setSelectedTrackIndex] = useState(null);
-    const [ghostClip, setGhostClip] = useState(null);
+    const [mediaFiles, setMediaFiles] = useState(() =>
+        Array.isArray(project.media_files) ? project.media_files : []
+    );
+    const [selectedIndex, setSelectedIndex] = useState(null);
+    const [currentTime, setCurrentTime]     = useState(0);
+    const [isPlaying, setIsPlaying]         = useState(false);
+    const [uploading, setUploading]         = useState(false);
+    const [uploadError, setUploadError]     = useState('');
+    const [saving, setSaving]               = useState(false);
+    const [ghost, setGhost]                 = useState(null); // { name, startTime, duration }
 
-    const [currentTime, setCurrentTime] = useState(0);
-    const [isPlaying, setIsPlaying] = useState(false);
+    // drag state: { type: 'move'|'resize', index, startX, orig }
+    const [drag, setDrag] = useState(null);
 
-    const [sessionLength, setSessionLength] = useState(MIN_SESSION_LENGTH);
-
-    const audioRefs = useRef([]);
+    const audioRefs   = useRef([]);
     const timelineRef = useRef(null);
     const [scrollLeft, setScrollLeft] = useState(0);
 
-    const pxFromTime = (sec) => sec * PIXELS_PER_SECOND;
-    const timeFromPx = (px) => px / PIXELS_PER_SECOND;
-    const timelineWidth = useMemo(
-        () => Math.max(sessionLength, MIN_SESSION_LENGTH) * PIXELS_PER_SECOND,
-        [sessionLength]
-    );
-    const snapToGrid = (time, step = 1) => Math.round(time / step) * step;
+    // ── Derived ──────────────────────────────────────────────────────────────
+    const sessionLength = useMemo(() => {
+        const longestEnd = tracks.reduce((max, t) => {
+            const end = toNum(t.startTime) + toNum(t.duration || t.sourceDuration);
+            return Math.max(max, end);
+        }, 0);
+        return Math.max(longestEnd + 10, MIN_SESSION_SECS);
+    }, [tracks]);
 
-    const uploadToServer = async (files) => {
-        const uploaded = [];
-        for (const file of files) {
-            const form = new FormData();
-            form.append('file', file);
-            form.append('name', file.name);
-            const res = await fetch(route('audio.projects.media.upload', project.id), {
-                method: 'POST',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRF-TOKEN': csrf(),
-                },
-                body: form,
-            });
-            if (!res.ok) continue;
-            const json = await res.json();
-            uploaded.push({
-                name: json.name,
-                source: json.url,
-                storageKey: json.storageKey,
-                duration: 0,
-                startOffset: 0,
-                startTime: 0,
-                sourceDuration: 0,
-                volume: 1,
-                type: 'audio',
-            });
-        }
-        return uploaded;
-    };
+    const timelineContentWidth = sessionLength * PX_PER_SEC + GUTTER_W + 40;
+    const timelineLayersHeight = Math.max(tracks.length * ROW_H + 80, 200);
 
-    const handleFileUpload = async (e) => {
-        const selected = Array.from(e.target.files || []).filter(isAudioFile);
-        if (!selected.length) return;
-        const serverFiles = await uploadToServer(selected);
-        if (!serverFiles.length) return;
-        setMediaFiles((prev) => [...prev, ...serverFiles]);
-    };
+    const secToPx  = useCallback((s) => s * PX_PER_SEC, []);
+    const pxToSec  = useCallback((px) => px / PX_PER_SEC, []);
 
-    const getTimeFromEvent = (e) => {
-        const rect = timelineRef.current.getBoundingClientRect();
-        const dropX = e.clientX - rect.left + timelineRef.current.scrollLeft - 80;
-        return snapToGrid(timeFromPx(Math.max(dropX, 0)), 1);
-    };
-
-    const handleDrop = (e) => {
-        e.preventDefault();
-        const index = parseInt(e.dataTransfer.getData('index'));
-        const file = mediaFiles[index];
-        if (!file || !isAudioFile(file)) return;
-
-        const dropTime = getTimeFromEvent(e);
-        setTracks((prev) =>
-            normalizeTracks([
-                ...prev,
-                {
-                    ...file,
-                    startTime: dropTime,
-                    startOffset: 0,
-                    volume: file.volume ?? 1,
-                },
-            ])
-        );
-        setGhostClip(null);
-    };
-
-    const handleDragOverTimeline = (e) => {
-        e.preventDefault();
-        const index = parseInt(e.dataTransfer.getData('index'));
-        const file = mediaFiles[index];
-        if (!file || !isAudioFile(file)) return;
-        const previewDuration = toNumber(file.duration || file.sourceDuration, 0) || 10;
-        setGhostClip({
-            name: file.name,
-            startTime: getTimeFromEvent(e),
-            duration: previewDuration,
-        });
-    };
-
-    const handleSave = () => {
-        const tracksToSave = tracks.map(({ storageKey, source, ...rest }) => {
-            const payload = { ...rest };
-            if (storageKey) {
-                payload.storageKey = storageKey;
-                payload.source = storageKey;
-            } else if (typeof source === 'string') {
-                payload.source = source;
-            }
-            return payload;
-        });
-
-        router.put(route('audio.projects.update', project.id), {
-            tracks: tracksToSave,
-        });
-    };
-
-    const handleTrackDragStart = (e, index) => {
-        e.dataTransfer.setData('trackIndex', index);
-    };
-
-    const handleTrackDrop = (e, dropIndex) => {
-        e.preventDefault();
-        const draggedIndex = parseInt(e.dataTransfer.getData('trackIndex'));
-        if (draggedIndex === dropIndex) return;
-
-        setTracks((prev) => {
-            const updated = [...prev];
-            const [dragged] = updated.splice(draggedIndex, 1);
-            updated.splice(dropIndex, 0, dragged);
-            return normalizeTracks(updated);
-        });
-        setSelectedTrackIndex(dropIndex);
-    };
-
-    const handleSplitSelectedTrack = () => {
-        if (selectedTrackIndex === null) return;
-
-        const track = tracks[selectedTrackIndex];
-        if (!track) return;
-
-        const startTime = toNumber(track.startTime, 0);
-        const duration = toNumber(track.duration || track.sourceDuration, 0);
-        const relativeTime = currentTime - startTime;
-
-        if (relativeTime <= 0 || relativeTime >= duration) return;
-
-        const startOffset = toNumber(track.startOffset, 0);
-
-        const before = {
-            ...track,
-            startTime,
-            startOffset,
-            duration: relativeTime,
-        };
-
-        const after = {
-            ...track,
-            startTime: startTime + relativeTime,
-            startOffset: startOffset + relativeTime,
-            duration: duration - relativeTime,
-        };
-
-        setTracks((prev) => {
-            const updated = [
-                ...prev.slice(0, selectedTrackIndex),
-                before,
-                after,
-                ...prev.slice(selectedTrackIndex + 1),
-            ];
-            return normalizeTracks(updated);
-        });
-
-        setSelectedTrackIndex((prev) => (prev === null ? null : prev + 1));
-    };
-
-    const handleDeleteSelectedTrack = () => {
-        if (selectedTrackIndex === null) return;
-
-        setTracks((prev) => {
-            const trackToRemove = prev[selectedTrackIndex];
-            if (!trackToRemove) return prev;
-
-            const removedDuration = toNumber(
-                trackToRemove.duration || trackToRemove.sourceDuration,
-                0
-            );
-            const removedStart = toNumber(trackToRemove.startTime, 0);
-
-            const remaining = prev
-                .filter((_, i) => i !== selectedTrackIndex)
-                .map((track) => {
-                    const startTime = toNumber(track.startTime, 0);
-                    if (startTime > removedStart) {
-                        return {
-                            ...track,
-                            startTime: Math.max(0, startTime - removedDuration),
-                        };
-                    }
-                    return track;
-                });
-
-            return normalizeTracks(remaining);
-        });
-
-        const audio = audioRefs.current[selectedTrackIndex];
-        if (audio) {
-            audio.pause();
-        }
-        audioRefs.current.splice(selectedTrackIndex, 1);
-        setSelectedTrackIndex(null);
-    };
-
+    // ── Load durations for tracks without them ────────────────────────────────
     useEffect(() => {
         tracks.forEach((track, i) => {
             if (!track.source) return;
-            if (!track.sourceDuration || !track.duration) {
-                const aud = document.createElement('audio');
-                aud.src = track.source;
-                aud.preload = 'auto';
-                const start = track.startTime || 0;
-                aud.onloadedmetadata = () => {
-                    const d = aud.duration || 0;
-                    setTracks((prev) => {
-                        const arr = [...prev];
-                        const t = { ...arr[i] };
-                        t.sourceDuration = d;
-                        if (!t.duration || t.duration <= 0) t.duration = d;
-                        arr[i] = t;
-                        return normalizeTracks(arr);
-                    });
-                    setSessionLength((prev) => {
-                        const end = start + d;
-                        return prev >= end ? prev : end;
-                    });
-                };
-            }
+            if (track.sourceDuration > 0 && track.duration > 0) return;
+            const a = document.createElement('audio');
+            a.src = track.source;
+            a.onloadedmetadata = () => {
+                setTracks(prev => {
+                    const arr = [...prev];
+                    if (!arr[i]) return prev;
+                    const t = { ...arr[i] };
+                    t.sourceDuration = a.duration;
+                    if (!t.duration || t.duration <= 0) t.duration = a.duration;
+                    arr[i] = normTrack(t);
+                    return arr;
+                });
+            };
         });
-    }, [tracks]);
+    }, []); // only on mount — new tracks handle duration in handleDrop
 
+    // ── Load durations for mediaFiles without them ────────────────────────────
     useEffect(() => {
-        const longestEnd = tracks.reduce((max, track) => {
-            const start = toNumber(track.startTime, 0);
-            const duration = toNumber(track.duration || track.sourceDuration, 0);
-            return Math.max(max, start + duration);
-        }, 0);
+        mediaFiles.forEach((f, i) => {
+            if (!f.source || f.sourceDuration > 0) return;
+            const a = document.createElement('audio');
+            a.src = f.source;
+            a.onloadedmetadata = () => {
+                setMediaFiles(prev => {
+                    const arr = [...prev];
+                    if (!arr[i]) return prev;
+                    arr[i] = { ...arr[i], sourceDuration: a.duration, duration: a.duration };
+                    return arr;
+                });
+            };
+        });
+    }, [mediaFiles.length]); // re-run when new files added
 
-        const targetLength = Math.max(longestEnd, MIN_SESSION_LENGTH);
-
-        setSessionLength((prev) => (Math.abs(prev - targetLength) > 0.01 ? targetLength : prev));
-    }, [tracks]);
-
+    // ── Timeline scroll ───────────────────────────────────────────────────────
     useEffect(() => {
         const el = timelineRef.current;
         if (!el) return;
@@ -306,296 +129,551 @@ export default function AudioEditor({ project }) {
         return () => el.removeEventListener('scroll', onScroll);
     }, []);
 
-    const totalDuration = sessionLength;
+    // ── Playback ──────────────────────────────────────────────────────────────
+    const syncAudio = useCallback((time, playing) => {
+        audioRefs.current.forEach((a, i) => {
+            const t = tracks[i];
+            if (!t || !a) return;
+            const start = t.startTime || 0;
+            const off   = t.startOffset || 0;
+            const end   = start + (t.duration || 0);
+            a.volume = Math.max(0, Math.min(1, t.volume ?? 1));
+            if (playing && time >= start && time < end) {
+                const desired = off + (time - start);
+                if (Math.abs(a.currentTime - desired) > 0.25) a.currentTime = desired;
+                if (a.paused) a.play().catch(() => {});
+            } else {
+                if (!a.paused) a.pause();
+            }
+        });
+    }, [tracks]);
 
-    const togglePlay = () => {
+    const togglePlay = useCallback(() => {
         if (isPlaying) {
             setIsPlaying(false);
-            audioRefs.current.forEach((a) => a && a.pause());
-            return;
+            audioRefs.current.forEach(a => a?.pause());
+        } else {
+            setIsPlaying(true);
+            syncAudio(currentTime, true);
         }
+    }, [isPlaying, currentTime, syncAudio]);
 
-        setIsPlaying(true);
-        audioRefs.current.forEach((a, i) => {
-            const track = tracks[i];
-            if (!track || !a) return;
+    useEffect(() => {
+        if (!isPlaying) return;
+        const id = setInterval(() => {
+            setCurrentTime(prev => {
+                const next = prev + 0.1;
+                if (next >= sessionLength) {
+                    setIsPlaying(false);
+                    audioRefs.current.forEach(a => a?.pause());
+                    return 0;
+                }
+                syncAudio(next, true);
+                return next;
+            });
+        }, 100);
+        return () => clearInterval(id);
+    }, [isPlaying, sessionLength, syncAudio]);
 
-            const trackStart = track.startTime || 0;
-            const trackOffset = track.startOffset || 0;
-            const trackEnd = trackStart + (track.duration || 0);
-            a.volume = track.volume ?? 1;
-            if (currentTime >= trackStart && currentTime < trackEnd) {
-                const rel = currentTime - trackStart;
-                a.currentTime = trackOffset + rel;
-                a.play().catch(() => {});
-            } else {
-                a.pause();
-            }
+    // ── Seek ──────────────────────────────────────────────────────────────────
+    const seekTo = useCallback((time) => {
+        const t = Math.max(0, Math.min(sessionLength, time));
+        setCurrentTime(t);
+        syncAudio(t, false);
+    }, [sessionLength, syncAudio]);
+
+    const getTimeFromEvent = useCallback((e) => {
+        const rect = timelineRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left + timelineRef.current.scrollLeft - GUTTER_W;
+        return Math.max(0, pxToSec(x));
+    }, [pxToSec]);
+
+    const handleTimelineClick = (e) => {
+        if (drag) return;
+        // Only seek if clicking background, not a track
+        if (e.target.closest('.ae-clip, .ae-resize-handle, .ae-layer-label')) return;
+        seekTo(getTimeFromEvent(e));
+    };
+
+    // ── Track drag (move / resize) ────────────────────────────────────────────
+    const handleTrackMouseDown = (e, index, type) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const track = tracks[index];
+        setSelectedIndex(index);
+        setDrag({
+            type,
+            index,
+            startX: e.clientX,
+            orig: type === 'move' ? track.startTime : track.duration,
         });
     };
 
     useEffect(() => {
-        let id;
-        if (isPlaying) {
-            id = setInterval(() => {
-                setCurrentTime((prev) => {
-                    const next = prev + 0.1;
-                    if (next >= totalDuration) {
-                        setIsPlaying(false);
-                        audioRefs.current.forEach((a) => a && a.pause());
-                        return 0;
-                    }
+        if (!drag) return;
+        const onMove = (e) => {
+            const deltaSec = pxToSec(e.clientX - drag.startX);
+            setTracks(prev => {
+                const arr = [...prev];
+                const t   = { ...arr[drag.index] };
+                if (drag.type === 'move') {
+                    t.startTime = Math.max(0, drag.orig + deltaSec);
+                } else {
+                    const maxDur = t.sourceDuration > 0
+                        ? t.sourceDuration - (t.startOffset || 0)
+                        : Infinity;
+                    t.duration = Math.max(0.5, Math.min(drag.orig + deltaSec, maxDur));
+                }
+                arr[drag.index] = normTrack(t);
+                return arr;
+            });
+        };
+        const onUp = () => setDrag(null);
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+        return () => {
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+        };
+    }, [drag, pxToSec]);
 
-                    audioRefs.current.forEach((a, i) => {
-                        const track = tracks[i];
-                        if (!track || !a) return;
+    // ── Library drag-drop onto timeline ──────────────────────────────────────
+    const handleLibraryDragStart = (e, index) => {
+        e.dataTransfer.setData('mediaIndex', String(index));
+    };
 
-                        const trackStart = track.startTime || 0;
-                        const trackOffset = track.startOffset || 0;
-                        const trackEnd = trackStart + (track.duration || 0);
-                        a.volume = track.volume ?? 1;
-                        if (next >= trackStart && next < trackEnd) {
-                            const rel = next - trackStart;
-                            const desired = trackOffset + rel;
-                            if (Math.abs((a.currentTime || 0) - desired) > 0.25) {
-                                a.currentTime = desired;
-                            }
-                            if (a.paused) a.play().catch(() => {});
-                        } else {
-                            a.pause();
-                        }
-                    });
-
-                    return next;
+    const handleTimelineDrop = (e) => {
+        e.preventDefault();
+        const idx = parseInt(e.dataTransfer.getData('mediaIndex'), 10);
+        const file = mediaFiles[idx];
+        if (!file) return;
+        const dropTime = getTimeFromEvent(e);
+        const newTrack = normTrack({
+            ...file,
+            startTime:   dropTime,
+            startOffset: 0,
+            volume:      1,
+        });
+        setTracks(prev => [...prev, newTrack]);
+        // Resolve duration after drop
+        if (!newTrack.sourceDuration || newTrack.sourceDuration <= 0) {
+            const a = document.createElement('audio');
+            a.src = newTrack.source;
+            a.onloadedmetadata = () => {
+                setTracks(prev => {
+                    const i = prev.length - 1;
+                    const arr = [...prev];
+                    if (!arr[i]) return prev;
+                    arr[i] = normTrack({ ...arr[i], sourceDuration: a.duration, duration: a.duration });
+                    return arr;
                 });
-            }, 100);
+            };
         }
-        return () => clearInterval(id);
-    }, [isPlaying, totalDuration, tracks]);
+        setGhost(null);
+    };
 
+    const handleTimelineDragOver = (e) => {
+        e.preventDefault();
+        const idx = parseInt(e.dataTransfer.getData('mediaIndex'), 10);
+        const file = mediaFiles[idx];
+        if (!file) return;
+        const dur = toNum(file.duration || file.sourceDuration, 0) || 8;
+        setGhost({ name: file.name, startTime: getTimeFromEvent(e), duration: dur });
+    };
+
+    // ── Upload ────────────────────────────────────────────────────────────────
+    const handleUpload = async (files) => {
+        const valid = Array.from(files || []).filter(isAudioFile);
+        if (!valid.length) return;
+        setUploading(true);
+        setUploadError('');
+        const uploaded = [];
+        for (const f of valid) {
+            if (f.size > 300 * 1024 * 1024) {
+                setUploadError(`"${f.name}" exceeds the 300 MB limit.`);
+                continue;
+            }
+            try {
+                const form = new FormData();
+                form.append('file', f);
+                form.append('name', f.name);
+                const res = await fetch(route('audio.projects.media.upload', project.id), {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN':     csrf(),
+                    },
+                    body: form,
+                });
+                if (!res.ok) {
+                    const json = await res.json().catch(() => ({}));
+                    const msg = json?.errors?.file?.[0] || json?.message || `Failed to upload "${f.name}".`;
+                    setUploadError(msg);
+                    continue;
+                }
+                const json = await res.json();
+                uploaded.push({
+                    id:             json.id || `media-${Date.now()}`,
+                    name:           json.name || f.name,
+                    source:         json.url,
+                    storageKey:     json.storageKey,
+                    duration:       0,
+                    sourceDuration: 0,
+                    type:           'audio',
+                });
+            } catch (err) {
+                setUploadError(`Upload error: ${err.message}`);
+            }
+        }
+        if (uploaded.length) {
+            setMediaFiles(prev => [...prev, ...uploaded]);
+        }
+        setUploading(false);
+    };
+
+    // ── Split ─────────────────────────────────────────────────────────────────
+    const handleSplit = () => {
+        if (selectedIndex === null) return;
+        const track = tracks[selectedIndex];
+        if (!track) return;
+        const rel = currentTime - track.startTime;
+        if (rel <= 0.05 || rel >= track.duration - 0.05) return;
+        const before = normTrack({ ...track, duration: rel });
+        const after  = normTrack({
+            ...track,
+            startTime:   track.startTime + rel,
+            startOffset: track.startOffset + rel,
+            duration:    track.duration - rel,
+        });
+        setTracks(prev => [
+            ...prev.slice(0, selectedIndex),
+            before,
+            after,
+            ...prev.slice(selectedIndex + 1),
+        ]);
+        setSelectedIndex(selectedIndex + 1);
+    };
+
+    // ── Delete ────────────────────────────────────────────────────────────────
+    const handleDelete = () => {
+        if (selectedIndex === null) return;
+        audioRefs.current[selectedIndex]?.pause();
+        audioRefs.current.splice(selectedIndex, 1);
+        setTracks(prev => prev.filter((_, i) => i !== selectedIndex));
+        setSelectedIndex(null);
+    };
+
+    // ── Volume ────────────────────────────────────────────────────────────────
+    const handleVolumeChange = (vol) => {
+        if (selectedIndex === null) return;
+        setTracks(prev => {
+            const arr = [...prev];
+            arr[selectedIndex] = normTrack({ ...arr[selectedIndex], volume: vol });
+            return arr;
+        });
+        if (audioRefs.current[selectedIndex]) {
+            audioRefs.current[selectedIndex].volume = Math.max(0, Math.min(1, vol));
+        }
+    };
+
+    // ── Save ──────────────────────────────────────────────────────────────────
+    const handleSave = () => {
+        setSaving(true);
+        const tracksToSave = tracks.map(({ source, storageKey, ...rest }) => {
+            const p = { ...rest };
+            if (storageKey) { p.storageKey = storageKey; p.source = storageKey; }
+            else if (typeof source === 'string') { p.source = source; }
+            return p;
+        });
+        router.put(
+            route('audio.projects.update', project.id),
+            { tracks: tracksToSave, media_files: mediaFiles },
+            { onFinish: () => setSaving(false) }
+        );
+    };
+
+    // ── Keyboard shortcuts ────────────────────────────────────────────────────
     useEffect(() => {
         const onKey = (e) => {
-            if (e.code === 'Space') {
+            if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+            if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+            if ((e.code === 'Backspace' || e.code === 'Delete') && selectedIndex !== null) {
                 e.preventDefault();
-                togglePlay();
+                handleDelete();
             }
-
-            if ((e.code === 'Backspace' || e.code === 'Delete') && selectedTrackIndex !== null) {
+            if (e.code === 'KeyS' && selectedIndex !== null) {
                 e.preventDefault();
-                handleDeleteSelectedTrack();
+                handleSplit();
             }
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [isPlaying, tracks, currentTime, selectedTrackIndex]);
+    }, [isPlaying, tracks, currentTime, selectedIndex]);
 
-    const handleSeek = (e) => {
-        const rect = timelineRef.current.getBoundingClientRect();
-        const clickX = e.clientX - rect.left + timelineRef.current.scrollLeft - 80;
-        const newTime = snapToGrid(timeFromPx(clickX), 1);
-        setCurrentTime(Math.max(0, Math.min(sessionLength, newTime)));
+    // ── Ruler ticks ──────────────────────────────────────────────────────────
+    const rulerTicks = useMemo(() => {
+        const ticks = [];
+        const step  = sessionLength > 120 ? 10 : sessionLength > 60 ? 5 : 2;
+        for (let s = 0; s <= sessionLength + step; s += step) {
+            ticks.push(s);
+        }
+        return ticks;
+    }, [sessionLength]);
 
-        audioRefs.current.forEach((a, i) => {
-            const track = tracks[i];
-            if (!track || !a) return;
-            const s = track.startTime || 0;
-            const off = track.startOffset || 0;
-            const end = s + (track.duration || 0);
-            a.volume = track.volume ?? 1;
-            if (newTime >= s && newTime < end) {
-                a.currentTime = off + (newTime - s);
-            } else {
-                a.pause();
-            }
-        });
-    };
+    const selectedTrack = selectedIndex !== null ? tracks[selectedIndex] : null;
 
-    const handleVolumeChange = (index, vol) => {
-        setTracks((prev) => {
-            const arr = [...prev];
-            arr[index] = { ...arr[index], volume: vol };
-            return normalizeTracks(arr);
-        });
-        if (audioRefs.current[index]) audioRefs.current[index].volume = vol;
-    };
-
+    // ── Render ────────────────────────────────────────────────────────────────
     return (
         <AuthenticatedLayout hideNavbar={true}>
             <Head title={project.name} />
 
             <div className="editor-container audio-editor">
+
+                {/* ── Header ─────────────────────────────────────────────── */}
                 <div className="editor-header">
-                    <h2>{project.name} 🎵</h2>
-                    <div className="header-actions">
-                        <Link
-                            href={route('audio.projects.export', project.id)}
-                            className="export-btn"
+                    <div className="editor-header-left">
+                        <span className="editor-project-name">{project.name}</span>
+                    </div>
+
+                    <div className="editor-header-center ae-toolbar">
+                        {/* Transport */}
+                        <button
+                            className={`ae-tool-btn ae-play-btn${isPlaying ? ' active' : ''}`}
+                            onClick={togglePlay}
+                            title="Play / Pause (Space)"
                         >
+                            {isPlaying ? '⏸' : '▶'}
+                        </button>
+                        <span className="ae-time-display">{fmtTime(currentTime)}</span>
+
+                        <div className="ae-toolbar-sep" />
+
+                        {/* Track tools */}
+                        <button
+                            className="ae-tool-btn"
+                            onClick={handleSplit}
+                            disabled={!selectedTrack}
+                            title="Split at playhead (S)"
+                        >
+                            ✂ Split
+                        </button>
+                        <button
+                            className="ae-tool-btn ae-delete-btn"
+                            onClick={handleDelete}
+                            disabled={!selectedTrack}
+                            title="Delete selected (Del)"
+                        >
+                            ✕ Delete
+                        </button>
+
+                        {/* Volume — shown only when track selected */}
+                        {selectedTrack && (
+                            <>
+                                <div className="ae-toolbar-sep" />
+                                <span className="ae-vol-label">Volume</span>
+                                <input
+                                    type="range" min="0" max="200"
+                                    value={Math.round((selectedTrack.volume ?? 1) * 100)}
+                                    onChange={e => handleVolumeChange(parseFloat(e.target.value) / 100)}
+                                    className="ae-vol-slider"
+                                />
+                                <span className="ae-vol-value">
+                                    {Math.round((selectedTrack.volume ?? 1) * 100)}%
+                                </span>
+                            </>
+                        )}
+                    </div>
+
+                    <div className="editor-header-right">
+                        <button onClick={handleSave} disabled={saving} className="save-btn">
+                            {saving ? 'Saving…' : 'Save'}
+                        </button>
+                        <Link href={route('audio.projects.export', project.id)} className="export-btn">
                             Export
                         </Link>
-                        {selectedTrackIndex !== null && (
-                            <label className="volume-control">
-                                Volume
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="100"
-                                    value={(tracks[selectedTrackIndex]?.volume ?? 1) * 100}
-                                    onChange={(e) =>
-                                        handleVolumeChange(
-                                            selectedTrackIndex,
-                                            parseFloat(e.target.value) / 100
-                                        )
-                                    }
-                                />
-                                <span className="volume-value">
-                                    {Math.round((tracks[selectedTrackIndex]?.volume ?? 1) * 100)}
-                                </span>
-                            </label>
-                        )}
-                        <button onClick={handleSave} className="save-btn">Save</button>
-                        <button onClick={() => router.get(route('audio.projects'))} className="back-btn">Back</button>
+                        <Link href={route('audio.projects')} className="back-btn">← Back</Link>
                     </div>
                 </div>
 
+                {/* ── Main ───────────────────────────────────────────────── */}
                 <div className="editor-main">
-                    <div className="media-library">
-                        <h3>Audio Library</h3>
 
-                        <div
-                            className="upload-dropzone"
-                            onDragOver={(e) => e.preventDefault()}
-                            onDrop={(e) => {
-                                e.preventDefault();
-                                handleFileUpload({ target: { files: e.dataTransfer.files } });
-                            }}
-                            onClick={() => document.getElementById('hiddenAudioInput').click()}
-                        >
-                            <p style={{ fontSize: '10px' }}>Drop audio here or click to upload</p>
-                            <input
-                                id="hiddenAudioInput"
-                                type="file"
-                                multiple
-                                accept="audio/*"
-                                style={{ display: 'none' }}
-                                onChange={handleFileUpload}
-                            />
+                    {/* ── Media Library ──────────────────────────────────── */}
+                    <div className="media-library">
+                        <div className="ae-lib-header">
+                            <span className="ae-lib-title">Audio Files</span>
+                            <label className={`ae-upload-btn${uploading ? ' ae-uploading' : ''}`}>
+                                {uploading ? '…' : '+ Add'}
+                                <input
+                                    type="file"
+                                    multiple
+                                    accept="audio/*"
+                                    style={{ display: 'none' }}
+                                    onChange={e => handleUpload(e.target.files)}
+                                    disabled={uploading}
+                                />
+                            </label>
                         </div>
 
-                        <div className="media-section audio-section">
-                            <h4>🎵 Audio</h4>
-                            <div className="section-divider" />
-                            {mediaFiles.map((file, index) => (
+                        {uploadError && (
+                            <div className="ae-upload-error">
+                                {uploadError}
+                                <button onClick={() => setUploadError('')} className="ae-error-dismiss">✕</button>
+                            </div>
+                        )}
+
+                        <div
+                            className="ae-lib-dropzone"
+                            onDragOver={e => e.preventDefault()}
+                            onDrop={e => { e.preventDefault(); handleUpload(e.dataTransfer.files); }}
+                        >
+                            Drop audio here
+                        </div>
+
+                        <div className="ae-lib-list">
+                            {mediaFiles.length === 0 && (
+                                <p className="ae-lib-empty">Upload audio files to get started.</p>
+                            )}
+                            {mediaFiles.map((f, i) => (
                                 <div
-                                    key={index}
-                                    draggable
-                                    onDragStart={(e) => e.dataTransfer.setData('index', index)}
+                                    key={f.id || i}
                                     className="media-item"
+                                    draggable
+                                    onDragStart={e => handleLibraryDragStart(e, i)}
+                                    title={`Drag to timeline · ${f.name}`}
                                 >
-                                    {file.name}
+                                    <span className="ae-lib-icon">♪</span>
+                                    <span className="ae-lib-name">{f.name}</span>
+                                    {f.sourceDuration > 0 && (
+                                        <span className="ae-lib-dur">
+                                            {fmtTime(f.sourceDuration)}
+                                        </span>
+                                    )}
                                 </div>
                             ))}
                         </div>
                     </div>
 
+                    {/* ── Editor area ────────────────────────────────────── */}
                     <div className="editor-area">
-                        <div className="audio-player-controls">
-                            <button className="play-btn" onClick={togglePlay}>
-                                {isPlaying ? 'Pause' : 'Play'}
-                            </button>
-                            <button
-                                className="cut-btn"
-                                onClick={handleSplitSelectedTrack}
-                                disabled={selectedTrackIndex === null}
-                            >
-                                ✂️ Split
-                            </button>
-                        </div>
 
-                        <div className="audio-time-ruler">
+                        {/* Ruler */}
+                        <div className="ae-ruler">
                             <div
-                                className="audio-ruler-inner"
+                                className="ae-ruler-inner"
                                 style={{
-                                    width: `${timelineWidth}px`,
+                                    width:     timelineContentWidth,
                                     transform: `translateX(-${scrollLeft}px)`,
                                 }}
                             >
-                                {Array.from({ length: Math.ceil(sessionLength) + 1 }, (_, i) => {
-                                    if (i % 5 !== 0) return null;
-                                    return (
-                                        <div
-                                            key={i}
-                                            className="audio-time-tick"
-                                            style={{ left: `${pxFromTime(i)}px` }}
-                                        >
-                                            {Math.floor(i / 60)}:{String(i % 60).padStart(2, '0')}
-                                        </div>
-                                    );
-                                })}
+                                {rulerTicks.map(s => (
+                                    <div
+                                        key={s}
+                                        className="ae-tick"
+                                        style={{ left: GUTTER_W + secToPx(s) }}
+                                    >
+                                        {Math.floor(s / 60)}:{String(s % 60).padStart(2, '0')}
+                                    </div>
+                                ))}
                             </div>
                         </div>
 
+                        {/* Scrollable timeline */}
                         <div
-                            className="audio-timeline"
                             ref={timelineRef}
-                            onClick={handleSeek}
-                            onDrop={handleDrop}
-                            onDragOver={handleDragOverTimeline}
+                            className="ae-timeline"
+                            onClick={handleTimelineClick}
+                            onDrop={handleTimelineDrop}
+                            onDragOver={handleTimelineDragOver}
+                            onDragLeave={() => setGhost(null)}
                         >
-                            <div className="audio-layers" style={{ width: `${timelineWidth}px` }}>
+                            <div
+                                className="ae-layers"
+                                style={{
+                                    width:     timelineContentWidth,
+                                    minHeight: timelineLayersHeight,
+                                }}
+                            >
+                                {/* Playhead */}
                                 <div
-                                    className="audio-playhead"
-                                    style={{ left: `${pxFromTime(currentTime)}px` }}
+                                    className="ae-playhead"
+                                    style={{ left: GUTTER_W + secToPx(currentTime) }}
                                 />
 
-                                {ghostClip && (
+                                {/* Row backgrounds + labels */}
+                                {tracks.map((_, i) => (
                                     <div
-                                        className="audio-track ghost"
+                                        key={`row-${i}`}
+                                        className={`ae-layer-row${selectedIndex === i ? ' ae-layer-row--selected' : ''}`}
+                                        style={{ top: i * ROW_H, height: TRACK_H }}
+                                    >
+                                        <span className="ae-layer-label">
+                                            {i + 1}
+                                        </span>
+                                    </div>
+                                ))}
+
+                                {/* Ghost preview */}
+                                {ghost && (
+                                    <div
+                                        className="ae-clip ae-clip--ghost"
                                         style={{
-                                            left: `${pxFromTime(ghostClip.startTime)}px`,
-                                            width: `${pxFromTime(ghostClip.duration)}px`,
+                                            left:   GUTTER_W + secToPx(ghost.startTime),
+                                            width:  Math.max(4, secToPx(ghost.duration)),
+                                            top:    tracks.length * ROW_H + 4,
+                                            height: TRACK_H,
                                         }}
                                     >
-                                        {ghostClip.name}
+                                        <span className="ae-clip-name">{ghost.name}</span>
                                     </div>
                                 )}
 
-                                {tracks.map((track, index) => {
-                                    const left = pxFromTime(track.startTime || 0);
-                                    const width = pxFromTime(track.duration || 0);
-                                    const isSelected = selectedTrackIndex === index;
-
+                                {/* Tracks */}
+                                {tracks.map((track, i) => {
+                                    const left     = GUTTER_W + secToPx(track.startTime);
+                                    const width    = Math.max(4, secToPx(track.duration));
+                                    const selected = selectedIndex === i;
                                     return (
-                                        <div key={index} className="audio-layer-row">
-                                            <span className="audio-layer-label">Layer {index + 1}</span>
+                                        <div
+                                            key={i}
+                                            className={`ae-clip${selected ? ' ae-clip--selected' : ''}`}
+                                            style={{
+                                                left,
+                                                width,
+                                                top:    i * ROW_H + 4,
+                                                height: TRACK_H - 8,
+                                            }}
+                                            onMouseDown={e => handleTrackMouseDown(e, i, 'move')}
+                                            onClick={e => { e.stopPropagation(); setSelectedIndex(selected ? null : i); }}
+                                        >
+                                            <span className="ae-clip-name">{track.name}</span>
+                                            {track.duration > 0 && (
+                                                <span className="ae-clip-dur">{fmtTime(track.duration)}</span>
+                                            )}
 
+                                            {/* Resize handle */}
                                             <div
-                                                draggable
-                                                onDragStart={(e) => handleTrackDragStart(e, index)}
-                                                onDragOver={(e) => e.preventDefault()}
-                                                onDrop={(e) => handleTrackDrop(e, index)}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setSelectedTrackIndex(isSelected ? null : index);
-                                                }}
-                                                className={`audio-track${isSelected ? ' selected' : ''}`}
-                                                style={{
-                                                    left: `${left}px`,
-                                                    width: `${width}px`,
-                                                }}
-                                            >
-                                                <span className="audio-track-name">{track.name}</span>
-                                                <audio
-                                                    ref={(el) => (audioRefs.current[index] = el)}
-                                                    src={track.source}
-                                                    volume={track.volume ?? 1}
-                                                />
-                                            </div>
+                                                className="ae-resize-handle"
+                                                onMouseDown={e => { e.stopPropagation(); handleTrackMouseDown(e, i, 'resize'); }}
+                                            />
+
+                                            {/* Hidden audio element */}
+                                            <audio
+                                                ref={el => { audioRefs.current[i] = el; }}
+                                                src={track.source}
+                                                preload="auto"
+                                            />
                                         </div>
                                     );
                                 })}
                             </div>
                         </div>
+
+                        {tracks.length === 0 && (
+                            <div className="ae-empty-state">
+                                Upload audio files and drag them onto the timeline to start mixing.
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

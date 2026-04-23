@@ -15,10 +15,12 @@ class AudioProject extends Model
         'description',
         'favorited_project',
         'tracks',
+        'media_files',
     ];
 
     protected $casts = [
-        'tracks' => 'array',
+        'tracks'            => 'array',
+        'media_files'       => 'array',
         'favorited_project' => 'boolean',
     ];
 

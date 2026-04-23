@@ -34,11 +34,12 @@ class AudioProjectController extends Controller
         ]);
 
         $project = AudioProject::create([
-            'user_id' => auth()->id(),
-            'name' => $request->name,
+            'user_id'     => auth()->id(),
+            'name'        => $request->name,
             'description' => $request->description,
             'favorited_project' => false,
-            'tracks' => [],
+            'tracks'      => [],
+            'media_files' => [],
         ]);
 
         return redirect()->route('audio.editor', $project);
@@ -58,14 +59,15 @@ class AudioProjectController extends Controller
         $this->authorize('update', $audioProject);
 
         $validated = $request->validate([
-            'name' => 'sometimes|string|max:20',
-            'description' => 'sometimes|nullable|string',
-            'tracks' => 'sometimes|array',
-            'favorited_project' => 'sometimes|boolean',
+            'name'               => 'sometimes|string|max:20',
+            'description'        => 'sometimes|nullable|string',
+            'tracks'             => 'sometimes|array',
+            'media_files'        => 'sometimes|array',
+            'favorited_project'  => 'sometimes|boolean',
         ]);
 
         $payload = [];
-        foreach (['name', 'description', 'tracks', 'favorited_project'] as $field) {
+        foreach (['name', 'description', 'tracks', 'media_files', 'favorited_project'] as $field) {
             if (array_key_exists($field, $validated)) {
                 $payload[$field] = $validated[$field];
             }
@@ -75,7 +77,7 @@ class AudioProjectController extends Controller
             $audioProject->update($payload);
         }
 
-        return back()->with('success', 'Audio project updated successfully!');
+        return back()->with('success', 'Audio project saved.');
     }
 
     public function destroy(AudioProject $audioProject)
@@ -92,24 +94,47 @@ class AudioProjectController extends Controller
         $this->authorize('update', $audioProject);
 
         $request->validate([
-            'file' => 'required|file|mimetypes:audio/mpeg,audio/wav,audio/ogg,audio/flac,audio/aac,audio/mp4,audio/x-m4a',
-            'name' => 'sometimes|string|max:200',
+            'file' => [
+                'required',
+                'file',
+                // Accept by extension — browser MIME types vary wildly for audio
+                'mimes:mp3,wav,ogg,flac,aac,m4a,webm,opus',
+                // 300 MB in kilobytes
+                'max:307200',
+            ],
+            'name' => 'sometimes|string|max:255',
         ]);
 
         $file = $request->file('file');
-        $dir = 'audio/projects/' . $audioProject->id;
+        $dir  = 'audio/projects/' . $audioProject->id;
 
-        $basename = Str::slug(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME));
-        $ext = strtolower($file->getClientOriginalExtension());
-        $storedName = uniqid() . '_' . ($basename ?: 'track') . '.' . $ext;
+        $basename    = Str::slug(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME));
+        $ext         = strtolower($file->getClientOriginalExtension());
+        $storedName  = uniqid() . '_' . ($basename ?: 'track') . '.' . $ext;
 
         $path = $file->storeAs($dir, $storedName, 'public');
 
+        $mediaEntry = [
+            'id'          => Str::uuid()->toString(),
+            'name'        => $request->input('name', $file->getClientOriginalName()),
+            'storageKey'  => $path,
+            'url'         => Storage::disk('public')->url($path),
+            'type'        => 'audio',
+            'sourceDuration' => 0,
+            'duration'    => 0,
+        ];
+
+        // Persist the uploaded file into the project's media_files array
+        $existing   = is_array($audioProject->media_files) ? $audioProject->media_files : [];
+        $existing[] = $mediaEntry;
+        $audioProject->update(['media_files' => $existing]);
+
         return response()->json([
-            'storageKey' => $path,
-            'url' => Storage::disk('public')->url($path),
-            'name' => $request->input('name', $file->getClientOriginalName()),
-            'type' => 'audio',
+            'id'          => $mediaEntry['id'],
+            'name'        => $mediaEntry['name'],
+            'storageKey'  => $path,
+            'url'         => $mediaEntry['url'],
+            'type'        => 'audio',
         ]);
     }
 }
