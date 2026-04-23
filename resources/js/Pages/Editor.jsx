@@ -180,6 +180,22 @@ export default function Editor({ project }) {
   const [musicTracks, setMusicTracks] = useState(() => rehydrateItems(project.music_tracks || []));
   const [effects, setEffects] = useState(() => (Array.isArray(project.effects) && project.effects.length ? project.effects : []));
   const [textOverlays, setTextOverlays] = useState(() => (Array.isArray(project.text_overlays) ? project.text_overlays : []));
+  // Returns a start time that doesn't overlap any other item in the same lane.
+  const noOverlapStart = (newStart, duration, items, selfIndex, maxTime) => {
+    let s = Math.max(0, Math.min(newStart, Math.max(0, maxTime - duration)));
+    const others = items
+      .map((item, i) => ({ i, s: item.startTime || 0, e: (item.startTime || 0) + (item.duration || 0) }))
+      .filter(({ i }) => i !== selfIndex)
+      .sort((a, b) => a.s - b.s);
+    for (const o of others) {
+      if (s < o.e && s + duration > o.s) {
+        s = newStart < o.s ? o.s - duration : o.e;
+        s = Math.max(0, Math.min(s, Math.max(0, maxTime - duration)));
+      }
+    }
+    return s;
+  };
+
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
 
   const [transitions, setTransitions] = useState(initialTransitions);
@@ -1285,14 +1301,26 @@ export default function Editor({ project }) {
         const arr = [...prev];
         const fx = { ...arr[resizeEffectState.index] };
         const deltaTime = (e.clientX - resizeEffectState.startX) / resizeEffectState.pxPerSec;
+        const fxStart = fx.startTime || 0;
+        const origEnd = (resizeEffectState.origStartTime || 0) + (resizeEffectState.origDuration || 0);
         if (resizeEffectState.edge === 'end') {
-          let newDuration = (resizeEffectState.origDuration || 0) + deltaTime;
-          fx.duration = Math.max(0, Math.min(newDuration, Math.max(0, totalDuration - (fx.startTime || 0))));
+          let maxDur = Math.max(0, totalDuration - fxStart);
+          for (let i = 0; i < prev.length; i++) {
+            if (i === resizeEffectState.index) continue;
+            const o = prev[i]; const os = o.startTime || 0;
+            if (os > fxStart) maxDur = Math.min(maxDur, os - fxStart);
+          }
+          fx.duration = Math.max(0, Math.min((resizeEffectState.origDuration || 0) + deltaTime, maxDur));
         } else if (resizeEffectState.edge === 'start') {
-          const newStart = (resizeEffectState.origStartTime || 0) + deltaTime;
-          const maxStart = (resizeEffectState.origStartTime || 0) + (resizeEffectState.origDuration || 0) - 0.01;
-          fx.startTime = Math.max(0, Math.min(newStart, Math.min(maxStart, totalDuration)));
-          fx.duration = Math.max(0, Math.min((resizeEffectState.origStartTime || 0) + (resizeEffectState.origDuration || 0) - fx.startTime, totalDuration - fx.startTime));
+          let minStart = 0;
+          for (let i = 0; i < prev.length; i++) {
+            if (i === resizeEffectState.index) continue;
+            const o = prev[i]; const oe = (o.startTime || 0) + (o.duration || 0);
+            if (oe <= origEnd) minStart = Math.max(minStart, oe);
+          }
+          const newStart = Math.max(minStart, Math.min((resizeEffectState.origStartTime || 0) + deltaTime, origEnd - 0.01));
+          fx.startTime = newStart;
+          fx.duration = Math.max(0, origEnd - newStart);
         }
         arr[resizeEffectState.index] = fx;
         return arr;
@@ -1318,9 +1346,8 @@ export default function Editor({ project }) {
         const arr = [...prev];
         const fx = { ...arr[dragEffectState.index] };
         const deltaTime = (e.clientX - dragEffectState.startX) / dragEffectState.pxPerSec;
-        let ns = (dragEffectState.origStart || 0) + deltaTime;
-        ns = Math.max(0, Math.min(ns, Math.max(0, totalDuration - (dragEffectState.duration || 0))));
-        fx.startTime = ns;
+        const raw = (dragEffectState.origStart || 0) + deltaTime;
+        fx.startTime = noOverlapStart(raw, dragEffectState.duration || 0, prev, dragEffectState.index, totalDuration);
         arr[dragEffectState.index] = fx;
         return arr;
       });
@@ -1341,15 +1368,26 @@ export default function Editor({ project }) {
         const arr = [...prev];
         const tx = { ...arr[resizeTextState.index] };
         const deltaTime = (e.clientX - resizeTextState.startX) / resizeTextState.pxPerSec;
+        const txStart = tx.startTime || 0;
+        const origEnd = (resizeTextState.origStartTime || 0) + (resizeTextState.origDuration || 0);
         if (resizeTextState.edge === 'end') {
-          let nd = (resizeTextState.origDuration || 0) + deltaTime;
-          nd = Math.max(0.1, Math.min(nd, Math.max(0, totalDuration - (tx.startTime || 0))));
-          tx.duration = nd;
+          let maxDur = Math.max(0, totalDuration - txStart);
+          for (let i = 0; i < prev.length; i++) {
+            if (i === resizeTextState.index) continue;
+            const o = prev[i]; const os = o.startTime || 0;
+            if (os > txStart) maxDur = Math.min(maxDur, os - txStart);
+          }
+          tx.duration = Math.max(0.1, Math.min((resizeTextState.origDuration || 0) + deltaTime, maxDur));
         } else if (resizeTextState.edge === 'start') {
-          let ns = (resizeTextState.origStartTime || 0) + deltaTime;
-          ns = Math.max(0, Math.min(ns, (resizeTextState.origStartTime || 0) + (resizeTextState.origDuration || 0) - 0.01, totalDuration));
+          let minStart = 0;
+          for (let i = 0; i < prev.length; i++) {
+            if (i === resizeTextState.index) continue;
+            const o = prev[i]; const oe = (o.startTime || 0) + (o.duration || 0);
+            if (oe <= origEnd) minStart = Math.max(minStart, oe);
+          }
+          const ns = Math.max(minStart, Math.min((resizeTextState.origStartTime || 0) + deltaTime, origEnd - 0.01, totalDuration));
           tx.startTime = ns;
-          tx.duration = Math.max(0.1, (resizeTextState.origStartTime || 0) + (resizeTextState.origDuration || 0) - ns);
+          tx.duration = Math.max(0.1, origEnd - ns);
         }
         arr[resizeTextState.index] = tx;
         return arr;
@@ -1371,9 +1409,8 @@ export default function Editor({ project }) {
         const arr = [...prev];
         const tx = { ...arr[dragTextState.index] };
         const deltaTime = (e.clientX - dragTextState.startX) / dragTextState.pxPerSec;
-        let ns = (dragTextState.origStart || 0) + deltaTime;
-        ns = Math.max(0, Math.min(ns, Math.max(0, totalDuration - (dragTextState.duration || 0))));
-        tx.startTime = ns;
+        const raw = (dragTextState.origStart || 0) + deltaTime;
+        tx.startTime = noOverlapStart(raw, dragTextState.duration || 0, prev, dragTextState.index, totalDuration);
         arr[dragTextState.index] = tx;
         return arr;
       });
@@ -2102,6 +2139,31 @@ export default function Editor({ project }) {
                 />
               </div>
             )}
+            {selectedMusicIndex !== null && musicTracks[selectedMusicIndex] && (
+              <div className="music-toolbar" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ color: '#9ca3af', fontSize: 12 }}>Volume</span>
+                <input
+                  type="range"
+                  min="0" max="100"
+                  value={Math.round((musicTracks[selectedMusicIndex].volume ?? 1.0) * 100)}
+                  onChange={(e) => {
+                    const v = Math.max(0, Math.min(100, parseInt(e.target.value || '100')));
+                    setMusicTracks((prev) => { const arr = [...prev]; arr[selectedMusicIndex] = { ...arr[selectedMusicIndex], volume: v / 100 }; return arr; });
+                  }}
+                />
+                <input
+                  type="number"
+                  min="0" max="100"
+                  value={Math.round((musicTracks[selectedMusicIndex].volume ?? 1.0) * 100)}
+                  onChange={(e) => {
+                    const raw = parseInt(e.target.value || '100', 10);
+                    const v = isNaN(raw) ? 100 : Math.max(0, Math.min(100, raw));
+                    setMusicTracks((prev) => { const arr = [...prev]; arr[selectedMusicIndex] = { ...arr[selectedMusicIndex], volume: v / 100 }; return arr; });
+                  }}
+                  style={{ width: 64, background: '#222', border: '1px solid #333', color: '#FCFFFC', borderRadius: 6, padding: '6px 8px' }}
+                />
+              </div>
+            )}
                         {selectedTransition && selectedTransitionContext && (
               <div className="transition-toolbar" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ color: '#9ca3af', fontSize: 12 }}>Transition</span>
@@ -2422,17 +2484,6 @@ export default function Editor({ project }) {
                           <>
                             <div className="clip-handle left" onMouseDown={(e) => startEffectResize(e, index, 'start')} />
                             <div className="clip-handle right" onMouseDown={(e) => startEffectResize(e, index, 'end')} />
-                            <input
-                              type="range"
-                              min="0" max="1" step="0.05"
-                              value={fx.intensity ?? 0.5}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value);
-                                setEffects((prev) => { const arr = [...prev]; arr[index] = { ...arr[index], intensity: val }; return arr; });
-                              }}
-                              className="effect-slider"
-                              onClick={(e) => e.stopPropagation()}
-                            />
                           </>
                         )}
                       </div>

@@ -835,7 +835,7 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
     {
         $rawTransitions = $project->transitions ?? [];
         if (!empty($rawTransitions)) {
-            Log::debug('[Export] buildTransitionMap raw sample', [
+            Log::info('[Export] buildTransitionMap raw sample', [
                 'count' => count($rawTransitions),
                 'first' => $rawTransitions[0] ?? null,
             ]);
@@ -1001,36 +1001,50 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
                     default => 'fade',
                 };
 
-                $args = [
-                    $this->ffmpegBinary(),
-                    '-y',
-                    '-i', $currentPath,
-                    '-i', $next['path'],
-                    '-filter_complex',
-                    sprintf(
-                        '[0:v][1:v]xfade=transition=%s:duration=%.3f:offset=%.3f[v];[0:a][1:a]acrossfade=d=%.3f[a]',
-                        $xfadeType,
-                        $transitionDuration,
-                        $offset,
-                        $transitionDuration
-                    ),
-                    '-map', '[v]',
-                    '-map', '[a]',
-                    '-c:v', 'libx264',
-                    '-preset', 'veryfast',
-                    '-crf', '20',
-                    '-pix_fmt', 'yuv420p',
-                    '-c:a', 'aac',
-                    '-b:a', '192k',
-                    '-r', '30',
-                    '-video_track_timescale', '15360',
-                    '-movflags', '+faststart',
-                    $outputPath,
+                Log::info('[Export] Applying transition', [
+                    'type' => $xfadeType,
+                    'duration' => $transitionDuration,
+                    'offset' => $offset,
+                    'clip_pair' => $i - 1 . '→' . $i,
+                ]);
+
+                // Try xfade + acrossfade first; fall back to xfade + audio concat if acrossfade fails.
+                $filterFull = sprintf(
+                    '[0:v][1:v]xfade=transition=%s:duration=%.3f:offset=%.3f[v];[0:a][1:a]acrossfade=d=%.3f[a]',
+                    $xfadeType, $transitionDuration, $offset, $transitionDuration
+                );
+                $filterFallback = sprintf(
+                    '[0:v][1:v]xfade=transition=%s:duration=%.3f:offset=%.3f[v];[0:a][1:a]concat=n=2:v=0:a=1[a]',
+                    $xfadeType, $transitionDuration, $offset
+                );
+
+                $encodeArgs = [
+                    '-map', '[v]', '-map', '[a]',
+                    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
+                    '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k',
+                    '-r', '30', '-video_track_timescale', '15360',
+                    '-movflags', '+faststart', $outputPath,
                 ];
 
+                $args = array_merge(
+                    [$this->ffmpegBinary(), '-y', '-i', $currentPath, '-i', $next['path'],
+                     '-filter_complex', $filterFull],
+                    $encodeArgs
+                );
+
                 if (!$this->runProcess($args)) {
+                    Log::warning('[Export] xfade+acrossfade failed; retrying with audio concat.', ['pair' => $i]);
                     @unlink($outputPath);
-                    throw new \RuntimeException('Unable to combine clips with transition.');
+                    $outputPath = $directory . DIRECTORY_SEPARATOR . 'merged_' . $i . '_' . Str::random(8) . '.mp4';
+                    $args = array_merge(
+                        [$this->ffmpegBinary(), '-y', '-i', $currentPath, '-i', $next['path'],
+                         '-filter_complex', $filterFallback],
+                        $encodeArgs
+                    );
+                    if (!$this->runProcess($args)) {
+                        @unlink($outputPath);
+                        throw new \RuntimeException('Unable to combine clips with transition.');
+                    }
                 }
                 $currentDuration = $currentDuration + (float) $next['duration'] - $transitionDuration;
             } else {
@@ -1270,6 +1284,7 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
                 'duration' => $duration,
                 'start_offset' => $startOffset,
                 'start_time' => $startTime,
+                'volume' => max(0.0, min(2.0, (float) Arr::get($track, 'volume', 1.0))),
             ];
         }
 
@@ -1634,10 +1649,11 @@ if ($needsMusic || $hasBaseAudio) {
         $delayMs   = (int) round($startTime * 1000);
         $label     = 'a_track_' . $index;
 
+        $volume = max(0.0, min(2.0, (float) ($track['volume'] ?? 1.0)));
         $audioFilters[] = sprintf(
             '[%d:a]aresample=async=1:sample_rate=48000,atrim=start=%0.3f:end=%0.3f,' .
-            'asetpts=PTS-STARTPTS,adelay=%d|%d,apad[%s]',
-            $inputIndex, $startOffset, $endOffset, $delayMs, $delayMs, $label
+            'asetpts=PTS-STARTPTS,volume=%0.3f,adelay=%d|%d,apad[%s]',
+            $inputIndex, $startOffset, $endOffset, $volume, $delayMs, $delayMs, $label
         );
         $audioLabels[] = $label;
     }
