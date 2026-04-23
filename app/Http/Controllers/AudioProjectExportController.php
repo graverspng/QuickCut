@@ -49,7 +49,14 @@ class AudioProjectExportController extends ProjectExportController
     // Queue-based export (new)
     // -------------------------------------------------------------------------
 
-    public function queue(Request $request, AudioProject $audioProject)
+    // NOTE: kept as a separate method name so it doesn't accidentally override
+    // the ProjectExportController::queue(...) signature. That parent method
+    // is for video projects and has a different type-hint which caused a
+    // fatal error during class loading when this controller attempted to
+    // override it with a different parameter type. Keeping a distinct
+    // method name is a minimal, safe change that resolves the boot-time
+    // fatal error while preserving behavior and the named route.
+    public function queueAudio(Request $request, AudioProject $audioProject)
     {
         $this->authorize('view', $audioProject);
 
@@ -77,7 +84,7 @@ class AudioProjectExportController extends ProjectExportController
         ]);
     }
 
-    public function jobStatus(Request $request, AudioProject $audioProject, AudioExportRender $audioRender)
+    public function jobStatusAudio(Request $request, AudioProject $audioProject, AudioExportRender $audioRender)
     {
         $this->authorize('view', $audioProject);
 
@@ -99,7 +106,7 @@ class AudioProjectExportController extends ProjectExportController
         ]);
     }
 
-    public function jobDownload(Request $request, AudioProject $audioProject, AudioExportRender $audioRender)
+    public function jobDownloadAudio(Request $request, AudioProject $audioProject, AudioExportRender $audioRender)
     {
         $this->authorize('view', $audioProject);
 

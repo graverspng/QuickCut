@@ -38,9 +38,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/audio-editor/{audioProject}', [AudioProjectController::class, 'show'])->name('audio.editor');
     Route::get('/audio-projects/{audioProject}/export', [AudioProjectExportController::class, 'showExport'])->name('audio.projects.export');
     Route::get('/audio-projects/{audioProject}/export/download', [AudioProjectExportController::class, 'downloadExport'])->name('audio.projects.export.download');
-    Route::post('/audio-projects/{audioProject}/export/queue', [AudioProjectExportController::class, 'queue'])->name('audio.projects.export.queue');
-    Route::get('/audio-projects/{audioProject}/export/renders/{audioRender}', [AudioProjectExportController::class, 'jobStatus'])->name('audio.projects.export.render.status');
-    Route::get('/audio-projects/{audioProject}/export/renders/{audioRender}/download', [AudioProjectExportController::class, 'jobDownload'])->name('audio.projects.export.render.download');
+    Route::post('/audio-projects/{audioProject}/export/queue', [AudioProjectExportController::class, 'queueAudio'])->name('audio.projects.export.queue');
+    Route::get('/audio-projects/{audioProject}/export/renders/{audioRender}', [AudioProjectExportController::class, 'jobStatusAudio'])->name('audio.projects.export.render.status');
+    Route::get('/audio-projects/{audioProject}/export/renders/{audioRender}/download', [AudioProjectExportController::class, 'jobDownloadAudio'])->name('audio.projects.export.render.download');
     Route::post('/audio-projects/{audioProject}/media', [AudioProjectController::class, 'uploadMedia'])->name('audio.projects.media.upload');
 
     // -.- User Profile -.-
