@@ -1,237 +1,343 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head } from '@inertiajs/react';
 import '@/../css/formatchanger.css';
 
-const TARGET_FORMATS = {
-  video: { value: 'mp4', label: 'MP4 (H.264)' },
-  audio: { value: 'mp3', label: 'MP3 (Compressed)' },
-};
+const MAX_MB = 500;
 
-export default function FormatChanger() {
-  const [category, setCategory] = useState(null);
-  const [targetFormat, setTargetFormat] = useState('');
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const [error, setError] = useState('');
-  const [progress, setProgress] = useState(0);
-  const [toastMsg, setToastMsg] = useState('');
-  const [previewUrl, setPreviewUrl] = useState(null);
+const AUDIO_EXTS = new Set(['mp3','wav','ogg','flac','aac','m4a','webm','opus','wma','aiff','alac']);
+const VIDEO_EXTS = new Set(['mp4','mov','avi','mkv','webm','flv','wmv','m4v','ts','3gp','mpeg','mpg']);
 
-  const MAX_MB = 500;
+const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content ?? '';
 
-  const detectCategory = (file) => {
-    if (!file) return null;
+const detectCategory = (file) => {
     if (file.type.startsWith('video/')) return 'video';
     if (file.type.startsWith('audio/')) return 'audio';
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+    if (VIDEO_EXTS.has(ext)) return 'video';
+    if (AUDIO_EXTS.has(ext)) return 'audio';
     return null;
-  };
+};
 
-  const clearFile = () => {
-    setSelectedFile(null);
-    setCategory(null);
-    setTargetFormat('');
-    setPreviewUrl((u) => {
-      if (u) URL.revokeObjectURL(u);
-      return null;
-    });
-    setError('');
-    setProgress(0);
-  };
+const targetLabel = (cat) => cat === 'video' ? 'MP4 (H.264 + AAC)' : 'MP3 (192k)';
+const targetExt   = (cat) => cat === 'video' ? 'mp4' : 'mp3';
 
-  const handleFileSelect = (file) => {
-    if (!file) return;
-    setError('');
-    if (file.size > MAX_MB * 1024 * 1024) {
-      setError(`File exceeds ${MAX_MB}MB limit`);
-      return;
-    }
-    const detected = detectCategory(file);
-    if (!detected) {
-      setError('Unsupported file type. Please choose an audio or video file.');
-      return;
-    }
-    setCategory(detected);
-    setTargetFormat(TARGET_FORMATS[detected].value);
-    setSelectedFile(file);
-    setPreviewUrl((u) => {
-      if (u) URL.revokeObjectURL(u);
-      return URL.createObjectURL(file);
-    });
-  };
+export default function FormatChanger() {
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [category,     setCategory]     = useState(null);
+    const [error,        setError]        = useState('');
+    const [status,       setStatus]       = useState(null); // null | 'uploading' | 'converting' | 'done'
+    const [uploadPct,    setUploadPct]    = useState(0);
+    const [history,      setHistory]      = useState([]);
+    const [isDragOver,   setIsDragOver]   = useState(false);
+    const [toast,        setToast]        = useState('');
+    const xhrRef = useRef(null);
 
-  const handleInputChange = (e) => {
-    const file = e.target.files?.[0];
-    handleFileSelect(file);
-  };
+    const isActive = status === 'uploading' || status === 'converting';
 
-  const handleConvert = (e) => {
-    e.preventDefault();
-    if (!selectedFile || !targetFormat || loading || error) return;
-    setLoading(true);
-    setProgress(0);
-    const start = Date.now();
-    const tick = () => {
-      const elapsed = Date.now() - start;
-      const pct = Math.min(99, Math.round((elapsed / 1800) * 100));
-      setProgress(pct);
-      if (pct < 99) {
-        req = requestAnimationFrame(tick);
-      }
+    const clearFile = () => {
+        setSelectedFile(null);
+        setCategory(null);
+        setError('');
+        setStatus(null);
+        setUploadPct(0);
     };
-    let req = requestAnimationFrame(tick);
-    setTimeout(() => {
-      cancelAnimationFrame(req);
-      setProgress(100);
-      const originalName = selectedFile.name;
-      const convertedName = originalName.includes('.')
-        ? `${originalName.split('.').slice(0, -1).join('.')}.${targetFormat}`
-        : `${originalName}.${targetFormat}`;
-      const formatMeta = TARGET_FORMATS[category];
-      const blob = new Blob([`Converted content of ${originalName}`], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      setHistory((prev) => [
-        {
-          id: Date.now(),
-          original: originalName,
-          converted: convertedName,
-          format: targetFormat,
-          formatLabel: formatMeta?.label ?? targetFormat.toUpperCase(),
-          category,
-          url,
-        },
-        ...prev
-      ].slice(0, 5));
-      setToastMsg('Conversion complete');
-      clearFile();
-      setLoading(false);
-    }, 2000);
-  };
 
-  useEffect(() => {
-    if (!toastMsg) return;
-    const t = setTimeout(() => setToastMsg(''), 3200);
-    return () => clearTimeout(t);
-  }, [toastMsg]);
-
-  useEffect(() => {
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    const handleFileSelect = (file) => {
+        if (!file) return;
+        setError('');
+        setStatus(null);
+        if (file.size > MAX_MB * 1024 * 1024) {
+            setError(`File exceeds the ${MAX_MB} MB limit.`);
+            return;
+        }
+        const cat = detectCategory(file);
+        if (!cat) {
+            setError('Unsupported file type. Please choose an audio or video file.');
+            return;
+        }
+        setSelectedFile(file);
+        setCategory(cat);
+        setUploadPct(0);
     };
-  }, [previewUrl]);
 
-  const fileSizeMB = selectedFile ? (selectedFile.size / 1024 / 1024).toFixed(2) : null;
+    const handleCancel = () => {
+        xhrRef.current?.abort();
+        setStatus(null);
+        setUploadPct(0);
+    };
 
-  return (
-    <AuthenticatedLayout>
-      <Head title="Convert Media" />
-      {loading && (
-        <div className="loader-overlay" aria-live="polite">
-          <div className="loader" />
-        </div>
-      )}
-      <div className="formatchanger-page">
-        <div className="formatchanger-wrapper">
-          <div className="formatchanger-title fade-in-up">
-            <div className="fc-title-wrap">
-              <span className="fc-title-icon" aria-hidden="true">
-                <svg width="18" height="18" viewBox="0 0 24 24"><path d="M6 4h7l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" fill="rgba(255,255,255,0.2)"/></svg>
-              </span>
-              <h2>Convert Your Media</h2>
-            </div>
-            <p>Drop your file, QuickCut will auto-detect the type and let you choose an output format.</p>
-          </div>
-          <div className="fc-divider" />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="fc-card">
-              <form onSubmit={handleConvert} className="space-y-6" noValidate>
-                <div
-                  className={`fc-upload ${isDragging ? 'drag-active' : ''}`}
-                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                  onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setIsDragging(false);
-                    if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFileSelect(e.dataTransfer.files[0]);
-                  }}
-                  aria-describedby="upload-hint"
-                >
-                  <div className="fc-upload-inner">
-                    <div className="fc-upload-icon" aria-hidden="true">
-                      <svg width="28" height="28" viewBox="0 0 24 24"><path d="M12 16V4m0 0l-4 4m4-4l4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="url(#gup)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/><defs><linearGradient id="gup" x1="0" y1="0" x2="24" y2="0"><stop stopColor="#248232"/><stop offset="1" stopColor="#2BA84A"/></linearGradient></defs></svg>
-                    </div>
-                    <input
-                      id="format-changer-input"
-                      type="file"
-                      onChange={handleInputChange}
-                      className="hidden"
-                      accept="video/*,audio/*"
-                    />
-                    <label htmlFor="format-changer-input" className="fc-browse">Click to choose a file</label>
-                    <p id="upload-hint" className="fc-upload-sub">or drag & drop it here</p>
-                    {selectedFile ? (
-                      <div className="fc-selected">
-                        <div className="fc-selected-row">
-                          <div className="fc-badge">{category}</div>
-                          <button type="button" className="fc-clear-btn" onClick={clearFile}>Clear</button>
+    const handleConvert = (e) => {
+        e.preventDefault();
+        if (!selectedFile || !category || isActive) return;
+
+        const cat         = category;
+        const ext         = targetExt(cat);
+        const base        = selectedFile.name.includes('.')
+            ? selectedFile.name.split('.').slice(0, -1).join('.')
+            : selectedFile.name;
+        const downloadName = base + '.' + ext;
+
+        const form = new FormData();
+        form.append('file',   selectedFile);
+        form.append('target', ext);
+
+        const xhr = new XMLHttpRequest();
+        xhrRef.current = xhr;
+        xhr.responseType = 'blob';
+
+        xhr.upload.onprogress = (ev) => {
+            if (ev.lengthComputable) {
+                setUploadPct(Math.round((ev.loaded / ev.total) * 100));
+            }
+        };
+
+        xhr.upload.onload = () => {
+            setUploadPct(100);
+            setStatus('converting');
+        };
+
+        xhr.onload = () => {
+            if (xhr.status === 200) {
+                // Trigger browser download from the blob response
+                const blobUrl = URL.createObjectURL(xhr.response);
+                const a = document.createElement('a');
+                a.href     = blobUrl;
+                a.download = downloadName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+
+                setHistory(prev => [{
+                    id:        Date.now(),
+                    original:  selectedFile.name,
+                    converted: downloadName,
+                    category:  cat,
+                    ext,
+                }].concat(prev).slice(0, 8));
+
+                setStatus('done');
+                setToast('Conversion complete — download started');
+            } else {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    try {
+                        const data = JSON.parse(reader.result);
+                        setError(data.message || 'Conversion failed.');
+                    } catch {
+                        setError('Conversion failed. Please try again.');
+                    }
+                    setStatus(null);
+                };
+                reader.readAsText(xhr.response);
+            }
+        };
+
+        xhr.onerror = () => {
+            setError('Network error. Please check your connection and try again.');
+            setStatus(null);
+        };
+
+        xhr.onabort = () => {
+            setStatus(null);
+        };
+
+        xhr.open('POST', route('format.changer.convert'));
+        xhr.setRequestHeader('X-CSRF-TOKEN',     csrf());
+        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+
+        setError('');
+        setStatus('uploading');
+        setUploadPct(0);
+        xhr.send(form);
+    };
+
+    useEffect(() => {
+        if (!toast) return;
+        const t = setTimeout(() => setToast(''), 3500);
+        return () => clearTimeout(t);
+    }, [toast]);
+
+    const fileSizeMB = selectedFile ? (selectedFile.size / 1024 / 1024).toFixed(1) : null;
+
+    return (
+        <AuthenticatedLayout>
+            <Head title="Convert Media" />
+            <div className="formatchanger-page">
+                <div className="formatchanger-wrapper">
+
+                    <div className="formatchanger-title fade-in-up">
+                        <div className="fc-title-wrap">
+                            <span className="fc-title-icon" aria-hidden="true">
+                                <svg width="18" height="18" viewBox="0 0 24 24">
+                                    <path d="M6 4h7l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" fill="rgba(255,255,255,0.2)"/>
+                                </svg>
+                            </span>
+                            <h2>Convert Your Media</h2>
                         </div>
-                        <p className="fc-file-name">{selectedFile.name}</p>
-                        <div className="fc-meta-grid">
-                          <span>{fileSizeMB} MB</span>
-                          <span>{selectedFile.type || 'Unknown type'}</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="fc-empty-hint">No file selected yet.</p>
-                    )}
-                    {!!error && <p className="fc-error">{error}</p>}
-                  </div>
-                </div>
-                {category && (
-                  <div className="fc-output-format">
-                    <span className="fc-label-text">Target format</span>
-                    <div className="fc-output-chip">{TARGET_FORMATS[category].label}</div>
-                  </div>
-                )}
-                {loading && (
-                  <div className="fc-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} aria-live="polite">
-                    <span style={{ width: `${progress}%` }} />
-                  </div>
-                )}
-                <div className="fc-actions">
-                  <p className="fc-tip">Tip: keep video exports under 500MB.</p>
-                  <button type="submit" className="fc-button" disabled={!selectedFile || !targetFormat || !!error || loading} aria-disabled={!selectedFile || !targetFormat || !!error || loading}>
-                    {loading ? 'Converting…' : 'Convert file'}
-                  </button>
-                </div>
-              </form>
-            </div>
-            <div className="fc-card">
-              <h3 className="fc-card-title">Recent Conversions</h3>
-              <ul className="fc-history mt-4 space-y-3 text-sm">
-                {history.length === 0 && <li className="fc-history-empty">No conversions yet.</li>}
-                {history.map((item) => (
-                  <li key={item.id} className="fc-history-item">
-                    <div className="fc-history-main">
-                      <p className="fc-history-name">{item.converted}</p>
-                      <p className="fc-history-sub">from {item.original} · {item.category.toUpperCase()} → {item.formatLabel}</p>
+                        <p>Drop a file — QuickCut auto-detects the type and converts it to <strong>MP3</strong> or <strong>MP4</strong>.</p>
                     </div>
-                    <a href={item.url} download={item.converted} className="fc-button fc-button-small">Download</a>
-                  </li>
-                ))}
-              </ul>
+
+                    <div className="fc-divider" />
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+
+                        {/* ── Converter card ── */}
+                        <div className="fc-card">
+                            <form onSubmit={handleConvert} className="space-y-6" noValidate>
+
+                                {/* Drop zone */}
+                                <div
+                                    className={`fc-upload${isDragOver ? ' drag-active' : ''}`}
+                                    onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                                    onDragLeave={(e) => { e.preventDefault(); setIsDragOver(false); }}
+                                    onDrop={(e) => {
+                                        e.preventDefault();
+                                        setIsDragOver(false);
+                                        handleFileSelect(e.dataTransfer.files?.[0]);
+                                    }}
+                                >
+                                    <div className="fc-upload-inner">
+                                        <div className="fc-upload-icon" aria-hidden="true">
+                                            <svg width="28" height="28" viewBox="0 0 24 24">
+                                                <path d="M12 16V4m0 0l-4 4m4-4l4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="url(#gup)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                                                <defs>
+                                                    <linearGradient id="gup" x1="0" y1="0" x2="24" y2="0">
+                                                        <stop stopColor="#248232"/>
+                                                        <stop offset="1" stopColor="#2BA84A"/>
+                                                    </linearGradient>
+                                                </defs>
+                                            </svg>
+                                        </div>
+
+                                        <input
+                                            id="fc-file-input"
+                                            type="file"
+                                            accept="video/*,audio/*"
+                                            className="hidden"
+                                            disabled={isActive}
+                                            onChange={(e) => handleFileSelect(e.target.files?.[0])}
+                                        />
+                                        <label
+                                            htmlFor="fc-file-input"
+                                            className={`fc-browse${isActive ? ' fc-browse--disabled' : ''}`}
+                                        >
+                                            Click to choose a file
+                                        </label>
+                                        <p className="fc-upload-sub">or drag &amp; drop · max {MAX_MB} MB</p>
+
+                                        {selectedFile ? (
+                                            <div className="fc-selected">
+                                                <div className="fc-selected-row">
+                                                    <div className="fc-badge">{category}</div>
+                                                    <button
+                                                        type="button"
+                                                        className="fc-clear-btn"
+                                                        onClick={clearFile}
+                                                        disabled={isActive}
+                                                    >
+                                                        Clear
+                                                    </button>
+                                                </div>
+                                                <p className="fc-file-name">{selectedFile.name}</p>
+                                                <div className="fc-meta-grid">
+                                                    <span>{fileSizeMB} MB</span>
+                                                    {category && (
+                                                        <span className="fc-arrow-label">
+                                                            → {targetLabel(category)}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <p className="fc-empty-hint">No file selected yet.</p>
+                                        )}
+
+                                        {error && <p className="fc-error">{error}</p>}
+                                    </div>
+                                </div>
+
+                                {/* Progress */}
+                                {isActive && (
+                                    <div className="fc-progress-wrap">
+                                        <div className="fc-progress-label">
+                                            {status === 'uploading'
+                                                ? `Uploading… ${uploadPct}%`
+                                                : 'Converting with FFmpeg…'}
+                                        </div>
+                                        <div
+                                            className={`fc-progress${status === 'converting' ? ' fc-progress--indeterminate' : ''}`}
+                                            role="progressbar"
+                                            aria-valuenow={uploadPct}
+                                            aria-valuemin={0}
+                                            aria-valuemax={100}
+                                        >
+                                            <span style={{ width: status === 'converting' ? '100%' : `${uploadPct}%` }} />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {status === 'done' && (
+                                    <div className="fc-done-msg">✓ Download started</div>
+                                )}
+
+                                {/* Action row */}
+                                <div className="fc-actions">
+                                    <p className="fc-tip">Audio → MP3 · Video → MP4</p>
+                                    {isActive ? (
+                                        <button
+                                            type="button"
+                                            className="fc-button fc-button--cancel"
+                                            onClick={handleCancel}
+                                        >
+                                            Cancel
+                                        </button>
+                                    ) : (
+                                        <button
+                                            type="submit"
+                                            className="fc-button"
+                                            disabled={!selectedFile || !!error}
+                                        >
+                                            Convert &amp; Download
+                                        </button>
+                                    )}
+                                </div>
+                            </form>
+                        </div>
+
+                        {/* ── History card ── */}
+                        <div className="fc-card">
+                            <h3 className="fc-card-title">Recent Conversions</h3>
+                            <ul className="fc-history mt-4 space-y-3 text-sm">
+                                {history.length === 0 && (
+                                    <li className="fc-history-empty">No conversions this session.</li>
+                                )}
+                                {history.map((item) => (
+                                    <li key={item.id} className="fc-history-item fc-history-item--log">
+                                        <div className="fc-history-icon">
+                                            {item.category === 'video' ? '🎬' : '🎵'}
+                                        </div>
+                                        <div className="fc-history-main">
+                                            <p className="fc-history-name">{item.converted}</p>
+                                            <p className="fc-history-sub">from {item.original}</p>
+                                        </div>
+                                        <div className="fc-history-badge">{item.ext.toUpperCase()}</div>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+
+                    </div>
+                </div>
             </div>
-          </div>
-        </div>
-      </div>
-      {toastMsg && (
-        <div className="fc-toast" role="status" aria-live="polite">
-          <span className="fc-dot" aria-hidden="true" />
-          <span>{toastMsg}</span>
-        </div>
-      )}
-    </AuthenticatedLayout>
-  );
+
+            {toast && (
+                <div className="fc-toast" role="status" aria-live="polite">
+                    <span className="fc-dot" aria-hidden="true" />
+                    <span>{toast}</span>
+                </div>
+            )}
+        </AuthenticatedLayout>
+    );
 }

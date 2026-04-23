@@ -54,6 +54,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // -.- Format Changer -.-
     Route::get('/format-changer', [FormatChangerController::class, 'index'])->name('format.changer');
+    Route::post('/format-changer/convert', [FormatChangerController::class, 'convert'])->name('format.changer.convert');
 
     // -.- User Reports -.-
     Route::get('/report-issue', [UserReportController::class, 'create'])->name('reports.create');

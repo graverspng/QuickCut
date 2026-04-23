@@ -403,6 +403,75 @@
   box-shadow: 0 0 12px var(--glow);
 }
 
+/* ── Progress ─────────────────────────────────────────────────────────────── */
+.fc-progress-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fc-progress-label {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--green-2);
+}
+
+/* indeterminate (FFmpeg processing) — slow shimmer */
+.fc-progress--indeterminate > span {
+  animation: fc-shimmer 2.2s ease-in-out infinite;
+  background: linear-gradient(90deg, var(--green-1), var(--green-2), var(--green-1));
+  background-size: 200% 100%;
+  transition: none;
+}
+@keyframes fc-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Done message ─────────────────────────────────────────────────────────── */
+.fc-done-msg {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(43,168,74,0.12);
+  border: 1px solid rgba(43,168,74,0.4);
+  color: var(--green-2);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+/* ── Cancel button ────────────────────────────────────────────────────────── */
+.fc-button--cancel {
+  background: rgba(127,29,29,0.45);
+  border: 1px solid rgba(185,28,28,0.5);
+  color: #fca5a5;
+  box-shadow: none;
+}
+.fc-button--cancel:hover {
+  background: rgba(185,28,28,0.5);
+  border-color: rgba(239,68,68,0.6);
+  transform: translateY(-1px);
+  box-shadow: none;
+}
+
+/* ── Misc additions ───────────────────────────────────────────────────────── */
+.fc-browse--disabled { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+
+.fc-arrow-label { color: var(--green-2); font-weight: 700; }
+
+/* History log item (no download link) */
+.fc-history-item--log { align-items: center; gap: 12px; }
+.fc-history-icon { font-size: 1.2rem; flex-shrink: 0; }
+.fc-history-badge {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(36,130,50,0.18);
+  border: 1px solid rgba(43,168,74,0.35);
+  color: var(--green-2);
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+}
+
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes popIn { 0% { opacity: 0; transform: translateY(8px) scale(0.98); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
@@ -411,6 +480,7 @@
   .formatchanger-title,
   .fc-card,
   .fc-toast { animation: none; opacity: 1; transform: none; }
+  .fc-progress--indeterminate > span { animation: none; }
 }
 
 @media (max-width: 768px) {
