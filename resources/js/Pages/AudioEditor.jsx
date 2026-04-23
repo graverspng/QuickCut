@@ -46,9 +46,17 @@ const isAudioFile = (f) => {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 export default function AudioEditor({ project }) {
-    const [tracks, setTracks] = useState(() =>
-        (Array.isArray(project.tracks) ? project.tracks : []).map(normTrack)
-    );
+    const [tracks, setTracks] = useState(() => {
+        // Build a storageKey → URL map from media_files so saved tracks resolve to playable URLs
+        const urlMap = {};
+        (Array.isArray(project.media_files) ? project.media_files : []).forEach(f => {
+            if (f.storageKey && f.url) urlMap[f.storageKey] = f.url;
+        });
+        return (Array.isArray(project.tracks) ? project.tracks : []).map(t => {
+            const resolvedSource = (t.storageKey && urlMap[t.storageKey]) || t.source;
+            return normTrack({ ...t, source: resolvedSource });
+        });
+    });
     const [mediaFiles, setMediaFiles] = useState(() =>
         Array.isArray(project.media_files) ? project.media_files : []
     );
@@ -66,8 +74,11 @@ export default function AudioEditor({ project }) {
 
     const audioRefs       = useRef([]);
     const timelineRef     = useRef(null);
-    // storageKeys uploaded this session but not yet saved — cleaned up on leave without saving
     const freshUploadsRef = useRef([]);
+    // pending drag: set on mousedown, promoted to real drag only after 5px movement
+    const pendingDragRef  = useRef(null);
+    // true while a drag was in progress — suppresses the click event that fires after mouseup
+    const dragMovedRef    = useRef(false);
     const [scrollLeft, setScrollLeft] = useState(0);
 
     // ── Derived ──────────────────────────────────────────────────────────────
@@ -227,21 +238,36 @@ export default function AudioEditor({ project }) {
     // ── Track drag (move / resize / resize-left) ──────────────────────────────
     const handleTrackMouseDown = (e, index, type) => {
         e.stopPropagation();
-        e.preventDefault();
+        // Do NOT call preventDefault — we want the click event to fire for pure clicks
         const track = tracks[index];
-        setSelectedIndex(index);
         let orig;
         if (type === 'resize-left') {
             orig = { startTime: track.startTime, startOffset: track.startOffset, duration: track.duration };
         } else {
             orig = type === 'move' ? track.startTime : track.duration;
         }
-        setDrag({ type, index, startX: e.clientX, orig });
+        dragMovedRef.current = false;
+        pendingDragRef.current = { type, index, startX: e.clientX, startY: e.clientY, orig };
     };
 
     useEffect(() => {
-        if (!drag) return;
         const onMove = (e) => {
+            // Promote pending drag to real drag after 5px threshold
+            if (pendingDragRef.current && !drag) {
+                const dist = Math.hypot(
+                    e.clientX - pendingDragRef.current.startX,
+                    e.clientY - pendingDragRef.current.startY
+                );
+                if (dist > 5) {
+                    const p = pendingDragRef.current;
+                    pendingDragRef.current = null;
+                    dragMovedRef.current = true;
+                    setSelectedIndex(p.index);
+                    setDrag({ type: p.type, index: p.index, startX: p.startX, orig: p.orig });
+                }
+                return;
+            }
+            if (!drag) return;
             const deltaSec = pxToSec(e.clientX - drag.startX);
             setTracks(prev => {
                 const arr = [...prev];
@@ -264,7 +290,10 @@ export default function AudioEditor({ project }) {
                 return arr;
             });
         };
-        const onUp = () => setDrag(null);
+        const onUp = () => {
+            pendingDragRef.current = null;
+            setDrag(null);
+        };
         window.addEventListener('mousemove', onMove);
         window.addEventListener('mouseup', onUp);
         return () => {
@@ -419,10 +448,17 @@ export default function AudioEditor({ project }) {
     const handleSave = () => {
         setSaving(true);
         freshUploadsRef.current = []; // all uploaded files are now intentionally kept
+        // Build URL map so tracks are saved with resolvable URLs, not raw storage paths
+        const urlMap = {};
+        mediaFiles.forEach(f => { if (f.storageKey && f.url) urlMap[f.storageKey] = f.url; });
         const tracksToSave = tracks.map(({ source, storageKey, ...rest }) => {
             const p = { ...rest };
-            if (storageKey) { p.storageKey = storageKey; p.source = storageKey; }
-            else if (typeof source === 'string') { p.source = source; }
+            if (storageKey) {
+                p.storageKey = storageKey;
+                p.source = urlMap[storageKey] || source || storageKey;
+            } else if (typeof source === 'string') {
+                p.source = source;
+            }
             return p;
         });
         router.put(
@@ -682,7 +718,12 @@ export default function AudioEditor({ project }) {
                                             className={`ae-clip${selected ? ' ae-clip--selected' : ''}`}
                                             style={{ left, width, top: clipTop, height: clipH }}
                                             onMouseDown={e => handleTrackMouseDown(e, i, 'move')}
-                                            onClick={e => { e.stopPropagation(); setSelectedIndex(selected ? null : i); }}
+                                            onClick={e => {
+                                                e.stopPropagation();
+                                                // If this mousedown turned into a real drag, don't toggle selection
+                                                if (dragMovedRef.current) { dragMovedRef.current = false; return; }
+                                                setSelectedIndex(prev => prev === i ? null : i);
+                                            }}
                                         >
                                             <span className="ae-clip-name">{track.name}</span>
                                             {track.duration > 0 && (
