@@ -7,7 +7,7 @@ import { createRoot } from 'react-dom/client';
 
 import LoadingOverlay from '@/Components/LoadingOverlay';
 
-const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+const appName = import.meta.env.VITE_APP_NAME || 'QuickCut';
 
 createInertiaApp({
     title: (title) => `${title} - ${appName}`,
