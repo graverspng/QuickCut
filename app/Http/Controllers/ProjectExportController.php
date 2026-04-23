@@ -833,6 +833,14 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
 
     protected function buildTransitionMap(Project $project): array
     {
+        $rawTransitions = $project->transitions ?? [];
+        if (!empty($rawTransitions)) {
+            Log::debug('[Export] buildTransitionMap raw sample', [
+                'count' => count($rawTransitions),
+                'first' => $rawTransitions[0] ?? null,
+            ]);
+        }
+
         $map = [];
         $clips = collect($project->clips ?? [])
             ->map(fn ($clip) => is_array($clip) ? $clip : [])
@@ -1218,6 +1226,11 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
 
         @unlink($outputPath);
 
+        Log::warning('[Export] Multi-pass combine failed; falling back to sequential per-pair encode.', [
+            'segment_count'   => count($segments),
+            'transition_count' => count($transitionMap),
+        ]);
+
         return $this->combineSegmentsWithTransitionsSequential($segments, $transitionMap, $directory);
     }
 
@@ -1279,54 +1292,60 @@ protected function downloadToTemp(string $url, string $directory, string $prefix
                 continue;
             }
 
-            $start = max(0.0, (float) Arr::get($effect, 'startTime', 0));
+            $type = Arr::get($effect, 'type', '');
+            if (!in_array($type, ['blur', 'brightness', 'glow'], true)) {
+                continue;
+            }
+
+            $start    = max(0.0, (float) Arr::get($effect, 'startTime', 0));
             $duration = max(0.0, (float) Arr::get($effect, 'duration', 0));
             if ($duration <= 0) {
                 continue;
             }
 
-            $end = $start + $duration;
-            $enable = $this->escapeFilterValue(sprintf('between(t,%.3f,%.3f)', $start, $end));
-            $type = Arr::get($effect, 'type', '');
+            $end       = $start + $duration;
             $intensity = max(0.0, min(1.0, (float) Arr::get($effect, 'intensity', 0.5)));
 
-            $nextLabel = 'v' . $counter++;
+            // Fade-in/out: ramp over 25% of duration, capped at 0.4s
+            $fadeIn  = max(0.05, min($duration * 0.25, 0.4));
+            $fadeOut = max(0.05, min($duration * 0.25, 0.4));
+
+            // Smooth blend alpha: A+(B-A)*ramp, where ramp goes 0→1→0 around the effect window.
+            // Use min/max instead of clamp() — FFmpeg's eval does not have clamp().
+            $blendExpr = $this->escapeFilterValue(sprintf(
+                'A+(B-A)*min(1,max(0,(T-%.3f)/%.3f))*min(1,max(0,(%.3f-T)/%.3f))',
+                $start, $fadeIn, $end, $fadeOut
+            ));
+
+            $origLabel  = 'v_orig_' . $counter;
+            $effLabel   = 'v_eff_'  . $counter;
+            $effApplied = 'v_ea_'   . $counter;
+            $nextLabel  = 'v'       . $counter;
+            $counter++;
+
+            // Split: one copy stays original, one gets the effect applied
+            $filters[] = sprintf('[%s]split[%s][%s]', $currentLabel, $origLabel, $effLabel);
 
             switch ($type) {
                 case 'blur':
-                    $radius = max(2, (int) round(10 * $intensity));
-                    $sigma  = max(1, (int) round(5 * $intensity));
-                    $filters[] = sprintf(
-                        '[%s]gblur=sigma=%d:enable=%s[%s]',
-                        $currentLabel, $sigma, $enable, $nextLabel
-                    );
+                    $sigma = max(1, (int) round(5 * $intensity));
+                    $filters[] = sprintf('[%s]gblur=sigma=%d[%s]', $effLabel, $sigma, $effApplied);
                     break;
 
                 case 'brightness':
-                    // eq filter is frame-level, no per-pixel expression — orders of magnitude faster
                     $brightness = max(-0.5, min(0.5, 0.5 * $intensity));
                     $contrast   = max(0.5, min(2.0, 1.0 + 0.4 * $intensity));
-                    $filters[] = sprintf(
-                        '[%s]eq=brightness=%0.3f:contrast=%0.3f:enable=%s[%s]',
-                        $currentLabel, $brightness, $contrast, $enable, $nextLabel
-                    );
+                    $filters[] = sprintf('[%s]eq=brightness=%0.3f:contrast=%0.3f[%s]', $effLabel, $brightness, $contrast, $effApplied);
                     break;
 
                 case 'glow':
-                    // unsharp in "glow" mode (negative sharpen = soften + bloom) — single-pass, fast
                     $amount = max(0.3, min(1.5, $intensity * 1.2));
-                    $msize  = 11; // must be odd
-                    $filters[] = sprintf(
-                        '[%s]unsharp=luma_msize_x=%d:luma_msize_y=%d:luma_amount=%0.2f:enable=%s[%s]',
-                        $currentLabel, $msize, $msize, $amount, $enable, $nextLabel
-                    );
-                    break;
-
-                default:
-                    $nextLabel = $currentLabel;
+                    $filters[] = sprintf('[%s]unsharp=luma_msize_x=11:luma_msize_y=11:luma_amount=%0.2f[%s]', $effLabel, $amount, $effApplied);
                     break;
             }
 
+            // Blend original + effected with time-varying alpha ramp for smooth fade in/out
+            $filters[] = sprintf('[%s][%s]blend=all_expr=%s[%s]', $origLabel, $effApplied, $blendExpr, $nextLabel);
             $currentLabel = $nextLabel;
         }
 
@@ -1743,6 +1762,8 @@ if (!empty($audioFilters)) {
             if (!empty($segments)) {
                 $step('Building transition map…');
                 $transitionMap = $this->buildTransitionMap($project);
+                $rawTransitionCount = count($project->transitions ?? []);
+                $step('Transition map: ' . count($transitionMap) . ' of ' . $rawTransitionCount . ' raw transition(s) resolved.');
                 $step('Combining ' . count($segments) . ' segment(s) with transitions…');
                 $combined      = $this->combineSegmentsWithTransitions($segments, $transitionMap, $directory);
                 $intermediate  = $combined['path'];
@@ -1954,4 +1975,3 @@ if (!empty($audioFilters)) {
         return $this->streamFile($path, $downloadName);
     }
 }
-
