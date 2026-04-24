@@ -473,7 +473,7 @@
   box-sizing: border-box;
 }
 .clip:hover { transform: translateY(-1px); opacity: 0.95; }
-.clip.selected { border: 2px solid #60a5fa; box-shadow: 0 0 0 2px rgba(96,165,250,0.25); }
+.clip.selected { border: 2px solid #60a5fa; box-shadow: 0 0 0 3px rgba(96,165,250,0.2), 0 0 14px rgba(96,165,250,0.3); }
 
 .track {
   position: absolute;
