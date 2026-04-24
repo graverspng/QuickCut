@@ -1,36 +1,22 @@
-import InputError from '@/Components/InputError';
-import InputLabel from '@/Components/InputLabel';
-import TextInput from '@/Components/TextInput';
 import { useForm } from '@inertiajs/react';
 import { useRef, useState } from 'react';
-import ReactDOM from 'react-dom'; // ✅ import portal
-import '@/../css/dashboard.css';
+import ReactDOM from 'react-dom';
 
-export default function DeleteUserForm({ className = '' }) {
+export default function DeleteUserForm({ animDelay = '0ms' }) {
     const [showModal, setShowModal] = useState(false);
-    const passwordInput = useRef();
+    const passwordInput = useRef(null);
 
-    const {
-        data,
-        setData,
-        delete: destroy,
-        processing,
-        reset,
-        errors,
-    } = useForm({
+    const { data, setData, delete: destroy, processing, reset, errors } = useForm({
         password: '',
     });
 
-    const confirmUserDeletion = () => setShowModal(true);
-
     const deleteUser = (e) => {
         e.preventDefault();
-
         destroy(route('profile.destroy'), {
             preserveScroll: true,
             onSuccess: () => closeModal(),
-            onError: () => passwordInput.current.focus(),
-            onFinish: () => reset(),
+            onError:   () => passwordInput.current?.focus(),
+            onFinish:  () => reset(),
         });
     };
 
@@ -40,73 +26,73 @@ export default function DeleteUserForm({ className = '' }) {
     };
 
     return (
-        <section className={`project-card slide-in space-y-6 ${className}`}>
-            <header>
-                <h2 className="text-lg font-medium text-white">Delete Account</h2>
-                <p className="mt-1 text-sm text-gray-400">
-                    Once your account is deleted, all resources and data will be permanently lost.
-                    Please download any data you wish to keep.
-                </p>
-            </header>
+        <section className="prof-card prof-card--danger" style={{ animationDelay: animDelay }}>
+            <h2 className="prof-card-title">Delete Account</h2>
+            <p className="prof-card-sub">
+                Once deleted, all your projects and data are permanently gone. Download anything you want to keep first.
+            </p>
+            <div className="prof-divider" />
 
-            {/* Compact red button */}
-            <button
-                type="button"
-                onClick={confirmUserDeletion}
-                className="modal-create bg-red-600 hover:bg-red-700 text-white w-auto px-6 py-2"
-            >
+            <button type="button" onClick={() => setShowModal(true)} className="prof-delete-btn">
                 Delete Account
             </button>
 
-            {/* Portal modal */}
-            {showModal &&
-                ReactDOM.createPortal(
-                    (
-                        <div className="fixed top-0 left-0 w-screen h-screen bg-black bg-opacity-70 flex items-center justify-center z-[9999]">
-                            <form onSubmit={deleteUser} className="modal-card fade-in-up relative">
-                                <h2 className="text-xl font-semibold text-white mb-2">
-                                    Are you sure you want to delete your account?
-                                </h2>
-                                <p className="text-sm text-gray-400 mb-4">
-                                    This action is permanent. Please enter your password to confirm.
-                                </p>
+            {showModal && ReactDOM.createPortal(
+                <div
+                    style={{
+                        position: 'fixed', inset: 0, zIndex: 9999,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: 'rgba(0,0,0,0.75)',
+                        backdropFilter: 'blur(10px)',
+                        WebkitBackdropFilter: 'blur(10px)',
+                    }}
+                    onMouseDown={(e) => { if (e.target === e.currentTarget) closeModal(); }}
+                >
+                    <div style={{
+                        background: 'linear-gradient(160deg, #1e1515, #161111)',
+                        border: '1px solid rgba(239,68,68,0.25)',
+                        borderRadius: 18,
+                        padding: 32,
+                        width: 440,
+                        maxWidth: '92%',
+                        boxShadow: '0 24px 60px rgba(0,0,0,0.75)',
+                    }}>
+                        <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#FCFFFC', margin: '0 0 8px' }}>
+                            Delete your account?
+                        </h2>
+                        <p style={{ fontSize: '0.85rem', color: 'rgba(252,255,252,0.5)', margin: '0 0 20px', lineHeight: 1.6 }}>
+                            This is permanent and cannot be undone. Enter your password to confirm.
+                        </p>
 
-                                <div className="mt-4">
-                                    <InputLabel htmlFor="password" value="Password" className="text-gray-300" />
-                                    <TextInput
-                                        id="password"
-                                        type="password"
-                                        ref={passwordInput}
-                                        value={data.password}
-                                        onChange={(e) => setData('password', e.target.value)}
-                                        className="modal-input mt-1 block w-full"
-                                        placeholder="Password"
-                                    />
-                                    <InputError message={errors.password} className="mt-2 text-red-400" />
-                                </div>
+                        <form onSubmit={deleteUser}>
+                            <div className="prof-field">
+                                <label htmlFor="del-password" className="prof-label">Password</label>
+                                <input
+                                    id="del-password"
+                                    type="password"
+                                    ref={passwordInput}
+                                    className="prof-input"
+                                    value={data.password}
+                                    onChange={(e) => setData('password', e.target.value)}
+                                    placeholder="Your password"
+                                />
+                                {errors.password && <p className="prof-error">{errors.password}</p>}
+                            </div>
 
-                                <div className="flex justify-end space-x-2 mt-6">
-                                    <button
-                                        type="button"
-                                        onClick={closeModal}
-                                        className="modal-cancel"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={processing}
-                                        className="modal-create bg-red-600 hover:bg-red-700 text-white px-6 py-2"
-                                    >
-                                        Delete Account
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    ),
-                    document.body
-                )
-            }
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+                                <button type="button" onClick={closeModal} className="prof-modal-cancel">
+                                    Cancel
+                                </button>
+                                <button type="submit" disabled={processing} className="prof-delete-btn">
+                                    {processing && <span className="prof-spinner" aria-hidden="true" />}
+                                    {processing ? 'Deleting…' : 'Delete Account'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>,
+                document.body
+            )}
         </section>
     );
 }

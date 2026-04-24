@@ -1,0 +1,297 @@
+/* ── Profile Page — QuickCut ─────────────────────────────────────────────── */
+
+@keyframes prof-orb-a {
+  0%, 100% { transform: translate(0, 0)         scale(1); }
+  33%       { transform: translate(40px, -30px)  scale(1.06); }
+  66%       { transform: translate(-20px, 20px)  scale(0.96); }
+}
+@keyframes prof-orb-b {
+  0%, 100% { transform: translate(0, 0)          scale(1); }
+  40%       { transform: translate(-50px, 30px)  scale(1.08); }
+  70%       { transform: translate(30px, -40px)  scale(0.94); }
+}
+@keyframes prof-hero-in {
+  from { opacity: 0; transform: translateY(-16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes prof-card-in {
+  0%   { opacity: 0; transform: translateY(28px) scale(0.97); }
+  100% { opacity: 1; transform: translateY(0)    scale(1); }
+}
+@keyframes prof-pulse {
+  0%, 100% { box-shadow: 0 0 0 0   rgba(43,168,74,0.5); }
+  50%       { box-shadow: 0 0 0 8px rgba(43,168,74,0); }
+}
+@keyframes prof-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Page shell ──────────────────────────────────────────────────────────── */
+.prof-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 800px at 8%   0%,  rgba(36,130,50,0.16), transparent 55%),
+    radial-gradient(1000px 700px at 92% 100%, rgba(43,168,74,0.11), transparent 60%),
+    #000;
+  padding: 52px 28px 96px;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.prof-page::before {
+  content: "";
+  position: absolute;
+  width: 500px; height: 500px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(43,168,74,0.07) 0%, transparent 70%);
+  top: -100px; left: -100px;
+  pointer-events: none;
+  animation: prof-orb-a 18s ease-in-out infinite;
+}
+.prof-page::after {
+  content: "";
+  position: absolute;
+  width: 600px; height: 600px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(36,130,50,0.06) 0%, transparent 70%);
+  bottom: -150px; right: -100px;
+  pointer-events: none;
+  animation: prof-orb-b 22s ease-in-out infinite;
+}
+
+.prof-wrapper {
+  max-width: 900px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Hero ────────────────────────────────────────────────────────────────── */
+.prof-hero {
+  margin-bottom: 36px;
+  opacity: 0;
+  animation: prof-hero-in 0.7s cubic-bezier(0.22,1,0.36,1) 80ms forwards;
+}
+
+.prof-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(43,168,74,0.12);
+  border: 1px solid rgba(43,168,74,0.28);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #2BA84A;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.prof-eyebrow-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #2BA84A;
+  box-shadow: 0 0 6px rgba(43,168,74,0.5);
+  animation: prof-pulse 2.4s ease-in-out infinite;
+}
+
+.prof-hero-title {
+  font-size: clamp(2rem, 3vw, 2.8rem);
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  background: linear-gradient(135deg, #fff 30%, #3CCF65 70%, #2BA84A 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin: 0;
+}
+.prof-hero-sub {
+  color: rgba(252,255,252,0.55);
+  font-size: 0.95rem;
+  margin: 8px 0 0;
+}
+
+/* ── Grid ────────────────────────────────────────────────────────────────── */
+.prof-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.prof-grid-full { grid-column: 1 / -1; }
+
+/* ── Card ────────────────────────────────────────────────────────────────── */
+.prof-card {
+  background: linear-gradient(180deg, #191919, #131313);
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.07);
+  padding: 28px 30px;
+  position: relative;
+  overflow: hidden;
+  opacity: 0;
+  animation: prof-card-in 0.5s cubic-bezier(0.34,1.45,0.64,1) forwards;
+}
+.prof-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(130deg,
+    rgba(255,255,255,0.04),
+    rgba(43,168,74,0.14) 50%,
+    rgba(255,255,255,0.03));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+}
+
+.prof-card--danger {
+  border-color: rgba(239,68,68,0.2);
+  background: linear-gradient(180deg, #1b1212, #131010);
+}
+.prof-card--danger::after {
+  background: linear-gradient(130deg,
+    rgba(255,255,255,0.02),
+    rgba(239,68,68,0.1) 50%,
+    rgba(255,255,255,0.02));
+}
+
+.prof-card-title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #FCFFFC;
+  margin: 0 0 4px;
+}
+.prof-card-sub {
+  font-size: 0.82rem;
+  color: rgba(252,255,252,0.48);
+  margin: 0;
+  line-height: 1.55;
+}
+.prof-divider {
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02), transparent);
+  margin: 18px 0 20px;
+}
+
+/* ── Fields ──────────────────────────────────────────────────────────────── */
+.prof-field { margin-bottom: 15px; }
+
+.prof-label {
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: rgba(252,255,252,0.48);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 7px;
+}
+.prof-input {
+  width: 100%;
+  background: #0d0d0d;
+  border: 1px solid rgba(255,255,255,0.09);
+  color: #FCFFFC;
+  padding: 11px 14px;
+  border-radius: 11px;
+  font-size: 0.93rem;
+  outline: none;
+  transition: border-color 170ms, box-shadow 170ms;
+  box-sizing: border-box;
+}
+.prof-input::placeholder { color: rgba(252,255,252,0.28); }
+.prof-input:focus {
+  border-color: #2BA84A;
+  box-shadow: 0 0 0 3px rgba(43,168,74,0.14);
+}
+
+.prof-error {
+  color: #f87171;
+  font-size: 0.82rem;
+  margin-top: 5px;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.prof-footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 6px;
+}
+
+.prof-save-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(90deg, #248232, #2BA84A);
+  color: #FCFFFC;
+  padding: 10px 22px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 700;
+  transition: transform 150ms, box-shadow 200ms, filter 120ms;
+  box-shadow: 0 8px 24px rgba(43,168,74,0.32);
+}
+.prof-save-btn:hover    { transform: translateY(-1px); box-shadow: 0 14px 30px rgba(43,168,74,0.42); }
+.prof-save-btn:active   { transform: translateY(0);    filter: brightness(0.96); }
+.prof-save-btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; transform: none; }
+
+.prof-saved-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #3CCF65;
+}
+
+.prof-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(220,38,38,0.14);
+  border: 1px solid rgba(239,68,68,0.28);
+  color: #fca5a5;
+  padding: 10px 22px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 700;
+  transition: background 150ms, border-color 150ms, color 150ms;
+}
+.prof-delete-btn:hover {
+  background: rgba(220,38,38,0.26);
+  border-color: rgba(239,68,68,0.5);
+  color: #fecaca;
+}
+
+/* Modal cancel btn reused from dashboard.css context */
+.prof-modal-cancel {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #FCFFFC;
+  padding: 10px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 140ms;
+}
+.prof-modal-cancel:hover { background: rgba(255,255,255,0.12); }
+
+.prof-spinner {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-top-color: #FCFFFC;
+  animation: prof-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .prof-page::before, .prof-page::after { animation: none; }
+  .prof-hero  { animation: none; opacity: 1; transform: none; }
+  .prof-card  { animation: none; opacity: 1; }
+  .prof-eyebrow-dot { animation: none; }
+}

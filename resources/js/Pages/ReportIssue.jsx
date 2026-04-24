@@ -83,12 +83,11 @@ const getProjectExample = (project) => {
         <img src="/QuickCut.png" alt="" className="report-float" aria-hidden="true" />
 
         <div className="report-issue-container" role="region" aria-labelledby="report-title">
+          <div className="report-eyebrow">
+            <span className="report-eyebrow-dot" aria-hidden="true" />
+            QuickCut Support
+          </div>
           <div className="report-title-wrap">
-            <span className="report-title-icon" aria-hidden="true">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M12 3l7 3v6c0 4.418-3.582 8-8 8s-8-3.582-8-8V6l9-3Z" stroke="rgba(0,0,0,0.25)" fill="rgba(255,255,255,0.25)"/>
-              </svg>
-            </span>
             <h1 id="report-title" className="report-title">Report an Issue</h1>
           </div>
           <p className="report-subtitle">

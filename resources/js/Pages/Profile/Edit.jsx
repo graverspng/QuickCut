@@ -3,37 +3,37 @@ import { Head } from '@inertiajs/react';
 import DeleteUserForm from './Partials/DeleteUserForm';
 import UpdatePasswordForm from './Partials/UpdatePasswordForm';
 import UpdateProfileInformationForm from './Partials/UpdateProfileInformationForm';
-import '@/../css/dashboard.css'; // 🔹 import dashboard styles
+import '@/../css/profile.css';
 
 export default function Edit({ mustVerifyEmail, status }) {
     return (
         <AuthenticatedLayout>
             <Head title="Profile" />
 
-            <div className="dashboard-page">
-                <div className="dashboard-wrapper">
-                    {/* Page title */}
-                    <div className="text-center mb-10 fade-in-up">
-                        <h2 className="text-4xl font-bold text-white">Profile</h2>
-                        <p className="text-gray-400 mt-2">
-                            Manage your account information below.
-                        </p>
+            <div className="prof-page">
+                <div className="prof-wrapper">
+
+                    <div className="prof-hero">
+                        <div className="prof-eyebrow">
+                            <span className="prof-eyebrow-dot" aria-hidden="true" />
+                            Settings
+                        </div>
+                        <h1 className="prof-hero-title">Your Profile</h1>
+                        <p className="prof-hero-sub">Manage your account information and security settings.</p>
                     </div>
 
-                    {/* Grid of cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="prof-grid">
                         <UpdateProfileInformationForm
                             mustVerifyEmail={mustVerifyEmail}
                             status={status}
-                            className="project-card"
+                            animDelay="150ms"
                         />
-
-                        <UpdatePasswordForm className="project-card" />
-
-                        <div className="md:col-span-2">
-                            <DeleteUserForm className="project-card" />
+                        <UpdatePasswordForm animDelay="250ms" />
+                        <div className="prof-grid-full">
+                            <DeleteUserForm animDelay="350ms" />
                         </div>
                     </div>
+
                 </div>
             </div>
         </AuthenticatedLayout>
