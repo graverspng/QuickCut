@@ -1847,14 +1847,16 @@ export default function Editor({ project }) {
 
   const getClickTimeFromEvent = useCallback(
     (e) => {
-      const rect = e.currentTarget.getBoundingClientRect();
-      if (!rect) return 0;
+      // Use the scroll container's rect (it never moves) + scrollLeft so we
+      // don't double-count the scroll offset that getBoundingClientRect already
+      // folds into a child element's position.
       const scroller = e.currentTarget.closest('.timeline-scroll');
-      const scrollLeft = scroller ? scroller.scrollLeft : 0;
-      const offsetX = e.clientX - rect.left + scrollLeft;
-      const positionX = Math.max(0, offsetX);
+      if (!scroller) return 0;
+      const rect = scroller.getBoundingClientRect();
+      const scrollLeft = scroller.scrollLeft;
+      const offsetX = Math.max(0, e.clientX - rect.left + scrollLeft);
       const clampedPxPerSec = Number.isFinite(pxPerSec) && pxPerSec > 0 ? pxPerSec : BASE_PX_PER_SEC;
-      const rawTime = positionX / clampedPxPerSec;
+      const rawTime = offsetX / clampedPxPerSec;
       return Math.max(0, Math.min(timelineDuration, rawTime));
     },
     [pxPerSec, timelineDuration]
@@ -2459,6 +2461,7 @@ export default function Editor({ project }) {
             >
               <div
                 className="effects-timeline"
+                style={{ minWidth: `${timelineWidth}px` }}
                 onMouseDownCapture={handleSeekMouseDownCapture}
                 onClick={() => clearSelection()}
               >
@@ -2495,6 +2498,7 @@ export default function Editor({ project }) {
 
               <div
                 className="text-timeline"
+                style={{ minWidth: `${timelineWidth}px` }}
                 onMouseDownCapture={handleSeekMouseDownCapture}
                 onClick={() => clearSelection()}
               >
@@ -2527,6 +2531,7 @@ export default function Editor({ project }) {
 
               <div
                 className="timeline"
+                style={{ minWidth: `${timelineWidth}px` }}
                 onMouseDownCapture={handleSeekMouseDownCapture}
                 onClick={() => clearSelection()}
               >
@@ -2603,6 +2608,7 @@ export default function Editor({ project }) {
 
               <div
                 className="music-timeline"
+                style={{ minWidth: `${timelineWidth}px` }}
                 onMouseDownCapture={handleSeekMouseDownCapture}
                 onClick={() => clearSelection()}
               >
