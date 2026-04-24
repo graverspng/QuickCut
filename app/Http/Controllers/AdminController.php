@@ -13,7 +13,7 @@ class AdminController extends Controller
     public function index(): Response
     {
         $reports = UserReport::with('user:id,name,email')
-            ->select('id','user_id','issue','created_at')
+            ->select('id','user_id','project','issue','created_at')
             ->latest()
             ->paginate(10)
             ->withQueryString();

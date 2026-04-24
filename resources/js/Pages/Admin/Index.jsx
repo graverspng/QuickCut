@@ -1,33 +1,33 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, usePage, router } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
+import '@/../css/admin.css';
 
 export default function Index() {
   const { auth, reports } = usePage().props;
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalText, setModalText] = useState('');
-  const [selected, setSelected] = useState(new Set());
+  const [modalOpen,    setModalOpen]    = useState(false);
+  const [modalReport,  setModalReport]  = useState(null);
+  const [selected,     setSelected]     = useState(new Set());
 
-  const openModal = (text) => {
-    setModalText(text || '');
-    setModalOpen(true);
-  };
-  const closeModal = () => setModalOpen(false);
+  const openModal  = (r)  => { setModalReport(r); setModalOpen(true); };
+  const closeModal = ()   => setModalOpen(false);
 
   const hasReports = useMemo(() => reports?.data?.length > 0, [reports]);
 
-  const perPage = reports?.per_page ?? reports?.meta?.per_page ?? 10;
-  const total = reports?.total ?? reports?.meta?.total ?? 0;
+  const perPage   = reports?.per_page ?? reports?.meta?.per_page ?? 10;
+  const total     = reports?.total    ?? reports?.meta?.total    ?? 0;
+  const curPage   = reports?.current_page ?? reports?.meta?.current_page ?? 1;
+  const lastPage  = reports?.last_page    ?? reports?.meta?.last_page    ?? 1;
   const showPager = total > perPage;
 
   const findLink = (label) =>
     reports?.links?.find((l) => String(l.label).toLowerCase().includes(label))?.url;
 
   const prevUrl = reports?.prev_page_url ?? findLink('previous') ?? null;
-  const nextUrl = reports?.next_page_url ?? findLink('next') ?? null;
+  const nextUrl = reports?.next_page_url ?? findLink('next')     ?? null;
 
-  const currentIds = useMemo(() => (reports?.data ?? []).map((r) => r.id), [reports]);
+  const currentIds        = useMemo(() => (reports?.data ?? []).map((r) => r.id), [reports]);
   const allOnPageSelected = useMemo(
     () => currentIds.length > 0 && currentIds.every((id) => selected.has(id)),
     [currentIds, selected]
@@ -37,8 +37,7 @@ export default function Index() {
   const toggleOne = (id) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   };
@@ -46,11 +45,8 @@ export default function Index() {
   const toggleAllOnPage = () => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (allOnPageSelected) {
-        currentIds.forEach((id) => next.delete(id));
-      } else {
-        currentIds.forEach((id) => next.add(id));
-      }
+      if (allOnPageSelected) currentIds.forEach((id) => next.delete(id));
+      else currentIds.forEach((id) => next.add(id));
       return next;
     });
   };
@@ -58,7 +54,6 @@ export default function Index() {
   const bulkDelete = () => {
     if (!anySelected) return;
     if (!window.confirm('Delete selected report(s)? This cannot be undone.')) return;
-
     router.delete(route('admin.reports.bulkDelete'), {
       data: { ids: Array.from(selected) },
       preserveScroll: true,
@@ -66,159 +61,172 @@ export default function Index() {
     });
   };
 
+  const fmtDate = (str) => new Date(str).toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+
   return (
     <AuthenticatedLayout user={auth.user}>
       <Head title="Admin Panel" />
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">
-        <h1 className="text-3xl font-semibold" style={{ color: '#2BA84A' }}>
-          Admin Panel
-        </h1>
+      <div className="adm-page">
+        <div className="adm-wrapper">
 
-        <section className="mt-8">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-xl font-semibold text-[#FCFFFC]">User Reports</h3>
+          {/* Hero */}
+          <div className="adm-hero">
+            <div className="adm-eyebrow">
+              <span className="adm-eyebrow-dot" aria-hidden="true" />
+              QuickCut Admin
+            </div>
+            <h1 className="adm-hero-title">Admin Panel</h1>
+            <p className="adm-hero-sub">Review and manage user-submitted reports.</p>
+          </div>
 
+          {/* Stat chips */}
+          <div className="adm-stats">
+            <div className="adm-stat">
+              <div className="adm-stat-val">{total}</div>
+              <div className="adm-stat-label">Total reports</div>
+            </div>
+            <div className="adm-stat">
+              <div className="adm-stat-val">{curPage}/{lastPage}</div>
+              <div className="adm-stat-label">Page</div>
+            </div>
+            {anySelected && (
+              <div className="adm-stat">
+                <div className="adm-stat-val" style={{ color: '#f87171' }}>{selected.size}</div>
+                <div className="adm-stat-label">Selected</div>
+              </div>
+            )}
+          </div>
+
+          {/* Section */}
+          <div className="adm-section-head">
+            <span className="adm-section-title">User Reports</span>
             <button
               type="button"
               onClick={bulkDelete}
               disabled={!anySelected}
-              className={[
-                'rounded-md px-4 py-2 text-sm font-medium border',
-                anySelected
-                  ? 'bg-red-500 border-red-500 text-black hover:opacity-90'
-                  : 'bg-transparent border-gray-800 text-gray-500 cursor-not-allowed opacity-60',
-              ].join(' ')}
-              title={anySelected ? 'Delete selected' : 'Select reports to delete'}
+              className="adm-del-btn"
             >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
+              </svg>
               Delete selected
             </button>
           </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-gray-700 bg-[#121212] shadow">
-            <table className="min-w-full divide-y divide-gray-700">
-              <thead className="bg-[#0d0d0d]">
-                <tr>
-                  <th className="px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={allOnPageSelected}
-                      onChange={toggleAllOnPage}
-                      aria-label="Select all on page"
-                    />
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-300">ID</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-300">Reporter</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-300">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-300">Issue</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-300">Created</th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-gray-800">
-                {hasReports ? (
-                  reports.data.map((r) => {
-                    const reporter = r.user?.name ?? 'Unknown';
-                    const email = r.user?.email ?? '—';
-                    const isChecked = selected.has(r.id);
-
-                    return (
-                      <tr key={r.id} className="hover:bg-[#181818] align-top">
-                        <td className="px-4 py-3">
+          <div className="adm-card">
+            <div style={{ overflowX: 'auto' }}>
+              <table className="adm-table">
+                <thead>
+                  <tr>
+                    <th>
+                      <input
+                        type="checkbox"
+                        className="adm-check"
+                        checked={allOnPageSelected}
+                        onChange={toggleAllOnPage}
+                        aria-label="Select all on page"
+                      />
+                    </th>
+                    <th>ID</th>
+                    <th>Reporter</th>
+                    <th>Email</th>
+                    <th>Project</th>
+                    <th>Issue</th>
+                    <th>Submitted</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {hasReports ? (
+                    reports.data.map((r) => (
+                      <tr key={r.id} className={selected.has(r.id) ? 'adm-row--selected' : ''}>
+                        <td style={{ textAlign: 'center' }}>
                           <input
                             type="checkbox"
-                            checked={isChecked}
+                            className="adm-check"
+                            checked={selected.has(r.id)}
                             onChange={() => toggleOne(r.id)}
                             aria-label={`Select report ${r.id}`}
                           />
                         </td>
-
-                        <td className="px-4 py-3 text-sm text-gray-300">{r.id}</td>
-                        <td className="px-4 py-3 text-sm text-gray-200">{reporter}</td>
-                        <td className="px-4 py-3 text-sm text-gray-400">{email}</td>
-
-                        {/* Compact, single-line preview with ellipsis; click to open modal */}
-                        <td className="px-4 py-3 text-sm">
+                        <td className="adm-td-id">#{r.id}</td>
+                        <td className="adm-td-name">{r.user?.name ?? 'Unknown'}</td>
+                        <td className="adm-td-email">{r.user?.email ?? '—'}</td>
+                        <td className="adm-td-project">{r.project ?? '—'}</td>
+                        <td>
                           <div
-                            className="max-w-[36ch] whitespace-nowrap overflow-hidden text-ellipsis break-words cursor-pointer text-gray-300 transition-colors hover:text-[#2BA84A]"
-                            title="Click to view full issue"
-                            onClick={() => openModal(r.issue)}
-                            style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+                            className="adm-td-issue"
+                            title="Click to read full report"
+                            onClick={() => openModal(r)}
                           >
                             {r.issue || '—'}
                           </div>
                         </td>
-
-                        <td className="px-4 py-3 text-sm text-gray-400">
-                          {new Date(r.created_at).toLocaleString()}
-                        </td>
+                        <td className="adm-td-date">{fmtDate(r.created_at)}</td>
                       </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan="6" className="px-4 py-6 text-center text-sm text-gray-400">
-                      No reports found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="7">
+                        <div className="adm-empty">
+                          <span className="adm-empty-icon">📭</span>
+                          No reports found.
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {showPager && (
-            <div className="mt-4 flex items-center gap-3">
+            <div className="adm-pager">
               <Link
                 href={prevUrl || '#'}
                 preserveScroll
-                className={[
-                  'px-3 py-1.5 rounded-md border text-sm',
-                  prevUrl
-                    ? 'bg-transparent border-gray-700 text-gray-300 hover:border-gray-500'
-                    : 'bg-transparent border-gray-800 text-gray-500 cursor-not-allowed opacity-60',
-                ].join(' ')}
+                className={`adm-pager-btn${!prevUrl ? ' adm-pager-btn--off' : ''}`}
               >
-                Previous
+                ← Previous
               </Link>
-
               <Link
                 href={nextUrl || '#'}
                 preserveScroll
-                className={[
-                  'px-3 py-1.5 rounded-md border text-sm',
-                  nextUrl
-                    ? 'bg-[#2BA84A] border-[#2BA84A] text-black hover:opacity-90'
-                    : 'bg-transparent border-gray-800 text-gray-500 cursor-not-allowed opacity-60',
-                ].join(' ')}
+                className={`adm-pager-btn${!nextUrl ? ' adm-pager-btn--off' : ''}`}
               >
-                Next
+                Next →
               </Link>
-
-              <div className="ml-auto text-xs text-gray-400">
-                Page {(reports?.current_page ?? reports?.meta?.current_page ?? 1)} of {(reports?.last_page ?? reports?.meta?.last_page ?? 1)}
+              <div className="adm-pager-info">
+                Page {curPage} of {lastPage} &nbsp;·&nbsp; {total} total
               </div>
             </div>
           )}
-        </section>
+
+        </div>
       </div>
 
+      {/* Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/70" onClick={closeModal} />
-          <div className="relative z-10 w-full max-w-4xl rounded-2xl border border-gray-700 bg-[#121212] p-6 shadow-2xl">
-            <div className="mb-4 text-lg font-semibold text-[#FCFFFC]">Full Issue</div>
-            <div
-              className="max-h-[80vh] min-h-[30vh] overflow-y-auto whitespace-pre-wrap text-sm text-gray-200"
-              style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
-            >
-              {modalText}
+        <div
+          className="adm-modal-bg"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) closeModal(); }}
+        >
+          <div className="adm-modal">
+            <div className="adm-modal-title">
+              {modalReport?.user?.name ?? 'Unknown'} &mdash; Full Report
             </div>
-            <div className="mt-6 flex justify-end">
-              <button
-                type="button"
-                onClick={closeModal}
-                className="rounded-md bg-[#2BA84A] px-4 py-2 text-sm font-medium text-black hover:opacity-90"
-              >
+            {modalReport?.project && (
+              <div className="adm-modal-project">📌 {modalReport.project}</div>
+            )}
+            <div className="adm-modal-divider" />
+            <div className="adm-modal-body">
+              {modalReport?.issue || '—'}
+            </div>
+            <div className="adm-modal-foot">
+              <button type="button" className="adm-modal-close" onClick={closeModal}>
                 Close
               </button>
             </div>
