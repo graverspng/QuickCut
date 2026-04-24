@@ -23,6 +23,13 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // Redirect to login on CSRF token mismatch instead of showing raw 419 page
+        $exceptions->respond(function (\Illuminate\Http\Response $response) {
+            if ($response->getStatusCode() === 419) {
+                return redirect('/login')
+                    ->with('status', 'Your session expired. Please sign in again.');
+            }
+            return $response;
+        });
     })
     ->create();
