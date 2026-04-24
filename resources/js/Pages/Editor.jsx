@@ -685,12 +685,13 @@ export default function Editor({ project }) {
     if (!data) return;
     const payload = JSON.parse(data);
 
-    const rect = e.currentTarget.getBoundingClientRect();
-    const dropX = e.clientX - rect.left + e.currentTarget.scrollLeft;
-    const safeDuration = Math.max(timelineDuration, 1);
-    const safeWidth = safeDuration * pxPerSec;
-    const ratio = safeWidth > 0 ? dropX / safeWidth : 0;
-    const dropTime = Math.max(0, Math.min(safeDuration, ratio * safeDuration));
+    const scroller = timelineScrollRef.current;
+    const scrollerRect = scroller ? scroller.getBoundingClientRect() : null;
+    const rawDropX = scrollerRect
+      ? Math.max(0, e.clientX - scrollerRect.left + (scroller.scrollLeft || 0))
+      : 0;
+    const clampedPxPerSec = Number.isFinite(pxPerSec) && pxPerSec > 0 ? pxPerSec : BASE_PX_PER_SEC;
+    const dropTime = Math.max(0, Math.min(Math.max(timelineDuration, 1), rawDropX / clampedPxPerSec));
 
     if (payload.kind === 'media') {
       const file = payload.file;
@@ -2548,7 +2549,7 @@ export default function Editor({ project }) {
                         onDrop={(e) => handleClipDrop(e, index)}
                         onClick={(e) => { e.stopPropagation(); selectClip(index); }}
                         className={`clip ${isSelected ? 'selected' : ''}`}
-                        style={{ width: `${width}px` }}
+                        style={{ width: `${width}px`, left: `${(clip.startTime || 0) * pxPerSec}px` }}
                       >
                         {clip.name}
                         {isSelected && (
