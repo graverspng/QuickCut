@@ -2545,9 +2545,9 @@ export default function Editor({ project }) {
                     const isSelected = selectedClipIndex === index;
                     return (
                       <div
-                      key={clip._localId || index}
-                        draggable={!isSelected}
-                        onDragStart={(e) => handleClipDragStart(e, index)}
+                        key={clip._localId || index}
+                        draggable
+                        onDragStart={(e) => { e.stopPropagation(); handleClipDragStart(e, index); }}
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => handleClipDrop(e, index)}
                         onClick={(e) => { e.stopPropagation(); selectClip(index); }}
@@ -2557,8 +2557,8 @@ export default function Editor({ project }) {
                         {clip.name}
                         {isSelected && (
                           <>
-                            <div className="clip-handle left" onMouseDown={(e) => startResize(e, index, 'start')} />
-                            <div className="clip-handle right" onMouseDown={(e) => startResize(e, index, 'end')} />
+                            <div className="clip-handle left" draggable={false} onMouseDown={(e) => { e.stopPropagation(); startResize(e, index, 'start'); }} />
+                            <div className="clip-handle right" draggable={false} onMouseDown={(e) => { e.stopPropagation(); startResize(e, index, 'end'); }} />
                           </>
                         )}
                       </div>
