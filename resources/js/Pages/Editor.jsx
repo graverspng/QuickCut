@@ -896,18 +896,20 @@ export default function Editor({ project }) {
     }
   };
 
-  const handleClipDragStart = (e, index) => e.dataTransfer.setData('clipIndex', index);
+  const handleClipDragStart = (e, index) => e.dataTransfer.setData('clipIndex', String(index));
   const handleClipDrop = (e, dropIndex) => {
     e.preventDefault();
-    const draggedIndex = parseInt(e.dataTransfer.getData('clipIndex'));
-    if (draggedIndex === dropIndex) return;
+    e.stopPropagation();
+    const draggedIndex = parseInt(e.dataTransfer.getData('clipIndex'), 10);
+    if (isNaN(draggedIndex) || draggedIndex === dropIndex) return;
+    const insertAt = draggedIndex < dropIndex ? dropIndex - 1 : dropIndex;
     setClips((prev) => {
       const updated = [...prev];
       const [draggedClip] = updated.splice(draggedIndex, 1);
-      updated.splice(dropIndex, 0, draggedClip);
+      updated.splice(insertAt, 0, draggedClip);
       return normalizeClipsLocal(updated);
     });
-    selectClip(dropIndex);
+    selectClip(insertAt);
   };
 
   const addTransitionBetween = (fromIndex) => {
