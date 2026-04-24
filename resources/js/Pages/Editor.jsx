@@ -832,10 +832,13 @@ export default function Editor({ project }) {
       const relativeTime = currentTime - (clip.startTime || 0);
       if (relativeTime <= 0 || relativeTime >= (clip.duration || 0)) return;
 
-      const before = { ...clip, _localId: makeId('clip'), startOffset: clip.startOffset || 0, startTime: clip.startTime, duration: relativeTime };
-      const after = { ...clip, _localId: makeId('clip'), startOffset: (clip.startOffset || 0) + relativeTime, startTime: (clip.startTime || 0) + relativeTime, duration: (clip.duration || 0) - relativeTime };
-
-      setClips((prev) => normalizeClipsLocal([...prev.slice(0, targetIndex), before, after, ...prev.slice(targetIndex + 1)]));
+      setClips((prev) => {
+        const c = prev[targetIndex];
+        if (!c) return prev;
+        const before = { ...c, _localId: makeId('clip'), startOffset: c.startOffset || 0, startTime: c.startTime, duration: relativeTime };
+        const after = { ...c, _localId: makeId('clip'), startOffset: (c.startOffset || 0) + relativeTime, startTime: (c.startTime || 0) + relativeTime, duration: (c.duration || 0) - relativeTime };
+        return normalizeClipsLocal([...prev.slice(0, targetIndex), before, after, ...prev.slice(targetIndex + 1)]);
+      });
       setSelectedClipIndex(targetIndex + 1);
       seekTo(currentTime, wasPlaying);
       return;
