@@ -2538,7 +2538,10 @@ export default function Editor({ project }) {
               >
                 <div className="lane" style={{ width: `${timelineWidth}px` }}>
                   {clips.map((clip, index) => {
-                    const width = Math.max(2, (clip.duration || 0) * pxPerSec);
+                    const CLIP_GAP = 3;
+                    const rawWidth = Math.max(2, (clip.duration || 0) * pxPerSec);
+                    const width = Math.max(2, rawWidth - CLIP_GAP * 2);
+                    const left = (clip.startTime || 0) * pxPerSec + CLIP_GAP;
                     const isSelected = selectedClipIndex === index;
                     return (
                       <div
@@ -2549,7 +2552,7 @@ export default function Editor({ project }) {
                         onDrop={(e) => handleClipDrop(e, index)}
                         onClick={(e) => { e.stopPropagation(); selectClip(index); }}
                         className={`clip ${isSelected ? 'selected' : ''}`}
-                        style={{ width: `${width}px`, left: `${(clip.startTime || 0) * pxPerSec}px` }}
+                        style={{ width: `${width}px`, left: `${left}px` }}
                       >
                         {clip.name}
                         {isSelected && (
