@@ -3,6 +3,8 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import '@/../css/Editor.css';
+import SaveStatusBadge from '@/Components/SaveStatusBadge';
+import UnsavedExitModal from '@/Components/UnsavedExitModal';
 
 const DEFAULT_IMAGE_CLIP_DURATION = 5;
 
@@ -209,6 +211,10 @@ export default function Editor({ project }) {
   const [uploadError, setUploadError] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
+  const [showExitModal, setShowExitModal] = useState(false);
+  const exitNavRef = useRef(null);
+  const dirtyMountRef = useRef(false);
 
   const [currentTime, setCurrentTime] = useState(0);
 
@@ -616,7 +622,30 @@ export default function Editor({ project }) {
     });
   };
 
-  const goBack = () => router.get(route('dashboard'));
+  // ── Dirty tracking ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!dirtyMountRef.current) { dirtyMountRef.current = true; return; }
+    setIsDirty(true);
+  }, [clips, musicTracks, effects, textOverlays, transitions]);
+
+  useEffect(() => {
+    const handler = (e) => { if (isDirty) { e.preventDefault(); e.returnValue = ''; } };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
+  useEffect(() => {
+    return router.on('before', () => {
+      if (isDirty && !showExitModal) {
+        return window.confirm('You have unsaved changes. Leave anyway?');
+      }
+    });
+  }, [isDirty, showExitModal]);
+
+  const goBack = () => {
+    if (isDirty) { exitNavRef.current = () => router.get(route('dashboard')); setShowExitModal(true); }
+    else router.get(route('dashboard'));
+  };
 
   const handleFileUpload = async (input) => {
     const fileList =
@@ -813,6 +842,7 @@ export default function Editor({ project }) {
         transitions: transitionsToSave,
       });
       setSaveMsg('saved');
+      setIsDirty(false);
     } catch (err) {
       const msg = err.response?.data?.message || err.response?.data?.error || 'Save failed. Try again.';
       setSaveMsg('error:' + msg);
@@ -2118,7 +2148,10 @@ export default function Editor({ project }) {
         </div>
 
         <div className="editor-header" onClick={(e) => e.stopPropagation()}>
-          <h2>{project.name}</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <h2 style={{ margin: 0 }}>{project.name}</h2>
+            <SaveStatusBadge isDirty={isDirty} saving={saving} />
+          </div>
           <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {selectedEffect && (
               <div className="effect-toolbar" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -2659,6 +2692,16 @@ export default function Editor({ project }) {
           </div>
         </div>
       </div>
+      {showExitModal && (
+        <UnsavedExitModal
+          onKeepEditing={() => setShowExitModal(false)}
+          onSaveExit={async () => {
+            setShowExitModal(false);
+            await handleSave();
+            exitNavRef.current?.();
+          }}
+        />
+      )}
     </AuthenticatedLayout>
   );
 }

@@ -2,6 +2,8 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import '@/../css/AudioEditor.css';
+import SaveStatusBadge from '@/Components/SaveStatusBadge';
+import UnsavedExitModal from '@/Components/UnsavedExitModal';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const MIN_SESSION_SECS = 60;
@@ -66,6 +68,10 @@ export default function AudioEditor({ project }) {
     const [uploading, setUploading]         = useState(false);
     const [uploadError, setUploadError]     = useState('');
     const [saving, setSaving]               = useState(false);
+    const [isDirty, setIsDirty]             = useState(false);
+    const [showExitModal, setShowExitModal] = useState(false);
+    const exitNavRef                        = useRef(null);
+    const dirtyMountRef                     = useRef(false);
     const [ghost, setGhost]                 = useState(null); // { name, startTime, duration }
     const [libDragOver, setLibDragOver]     = useState(false);
 
@@ -227,13 +233,41 @@ export default function AudioEditor({ project }) {
         return () => window.removeEventListener('pagehide', onUnload);
     }, [cleanupFreshUploads]);
 
+    // ── Dirty tracking ────────────────────────────────────────────────────
+    useEffect(() => {
+        if (!dirtyMountRef.current) { dirtyMountRef.current = true; return; }
+        setIsDirty(true);
+    }, [tracks, mediaFiles]);
+
+    useEffect(() => {
+        const handler = (e) => { if (isDirty) { e.preventDefault(); e.returnValue = ''; } };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, [isDirty]);
+
+    useEffect(() => {
+        return router.on('before', () => {
+            if (isDirty && !showExitModal) {
+                return window.confirm('You have unsaved changes. Leave anyway?');
+            }
+        });
+    }, [isDirty, showExitModal]);
+
     const handleBack = useCallback(() => {
+        if (isDirty) {
+            exitNavRef.current = () => {
+                if (freshUploadsRef.current.length > 0) cleanupFreshUploads();
+                router.visit(route('audio.projects'));
+            };
+            setShowExitModal(true);
+            return;
+        }
         if (freshUploadsRef.current.length > 0) {
             if (!confirm('Uploaded files that haven\'t been saved will be removed. Leave anyway?')) return;
             cleanupFreshUploads();
         }
         router.visit(route('audio.projects'));
-    }, [cleanupFreshUploads]);
+    }, [isDirty, cleanupFreshUploads]);
 
     // ── Track drag (move / resize / resize-left) ──────────────────────────────
     const handleTrackMouseDown = (e, index, type) => {
@@ -464,7 +498,7 @@ export default function AudioEditor({ project }) {
         router.put(
             route('audio.projects.update', project.id),
             { tracks: tracksToSave, media_files: mediaFiles },
-            { onFinish: () => setSaving(false) }
+            { onSuccess: () => setIsDirty(false), onFinish: () => setSaving(false) }
         );
     };
 
@@ -507,8 +541,9 @@ export default function AudioEditor({ project }) {
 
                 {/* ── Header ─────────────────────────────────────────────── */}
                 <div className="editor-header">
-                    <div className="editor-header-left">
+                    <div className="editor-header-left" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span className="editor-project-name">{project.name}</span>
+                        <SaveStatusBadge isDirty={isDirty} saving={saving} />
                     </div>
 
                     <div className="editor-header-center ae-toolbar">
@@ -762,6 +797,16 @@ export default function AudioEditor({ project }) {
                     </div>
                 </div>
             </div>
+        {showExitModal && (
+            <UnsavedExitModal
+                onKeepEditing={() => setShowExitModal(false)}
+                onSaveExit={() => {
+                    setShowExitModal(false);
+                    handleSave();
+                    exitNavRef.current?.();
+                }}
+            />
+        )}
         </AuthenticatedLayout>
     );
 }
