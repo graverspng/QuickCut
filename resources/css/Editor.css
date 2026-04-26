@@ -474,6 +474,7 @@
 }
 .clip:hover { transform: translateY(-1px); opacity: 0.95; }
 .clip.selected { border: 2px solid #60a5fa; box-shadow: 0 0 0 3px rgba(96,165,250,0.2), 0 0 14px rgba(96,165,250,0.3); }
+.clip.clip-dragging { opacity: 0.15; pointer-events: none; }
 
 .track {
   position: absolute;
