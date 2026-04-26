@@ -211,7 +211,6 @@ export default function Editor({ project }) {
   const [uploadError, setUploadError] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
-  const [draggingClipLocalId, setDraggingClipLocalId] = useState(null);
   const [isDirty, setIsDirty] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
   const exitNavRef = useRef(null);
@@ -931,15 +930,14 @@ export default function Editor({ project }) {
 
   const handleClipDragStart = (e, index) => {
     e.dataTransfer.setData('clipIndex', String(index));
-    setDraggingClipLocalId(clips[index]?._localId ?? null);
   };
   const handleClipDrop = (e, dropIndex) => {
     e.preventDefault();
     e.stopPropagation();
-    setDraggingClipLocalId(null);
     const draggedIndex = parseInt(e.dataTransfer.getData('clipIndex'), 10);
-    if (isNaN(draggedIndex) || draggedIndex === dropIndex) return;
+    if (isNaN(draggedIndex) || draggedIndex < 0 || draggedIndex === dropIndex) return;
     setClips((prev) => {
+      if (draggedIndex >= prev.length) return prev;
       const updated = [...prev];
       const [draggedClip] = updated.splice(draggedIndex, 1);
       updated.splice(dropIndex, 0, draggedClip);
@@ -2592,11 +2590,10 @@ export default function Editor({ project }) {
                         key={clip._localId || index}
                         draggable
                         onDragStart={(e) => { e.stopPropagation(); handleClipDragStart(e, index); }}
-                        onDragEnd={() => setDraggingClipLocalId(null)}
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => handleClipDrop(e, index)}
                         onClick={(e) => { e.stopPropagation(); selectClip(index); }}
-                        className={`clip${isSelected ? ' selected' : ''}${draggingClipLocalId === clip._localId ? ' clip-dragging' : ''}`}
+                        className={`clip${isSelected ? ' selected' : ''}`}
                         style={{ width: `${width}px`, left: `${left}px` }}
                       >
                         {clip.name}
