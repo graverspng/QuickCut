@@ -2591,7 +2591,7 @@ export default function Editor({ project }) {
                         key={clip._localId || index}
                         draggable
                         onDragStart={(e) => { e.stopPropagation(); handleClipDragStart(e, index); }}
-                        onDragEnd={(e) => { requestAnimationFrame(() => { if (e.currentTarget) e.currentTarget.style.opacity = ''; }); }}
+                        onDragEnd={(e) => { const el = e.currentTarget; requestAnimationFrame(() => { if (el) el.style.opacity = ''; }); }}
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => handleClipDrop(e, index)}
                         onClick={(e) => { e.stopPropagation(); selectClip(index); }}
