@@ -5,7 +5,7 @@ export default function SaveStatusBadge({ isDirty, saving }) {
         return (
             <span className="ssb ssb--saving">
                 <span className="ssb-dot" />
-                saving…
+                Saving…
             </span>
         );
     }
@@ -13,14 +13,14 @@ export default function SaveStatusBadge({ isDirty, saving }) {
         return (
             <span className="ssb ssb--unsaved">
                 <span className="ssb-dot" />
-                unsaved
+                Unsaved
             </span>
         );
     }
     return (
         <span className="ssb ssb--saved">
             <span className="ssb-dot" />
-            saved
+            Saved
         </span>
     );
 }

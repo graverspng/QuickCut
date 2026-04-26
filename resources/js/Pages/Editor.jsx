@@ -216,6 +216,7 @@ export default function Editor({ project }) {
   const [showExitModal, setShowExitModal] = useState(false);
   const exitNavRef = useRef(null);
   const dirtyMountRef = useRef(false);
+  const suppressDirtyRef = useRef(0);
 
   const [currentTime, setCurrentTime] = useState(0);
 
@@ -460,6 +461,7 @@ export default function Editor({ project }) {
       return !overlay.canvasWidth || !overlay.canvasHeight;
     });
     if (!requiresUpdate) return;
+    suppressDirtyRef.current += 1;
     setTextOverlays((prev) => applyStageDimensions(prev));
   }, [textOverlays, applyStageDimensions]);
 
@@ -626,6 +628,7 @@ export default function Editor({ project }) {
   // ── Dirty tracking ────────────────────────────────────────────────────
   useEffect(() => {
     if (!dirtyMountRef.current) { dirtyMountRef.current = true; return; }
+    if (suppressDirtyRef.current > 0) { suppressDirtyRef.current -= 1; return; }
     setIsDirty(true);
   }, [clips, musicTracks, effects, textOverlays, transitions]);
 
@@ -707,6 +710,12 @@ export default function Editor({ project }) {
 
   const handleDragStart = (e, payload) => {
     e.dataTransfer.setData('payload', JSON.stringify(payload));
+    // Set a type hint so dragover handlers can identify media kind without reading data
+    if (payload.kind === 'media' && payload.file?.type) {
+      e.dataTransfer.setData(`payload/media/${payload.file.type}`, '');
+    } else if (payload.kind) {
+      e.dataTransfer.setData(`payload/${payload.kind}`, '');
+    }
   };
 
   const handleDrop = (e) => {
@@ -944,7 +953,11 @@ export default function Editor({ project }) {
   }, [clips, pxPerSec]);
 
   const handleLaneDragOver = (e) => {
-    if (!e.dataTransfer.types.includes('clipindex')) return;
+    const types = e.dataTransfer.types;
+    const hasClip = types.includes('clipindex');
+    const hasVideo = types.includes('payload/media/video');
+    const hasImage = types.includes('payload/media/image');
+    if (!hasClip && !hasVideo && !hasImage) return;
     e.preventDefault();
     const rect = e.currentTarget.getBoundingClientRect();
     setDropIndicatorIndex(getClipInsertIndex(e.clientX - rect.left));
@@ -956,22 +969,68 @@ export default function Editor({ project }) {
 
   const handleLaneDrop = (e) => {
     e.preventDefault();
-    e.stopPropagation();
     setDropIndicatorIndex(null);
+
+    // Clip reorder drop
     const draggedIndex = parseInt(e.dataTransfer.getData('clipIndex'), 10);
-    if (isNaN(draggedIndex) || draggedIndex < 0) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const insertIndex = getClipInsertIndex(e.clientX - rect.left);
-    const adjustedInsert = insertIndex > draggedIndex ? insertIndex - 1 : insertIndex;
-    if (adjustedInsert === draggedIndex) return;
-    setClips((prev) => {
-      if (draggedIndex >= prev.length) return prev;
-      const updated = [...prev];
-      const [draggedClip] = updated.splice(draggedIndex, 1);
-      updated.splice(adjustedInsert, 0, draggedClip);
-      return normalizeClipsLocal(updated);
-    });
-    selectClip(adjustedInsert);
+    if (!isNaN(draggedIndex) && draggedIndex >= 0) {
+      e.stopPropagation();
+      const rect = e.currentTarget.getBoundingClientRect();
+      const insertIndex = getClipInsertIndex(e.clientX - rect.left);
+      const adjustedInsert = insertIndex > draggedIndex ? insertIndex - 1 : insertIndex;
+      if (adjustedInsert === draggedIndex) return;
+      setClips((prev) => {
+        if (draggedIndex >= prev.length) return prev;
+        const updated = [...prev];
+        const [draggedClip] = updated.splice(draggedIndex, 1);
+        updated.splice(adjustedInsert, 0, draggedClip);
+        return normalizeClipsLocal(updated);
+      });
+      selectClip(adjustedInsert);
+      return;
+    }
+
+    // Media payload drop — handle video/image at position, pass audio/effect/text up
+    const raw = e.dataTransfer.getData('payload');
+    if (!raw) return;
+    let payload;
+    try { payload = JSON.parse(raw); } catch (_) { return; }
+
+    if (payload.kind === 'media') {
+      const file = payload.file;
+      if (!file) return;
+      if (file.type === 'video' || file.type === 'image') {
+        e.stopPropagation();
+        const rect = e.currentTarget.getBoundingClientRect();
+        const insertIndex = getClipInsertIndex(e.clientX - rect.left);
+        if (file.type === 'video') {
+          setClips((prev) => {
+            const updated = [...prev];
+            updated.splice(insertIndex, 0, { ...file, _localId: makeId('clip'), startOffset: 0 });
+            if (prev.length === 0) setActiveClipIndex(0);
+            return normalizeClipsLocal(updated);
+          });
+        } else {
+          setClips((prev) => {
+            const baseDuration = file.duration && file.duration > 0 ? file.duration : DEFAULT_IMAGE_CLIP_DURATION;
+            const updated = [...prev];
+            updated.splice(insertIndex, 0, {
+              ...file,
+              _localId: makeId('clip'),
+              startOffset: 0,
+              duration: baseDuration,
+              sourceDuration: Number.isFinite(file.sourceDuration) && file.sourceDuration > 0 ? file.sourceDuration : null,
+              type: 'image',
+            });
+            if (prev.length === 0) setActiveClipIndex(0);
+            return normalizeClipsLocal(updated);
+          });
+        }
+        selectClip(insertIndex);
+        return;
+      }
+    }
+    // audio/effect/text — let bubble up to editor-area handleDrop (don't stopPropagation)
   };
 
   const addTransitionBetween = (fromIndex) => {
@@ -1131,6 +1190,7 @@ export default function Editor({ project }) {
         }
       });
       if (!changed && updated.length === prev.length && updated.every((item, idx) => item === prev[idx])) return prev;
+      suppressDirtyRef.current += 1;
       return updated;
     });
   }, [clips]);
@@ -1225,6 +1285,7 @@ export default function Editor({ project }) {
     clips.forEach((clip, i) => {
       if (!clip || clip.type === 'image') {
         if (clip?.type === 'image' && (!clip.duration || clip.duration <= 0)) {
+          suppressDirtyRef.current += 1;
           setClips((prev) => {
             const list = [...prev];
             const updated = { ...list[i], duration: DEFAULT_IMAGE_CLIP_DURATION };
@@ -1240,6 +1301,7 @@ export default function Editor({ project }) {
         vid.src = clip.source;
         vid.preload = 'auto';
         vid.onloadedmetadata = () => {
+          suppressDirtyRef.current += 1;
           setClips((prev) => {
             const list = [...prev];
             const c = { ...list[i] };
@@ -1264,6 +1326,7 @@ export default function Editor({ project }) {
         aud.src = track.source;
         aud.preload = 'auto';
         aud.onloadedmetadata = () => {
+          suppressDirtyRef.current += 1;
           setMusicTracks((prev) => {
             const arr = [...prev];
             const t = { ...arr[i] };
