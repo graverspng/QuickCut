@@ -212,6 +212,7 @@ export default function Editor({ project }) {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [isDirty, setIsDirty] = useState(false);
+  const [dropIndicatorIndex, setDropIndicatorIndex] = useState(null);
   const [showExitModal, setShowExitModal] = useState(false);
   const exitNavRef = useRef(null);
   const dirtyMountRef = useRef(false);
@@ -932,19 +933,45 @@ export default function Editor({ project }) {
   const handleClipDragStart = (e, index) => {
     e.dataTransfer.setData('clipIndex', String(index));
   };
-  const handleClipDrop = (e, dropIndex) => {
+
+  const getClipInsertIndex = useCallback((mouseX) => {
+    const clampedPps = Number.isFinite(pxPerSec) && pxPerSec > 0 ? pxPerSec : BASE_PX_PER_SEC;
+    for (let i = 0; i < clips.length; i++) {
+      const midPx = ((clips[i].startTime || 0) + (clips[i].duration || 0) / 2) * clampedPps;
+      if (mouseX < midPx) return i;
+    }
+    return clips.length;
+  }, [clips, pxPerSec]);
+
+  const handleLaneDragOver = (e) => {
+    if (!e.dataTransfer.types.includes('clipindex')) return;
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    setDropIndicatorIndex(getClipInsertIndex(e.clientX - rect.left));
+  };
+
+  const handleLaneDragLeave = (e) => {
+    if (!e.currentTarget.contains(e.relatedTarget)) setDropIndicatorIndex(null);
+  };
+
+  const handleLaneDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    setDropIndicatorIndex(null);
     const draggedIndex = parseInt(e.dataTransfer.getData('clipIndex'), 10);
-    if (isNaN(draggedIndex) || draggedIndex < 0 || draggedIndex === dropIndex) return;
+    if (isNaN(draggedIndex) || draggedIndex < 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const insertIndex = getClipInsertIndex(e.clientX - rect.left);
+    const adjustedInsert = insertIndex > draggedIndex ? insertIndex - 1 : insertIndex;
+    if (adjustedInsert === draggedIndex) return;
     setClips((prev) => {
       if (draggedIndex >= prev.length) return prev;
       const updated = [...prev];
       const [draggedClip] = updated.splice(draggedIndex, 1);
-      updated.splice(dropIndex, 0, draggedClip);
+      updated.splice(adjustedInsert, 0, draggedClip);
       return normalizeClipsLocal(updated);
     });
-    selectClip(dropIndex);
+    selectClip(adjustedInsert);
   };
 
   const addTransitionBetween = (fromIndex) => {
@@ -2579,7 +2606,13 @@ export default function Editor({ project }) {
                 onMouseDownCapture={handleSeekMouseDownCapture}
                 onClick={() => clearSelection()}
               >
-                <div className="lane" style={{ width: `${timelineWidth}px` }}>
+                <div
+                  className="lane"
+                  style={{ width: `${timelineWidth}px` }}
+                  onDragOver={handleLaneDragOver}
+                  onDragLeave={handleLaneDragLeave}
+                  onDrop={handleLaneDrop}
+                >
                   {clips.map((clip, index) => {
                     const CLIP_GAP = 3;
                     const rawWidth = Math.max(2, (clip.duration || 0) * pxPerSec);
@@ -2591,8 +2624,7 @@ export default function Editor({ project }) {
                         key={clip._localId || index}
                         draggable
                         onDragStart={(e) => { e.stopPropagation(); handleClipDragStart(e, index); }}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => handleClipDrop(e, index)}
+                        onDragEnd={() => setDropIndicatorIndex(null)}
                         onClick={(e) => { e.stopPropagation(); selectClip(index); }}
                         className={`clip${isSelected ? ' selected' : ''}`}
                         style={{ width: `${width}px`, left: `${left}px` }}
@@ -2607,6 +2639,12 @@ export default function Editor({ project }) {
                       </div>
                     );
                   })}
+                  {dropIndicatorIndex !== null && (() => {
+                    const indLeft = dropIndicatorIndex < clips.length
+                      ? (clips[dropIndicatorIndex]?.startTime || 0) * pxPerSec
+                      : ((clips[clips.length - 1]?.startTime || 0) + (clips[clips.length - 1]?.duration || 0)) * pxPerSec;
+                    return <div className="clip-drop-indicator" style={{ left: `${indLeft}px` }} />;
+                  })()}
                                     {clips.map((clip, index) => {
                     if (index >= clips.length - 1) return null;
                     const nextClip = clips[index + 1];
