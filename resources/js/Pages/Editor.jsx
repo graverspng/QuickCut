@@ -730,7 +730,7 @@ export default function Editor({ project }) {
         setClips((prev) => {
           const newClips = normalizeClipsLocal([
             ...prev,
-            { ...file, startOffset: 0, startTime: prev.reduce((sum, c) => sum + (c.duration || 0), 0) }
+            { ...file, _localId: makeId('clip'), startOffset: 0, startTime: prev.reduce((sum, c) => sum + (c.duration || 0), 0) }
           ]);
           if (prev.length === 0) setActiveClipIndex(0);
           return newClips;
@@ -749,6 +749,7 @@ export default function Editor({ project }) {
             ...prev,
             {
               ...file,
+              _localId: makeId('clip'),
               startOffset: 0,
               startTime,
               duration: baseDuration,
