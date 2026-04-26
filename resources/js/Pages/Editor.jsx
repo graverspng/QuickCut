@@ -865,8 +865,10 @@ export default function Editor({ project }) {
       setClips((prev) => {
         const c = prev[targetIndex];
         if (!c) return prev;
-        const before = { ...c, _localId: makeId('clip'), startOffset: c.startOffset || 0, startTime: c.startTime, duration: relativeTime };
-        const after = { ...c, _localId: makeId('clip'), startOffset: (c.startOffset || 0) + relativeTime, startTime: (c.startTime || 0) + relativeTime, duration: (c.duration || 0) - relativeTime };
+        const relTime = currentTime - (c.startTime || 0);
+        if (relTime <= 0 || relTime >= (c.duration || 0)) return prev;
+        const before = { ...c, _localId: makeId('clip'), startOffset: c.startOffset || 0, startTime: c.startTime, duration: relTime };
+        const after = { ...c, _localId: makeId('clip'), startOffset: (c.startOffset || 0) + relTime, startTime: (c.startTime || 0) + relTime, duration: (c.duration || 0) - relTime };
         return normalizeClipsLocal([...prev.slice(0, targetIndex), before, after, ...prev.slice(targetIndex + 1)]);
       });
       setSelectedClipIndex(targetIndex + 1);
@@ -926,11 +928,16 @@ export default function Editor({ project }) {
     }
   };
 
-  const handleClipDragStart = (e, index) => e.dataTransfer.setData('clipIndex', index);
+  const handleClipDragStart = (e, index) => {
+    e.dataTransfer.setData('clipIndex', String(index));
+    const el = e.currentTarget;
+    requestAnimationFrame(() => { if (el) el.style.opacity = '0'; });
+  };
   const handleClipDrop = (e, dropIndex) => {
     e.preventDefault();
-    const draggedIndex = parseInt(e.dataTransfer.getData('clipIndex'));
-    if (draggedIndex === dropIndex) return;
+    e.stopPropagation();
+    const draggedIndex = parseInt(e.dataTransfer.getData('clipIndex'), 10);
+    if (isNaN(draggedIndex) || draggedIndex === dropIndex) return;
     setClips((prev) => {
       const updated = [...prev];
       const [draggedClip] = updated.splice(draggedIndex, 1);
@@ -2584,6 +2591,7 @@ export default function Editor({ project }) {
                         key={clip._localId || index}
                         draggable
                         onDragStart={(e) => { e.stopPropagation(); handleClipDragStart(e, index); }}
+                        onDragEnd={(e) => { requestAnimationFrame(() => { if (e.currentTarget) e.currentTarget.style.opacity = ''; }); }}
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => handleClipDrop(e, index)}
                         onClick={(e) => { e.stopPropagation(); selectClip(index); }}
