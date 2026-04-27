@@ -300,10 +300,50 @@ export default function Editor({ project }) {
 
     const stageWidth = stageRect.width || 1;
     const stageHeight = stageRect.height || 1;
-    const videoWidth = Math.max(1, mediaRect?.width || stageWidth);
-    const videoHeight = Math.max(1, mediaRect?.height || stageHeight);
-    const videoOffsetX = mediaRect ? mediaRect.left - stageRect.left : 0;
-    const videoOffsetY = mediaRect ? mediaRect.top - stageRect.top : 0;
+
+    const elementWidth = Math.max(1, mediaRect?.width || stageWidth);
+    const elementHeight = Math.max(1, mediaRect?.height || stageHeight);
+    const elementOffsetX = mediaRect ? mediaRect.left - stageRect.left : 0;
+    const elementOffsetY = mediaRect ? mediaRect.top - stageRect.top : 0;
+
+    let videoWidth = elementWidth;
+    let videoHeight = elementHeight;
+    let internalOffsetX = 0;
+    let internalOffsetY = 0;
+
+    // Detect intrinsic letterboxing inside the element caused by CSS max-height constraints
+    const vid = videoRef.current;
+    const img = imageRef.current;
+    if (vid && vid.videoWidth > 0 && vid.videoHeight > 0) {
+      const nativeAspect = vid.videoWidth / vid.videoHeight;
+      const elementAspect = elementWidth / elementHeight;
+      if (elementAspect > nativeAspect + 0.001) {
+        // Element wider than video content → pillarboxing (vertical bars on sides)
+        videoHeight = elementHeight;
+        videoWidth = elementHeight * nativeAspect;
+        internalOffsetX = (elementWidth - videoWidth) / 2;
+      } else if (nativeAspect > elementAspect + 0.001) {
+        // Video wider than element → letterboxing (horizontal bars top/bottom)
+        videoWidth = elementWidth;
+        videoHeight = elementWidth / nativeAspect;
+        internalOffsetY = (elementHeight - videoHeight) / 2;
+      }
+    } else if (img && img.naturalWidth > 0 && img.naturalHeight > 0) {
+      const nativeAspect = img.naturalWidth / img.naturalHeight;
+      const elementAspect = elementWidth / elementHeight;
+      if (elementAspect > nativeAspect + 0.001) {
+        videoHeight = elementHeight;
+        videoWidth = elementHeight * nativeAspect;
+        internalOffsetX = (elementWidth - videoWidth) / 2;
+      } else if (nativeAspect > elementAspect + 0.001) {
+        videoWidth = elementWidth;
+        videoHeight = elementWidth / nativeAspect;
+        internalOffsetY = (elementHeight - videoHeight) / 2;
+      }
+    }
+
+    const videoOffsetX = elementOffsetX + internalOffsetX;
+    const videoOffsetY = elementOffsetY + internalOffsetY;
 
     return overlays.map((overlay) => {
       if (!overlay || typeof overlay !== 'object') {
