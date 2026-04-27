@@ -1386,37 +1386,11 @@ protected function buildTextFilters(array $textOverlays, ?array $videoDimensions
 
         $fontSize = (int) max(10, min(300, round($fontSize)));
 
-        $stageWidth = $canvasWidth > 0 ? $canvasWidth : max($displayVideoWidth, 1);
-        $stageHeight = $canvasHeight > 0 ? $canvasHeight : max($displayVideoHeight, 1);
-
-        $displayWidthSafe = $displayVideoWidth > 0 ? $displayVideoWidth : $stageWidth;
-        $displayHeightSafe = $displayVideoHeight > 0 ? $displayVideoHeight : $stageHeight;
-
-        $stagePercentXMeta = Arr::get($overlay, 'stagePercentX');
-        $stagePercentYMeta = Arr::get($overlay, 'stagePercentY');
-        $stagePercentX = is_numeric($stagePercentXMeta)
-            ? max(0, min(100, (float) $stagePercentXMeta))
-            : max(0, min(100, (float) Arr::get($overlay, 'x', 50)));
-        $stagePercentY = is_numeric($stagePercentYMeta)
-            ? max(0, min(100, (float) $stagePercentYMeta))
-            : max(0, min(100, (float) Arr::get($overlay, 'y', 50)));
-
-        $stagePosX = ($stagePercentX / 100) * $stageWidth;
-        $stagePosY = ($stagePercentY / 100) * $stageHeight;
-
-
-        $displayOffsetX = (float) Arr::get($overlay, 'displayVideoOffsetX', 0);
-        $displayOffsetY = (float) Arr::get($overlay, 'displayVideoOffsetY', 0);
-
-        $videoPercentX = $displayWidthSafe > 0
-            ? (($stagePosX - $displayOffsetX) / $displayWidthSafe) * 100
-            : max(0, min(100, (float) Arr::get($overlay, 'x', 50)));
-        $videoPercentY = $displayHeightSafe > 0
-            ? (($stagePosY - $displayOffsetY) / $displayHeightSafe) * 100
-            : max(0, min(100, (float) Arr::get($overlay, 'y', 50)));
-
-        $videoPercentX = max(0, min(100, $videoPercentX));
-        $videoPercentY = max(0, min(100, $videoPercentY));
+        // x/y are already video-relative percentages (computed from actual video element
+        // dimensions during drag, accounting for stage letterboxing and video offsets).
+        // Using them directly is more accurate than converting via stagePercent.
+        $videoPercentX = max(0, min(100, (float) Arr::get($overlay, 'x', 50)));
+        $videoPercentY = max(0, min(100, (float) Arr::get($overlay, 'y', 50)));
 
         $videoRatioX = $videoPercentX / 100;
         $videoRatioY = $videoPercentY / 100;
@@ -1448,17 +1422,10 @@ protected function buildTextFilters(array $textOverlays, ?array $videoDimensions
             'content_preview' => Str::limit($text, 40),
             'font_size_final' => $fontSize,
             'scale_applied' => $scaleApplied,
-            'canvas_width' => $canvasWidth,
-            'canvas_height' => $canvasHeight,
             'display_video_width' => $displayVideoWidth,
             'display_video_height' => $displayVideoHeight,
-            'display_video_offset_x' => $displayOffsetX,
-            'display_video_offset_y' => $displayOffsetY,
             'video_dimensions' => $videoDimensions,
-            'position_percent' => [
-                'video' => ['x' => $videoPercentX, 'y' => $videoPercentY],
-                'stage' => ['x' => $stagePercentX, 'y' => $stagePercentY],
-            ],
+            'video_position_percent' => ['x' => $videoPercentX, 'y' => $videoPercentY],
         ]);
     }
 
