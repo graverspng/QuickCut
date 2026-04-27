@@ -86,7 +86,7 @@ export default function Editor({ project }) {
     return (clipsArr || []).map((clip) => {
       if (!clip) return clip;
       const c = { ...clip };
-      if (!c._localId) c._localId = c.id || makeId('clip');
+      if (!c._localId) c._localId = makeId('clip');
       c.startTime = accumulated;
       accumulated += c.duration || 0;
       return c;
@@ -157,12 +157,13 @@ export default function Editor({ project }) {
   };
 
   const rehydrateItems = (items = []) => items.map((item) => hydrateFromStorage(item)).filter(Boolean);
-  const prepareItemsForSave = (items = []) =>
+  const prepareItemsForSave = (items = [], keepLocalId = false) =>
     items
       .map((item) => {
         if (!item) return null;
         const { storageKey, source, file, _localId, ...rest } = item;
         const payload = { ...rest };
+        if (keepLocalId && _localId) payload._localId = _localId;
         if (storageKey) {
           payload.storageKey = storageKey;
           payload.source = storageKey;
@@ -818,7 +819,7 @@ export default function Editor({ project }) {
     setSaveMsg('');
 
     const mediaToSave = prepareItemsForSave(mediaFiles);
-    const clipsToSave = prepareItemsForSave(clips);
+    const clipsToSave = prepareItemsForSave(clips, true);
     const tracksToSave = prepareItemsForSave(musicTracks);
     const effectsToSave = effects.map((effect) => ({ ...effect }));
     const textsToSave = textOverlays.map((t) => ({ ...t }));
