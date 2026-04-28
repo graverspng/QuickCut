@@ -86,29 +86,19 @@
     color: var(--light);
 }
 
-/* ── QuickCut badge above form ── */
-.lp-form-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    background: rgba(43,168,74,0.10);
-    border: 1px solid rgba(43,168,74,0.26);
-    border-radius: 999px;
-    padding: 4px 12px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: var(--green-2);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    margin-bottom: 18px;
-    user-select: none;
+/* ── Logo above form ── */
+.lp-form-logo {
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+    margin-bottom: 20px;
+    filter: drop-shadow(0 0 14px rgba(43,168,74,0.4));
+    opacity: 0;
+    animation: lp-logo-form-in 0.6s cubic-bezier(0.22,1,0.36,1) 0.1s forwards;
 }
-.lp-form-dot {
-    width: 5px; height: 5px;
-    border-radius: 50%;
-    background: var(--green-2);
-    box-shadow: 0 0 5px var(--glow);
-    animation: lp-pulse 2.4s ease-in-out infinite;
+@keyframes lp-logo-form-in {
+    from { opacity: 0; transform: scale(0.85) translateY(-6px); }
+    to   { opacity: 1; transform: scale(1)    translateY(0); }
 }
 @keyframes lp-pulse {
     0%,100% { box-shadow: 0 0 0 0   rgba(43,168,74,0.55); }
@@ -376,8 +366,8 @@
     .login-card h2 { font-size: 1.75rem; }
 }
 @media (prefers-reduced-motion: reduce) {
-    .lp-brand-content, .lp-logo-center, .login-wrapper { animation: none; opacity: 1; transform: none; }
+    .lp-brand-content, .lp-logo-center, .lp-form-logo, .login-wrapper { animation: none; opacity: 1; transform: none; }
     .lp-orb { animation: none; }
-    .lp-eyebrow-dot, .lp-form-dot { animation: none; }
+    .lp-eyebrow-dot { animation: none; }
     .lp-tag-explore, .lp-tag-create, .lp-tag-share { animation: none; }
 }
