@@ -3,9 +3,9 @@ import InputError from '@/Components/InputError';
 import InputLabel from '@/Components/InputLabel';
 import TextInput from '@/Components/TextInput';
 import GuestLayout from '@/Layouts/GuestLayout';
+import AuthBrand from '@/Components/AuthBrand';
 import { Head, Link, useForm } from '@inertiajs/react';
 import '@/../css/Login.css';
-import QuickCutImg from '@/Pages/Auth/img/QuickCut.png';
 
 export default function Login({ status, canResetPassword }) {
     const { data, setData, post, processing, errors, reset } = useForm({
@@ -28,23 +28,20 @@ export default function Login({ status, canResetPassword }) {
             <div className="login-page">
                 <div className="login-wrapper">
                     <div className="login-left">
-                        <img
-                            src={QuickCutImg}
-                            alt="Illustration"
-                            className="login-illustration"
-                        />
+                        <AuthBrand />
                     </div>
 
                     <div className="login-right">
                         <div className="right-inner">
                             <div className="login-card">
-                                <div className="text-center mb-6">
-                                    <h2 className="text-3xl font-semibold text-white">
-                                        Welcome back
-                                    </h2>
-                                    <p className="text-sm text-gray-300 mt-1">
-                                        Sign in to continue
-                                    </p>
+                                <div className="lp-form-badge">
+                                    <span className="lp-form-dot" aria-hidden="true" />
+                                    QuickCut
+                                </div>
+
+                                <div className="mb-6">
+                                    <h2>Welcome back</h2>
+                                    <p>Sign in to continue creating</p>
                                 </div>
 
                                 {status && (
@@ -83,37 +80,41 @@ export default function Login({ status, canResetPassword }) {
                                         <InputError message={errors.password} className="mt-2" />
                                     </div>
 
-                                    <div className="mt-4 block">
-                                        <label className="flex items-center text-white">
+                                    <div className="mt-4 flex items-center justify-between">
+                                        <label className="flex items-center">
                                             <Checkbox
                                                 name="remember"
                                                 checked={data.remember}
-                                                onChange={(e) =>
-                                                    setData('remember', e.target.checked)
-                                                }
+                                                onChange={(e) => setData('remember', e.target.checked)}
                                             />
-                                            <span className="ms-2 text-sm text-gray-300">
-                                                Remember me
-                                            </span>
+                                            <span className="ms-2 text-sm text-gray-300">Remember me</span>
                                         </label>
+                                        {canResetPassword && (
+                                            <Link
+                                                href={route('password.request')}
+                                                className="text-sm text-green-400 hover:text-green-300"
+                                            >
+                                                Forgot password?
+                                            </Link>
+                                        )}
                                     </div>
 
-                                    <div className="mt-6 flex justify-center">
-                                        <button
-                                            type="submit"
-                                            className="login-button"
-                                            disabled={processing}
-                                        >
-                                            Continue
-                                        </button>
-                                    </div>
+                                    <div className="lp-form-divider" />
+
+                                    <button
+                                        type="submit"
+                                        className="login-button"
+                                        disabled={processing}
+                                    >
+                                        Continue →
+                                    </button>
                                 </form>
 
-                                <div className="mt-6 text-center text-gray-300">
-                                    <span className="text-sm">Don’t have an account?</span>
+                                <div className="mt-5 text-center">
+                                    <span className="text-sm text-gray-400">Don't have an account?</span>
                                     <Link
                                         href={route('register')}
-                                        className="ml-2 text-sm text-pink-400 hover:text-pink-300 font-medium underline"
+                                        className="ml-2 text-sm font-medium"
                                     >
                                         Sign Up
                                     </Link>

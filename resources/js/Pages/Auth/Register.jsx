@@ -2,8 +2,9 @@ import InputError from '@/Components/InputError';
 import InputLabel from '@/Components/InputLabel';
 import TextInput from '@/Components/TextInput';
 import GuestLayout from '@/Layouts/GuestLayout';
+import AuthBrand from '@/Components/AuthBrand';
 import { Head, Link, useForm } from '@inertiajs/react';
-import '@/../css/Login.css'; // shared CSS for login/register styling
+import '@/../css/Login.css';
 
 export default function Register() {
     const { data, setData, post, processing, errors, reset } = useForm({
@@ -15,7 +16,6 @@ export default function Register() {
 
     const submit = (e) => {
         e.preventDefault();
-
         post(route('register'), {
             onFinish: () => reset('password', 'password_confirmation'),
         });
@@ -27,26 +27,21 @@ export default function Register() {
 
             <div className="login-page">
                 <div className="login-wrapper">
-                    {/* Left pane with illustration */}
                     <div className="login-left">
-                        <img
-                            src="/img/QuickCut.png" // use public folder path
-                            alt="Illustration"
-                            className="login-illustration"
-                        />
+                        <AuthBrand />
                     </div>
 
-                    {/* Right pane with form */}
                     <div className="login-right">
                         <div className="right-inner">
                             <div className="login-card">
-                                <div className="text-center mb-6">
-                                    <h2 className="text-3xl font-semibold text-white">
-                                        Create Account
-                                    </h2>
-                                    <p className="text-sm text-gray-300 mt-1">
-                                        Sign up to get started
-                                    </p>
+                                <div className="lp-form-badge">
+                                    <span className="lp-form-dot" aria-hidden="true" />
+                                    QuickCut
+                                </div>
+
+                                <div className="mb-6">
+                                    <h2>Create account</h2>
+                                    <p>Join QuickCut — free, forever</p>
                                 </div>
 
                                 <form onSubmit={submit}>
@@ -110,24 +105,26 @@ export default function Register() {
                                         <InputError message={errors.password_confirmation} className="mt-2" />
                                     </div>
 
-                                    <div className="mt-6 flex items-center justify-between">
-                                        <Link
-                                            href={route('login')}
-                                            className="rounded-md text-sm text-gray-300 underline hover:text-white"
-                                        >
-                                            Already registered?
-                                        </Link>
+                                    <div className="lp-form-divider" />
 
-                                        {/* Use custom smaller login button style */}
-                                        <button
-                                            type="submit"
-                                            className="login-button"
-                                            disabled={processing}
-                                        >
-                                            Register
-                                        </button>
-                                    </div>
+                                    <button
+                                        type="submit"
+                                        className="login-button"
+                                        disabled={processing}
+                                    >
+                                        Create Account →
+                                    </button>
                                 </form>
+
+                                <div className="mt-5 text-center">
+                                    <span className="text-sm text-gray-400">Already have an account?</span>
+                                    <Link
+                                        href={route('login')}
+                                        className="ml-2 text-sm font-medium"
+                                    >
+                                        Sign In
+                                    </Link>
+                                </div>
                             </div>
                         </div>
                     </div>
