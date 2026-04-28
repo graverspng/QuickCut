@@ -11,10 +11,11 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\ProjectExportController;
 use App\Http\Controllers\AudioProjectExportController;
 use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 
 Route::get('/', function () {
-    return redirect()->route('login');
-});
+    return Inertia::render('Welcome');
+})->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     // -.- Media Projects -.-
