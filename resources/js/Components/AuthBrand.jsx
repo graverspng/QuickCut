@@ -9,6 +9,8 @@ export default function AuthBrand() {
             <div className="lp-brand-content">
                 <img src={QuickCutImg} alt="QuickCut" className="lp-logo-top" />
 
+                <div className="lp-divider" />
+
                 <h1 className="lp-tagline">
                     <span className="lp-tag-explore">Explore.</span>
                     <br />
