@@ -5,7 +5,6 @@ import GuestLayout from '@/Layouts/GuestLayout';
 import AuthBrand from '@/Components/AuthBrand';
 import { Head, Link, useForm } from '@inertiajs/react';
 import '@/../css/Login.css';
-import QuickCutImg from '@/Pages/Auth/img/QuickCut_Cutout.png';
 
 export default function Register() {
     const { data, setData, post, processing, errors, reset } = useForm({
@@ -35,8 +34,6 @@ export default function Register() {
                     <div className="login-right">
                         <div className="right-inner">
                             <div className="login-card">
-                                <img src={QuickCutImg} alt="QuickCut" className="lp-form-logo" />
-
                                 <div className="mb-6">
                                     <h2>Create account</h2>
                                     <p>Join QuickCut - free, forever</p>

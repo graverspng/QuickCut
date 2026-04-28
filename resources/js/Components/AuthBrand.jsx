@@ -7,10 +7,7 @@ export default function AuthBrand() {
             <div className="lp-orb lp-orb--2" aria-hidden="true" />
 
             <div className="lp-brand-content">
-                <div className="lp-eyebrow">
-                    <span className="lp-eyebrow-dot" aria-hidden="true" />
-                    Free Browser-Based Video Editor
-                </div>
+                <img src={QuickCutImg} alt="QuickCut" className="lp-logo-top" />
 
                 <h1 className="lp-tagline">
                     <span className="lp-tag-explore">Explore.</span>
@@ -23,10 +20,6 @@ export default function AuthBrand() {
                 <p className="lp-pitch">
                     No subscription. No paywalls. Just pure creative flow.
                 </p>
-
-                <div className="lp-divider" />
-
-                <img src={QuickCutImg} alt="QuickCut" className="lp-logo-center" />
             </div>
         </div>
     );

@@ -264,32 +264,6 @@
 }
 @keyframes lp-content-in { to { opacity: 1; transform: translateX(0); } }
 
-/* Eyebrow pill */
-.lp-eyebrow {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    background: rgba(43,168,74,0.10);
-    border: 1px solid rgba(43,168,74,0.26);
-    border-radius: 999px;
-    padding: 4px 13px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: var(--green-2);
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
-    margin-bottom: 24px;
-    width: fit-content;
-    user-select: none;
-}
-.lp-eyebrow-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--green-2);
-    box-shadow: 0 0 6px var(--glow);
-    animation: lp-pulse 2.4s ease-in-out infinite;
-}
-
 /* Tagline */
 .lp-tagline {
     font-size: 3rem;
@@ -332,25 +306,18 @@
     line-height: 1.65;
 }
 
-/* Horizontal divider */
-.lp-divider {
-    height: 1px;
-    background: linear-gradient(90deg, rgba(43,168,74,0.35), rgba(43,168,74,0.03));
-    margin-bottom: 32px;
-}
-
-/* Center logo */
-.lp-logo-center {
-    width: 180px;
-    height: 180px;
+/* Top logo */
+.lp-logo-top {
+    width: 88px;
+    height: 88px;
     object-fit: contain;
+    margin-bottom: 28px;
+    filter: drop-shadow(0 0 20px rgba(43,168,74,0.45));
     opacity: 0;
-    filter: drop-shadow(0 0 32px rgba(43,168,74,0.35));
-    animation: lp-logo-in 1s cubic-bezier(0.22,1,0.36,1) 0.5s forwards;
-    align-self: flex-start;
+    animation: lp-logo-in 0.8s cubic-bezier(0.22,1,0.36,1) 0.15s forwards;
 }
 @keyframes lp-logo-in {
-    from { opacity: 0; transform: scale(0.88) translateY(12px); }
+    from { opacity: 0; transform: scale(0.82) translateY(-8px); }
     to   { opacity: 1; transform: scale(1)    translateY(0); }
 }
 
@@ -366,8 +333,7 @@
     .login-card h2 { font-size: 1.75rem; }
 }
 @media (prefers-reduced-motion: reduce) {
-    .lp-brand-content, .lp-logo-center, .lp-form-logo, .login-wrapper { animation: none; opacity: 1; transform: none; }
+    .lp-brand-content, .lp-logo-top, .lp-form-logo, .login-wrapper { animation: none; opacity: 1; transform: none; }
     .lp-orb { animation: none; }
-    .lp-eyebrow-dot { animation: none; }
     .lp-tag-explore, .lp-tag-create, .lp-tag-share { animation: none; }
 }
