@@ -148,6 +148,26 @@
     filter: brightness(1.07);
 }
 
+/* ── Shared fade-in animations ── */
+.wl-fadein {
+    opacity: 0;
+    transform: translateY(18px);
+    animation: wl-fadein-anim 0.65s cubic-bezier(0.22,1,0.36,1) both;
+}
+/* scroll-triggered version: starts invisible, JS adds .wl-visible */
+.wl-fadein-scroll {
+    opacity: 0;
+    transform: translateY(22px);
+    transition: opacity 0.65s cubic-bezier(0.22,1,0.36,1), transform 0.65s cubic-bezier(0.22,1,0.36,1);
+}
+.wl-fadein-scroll.wl-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+@keyframes wl-fadein-anim {
+    to { opacity: 1; transform: translateY(0); }
+}
+
 /* ── Hero ── */
 .wl-hero {
     position: relative;
@@ -176,8 +196,6 @@
     letter-spacing: 0.05em;
     text-transform: uppercase;
     margin-bottom: 28px;
-    opacity: 0;
-    animation: wl-fadein 0.6s ease 0.1s forwards;
 }
 .wl-hero-dot {
     width: 7px; height: 7px;
@@ -198,8 +216,6 @@
     line-height: 1.08;
     color: var(--wl-light);
     margin: 0 0 22px;
-    opacity: 0;
-    animation: wl-fadein 0.7s cubic-bezier(0.22,1,0.36,1) 0.2s forwards;
 }
 .wl-hero-accent {
     background: linear-gradient(90deg, #248232, #2BA84A, #3CCF65);
@@ -219,8 +235,6 @@
     max-width: 580px;
     line-height: 1.7;
     margin: 0 0 36px;
-    opacity: 0;
-    animation: wl-fadein 0.7s ease 0.35s forwards;
 }
 
 .wl-hero-ctas {
@@ -229,8 +243,6 @@
     align-items: center;
     gap: 14px;
     margin-bottom: 64px;
-    opacity: 0;
-    animation: wl-fadein 0.7s ease 0.5s forwards;
 }
 .wl-cta-main {
     display: inline-flex;
@@ -269,11 +281,7 @@
     overflow: hidden;
     box-shadow: 0 30px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03) inset;
     backdrop-filter: blur(12px);
-    opacity: 0;
-    transform: translateY(24px) scale(0.97);
-    animation: wl-mockup-in 0.9s cubic-bezier(0.22,1,0.36,1) 0.65s forwards;
 }
-@keyframes wl-mockup-in { to { opacity: 1; transform: translateY(0) scale(1); } }
 
 .wl-mock-bar {
     display: flex;
@@ -397,10 +405,6 @@
     100% { transform: translateX(0);      opacity: 1; }
 }
 
-@keyframes wl-fadein {
-    to { opacity: 1; transform: none; }
-}
-
 /* ── Features section ── */
 .wl-features {
     position: relative;
@@ -438,17 +442,13 @@
     border-radius: 16px;
     padding: 28px 24px;
     text-align: left;
-    opacity: 0;
-    transform: translateY(20px);
-    animation: wl-card-in 0.6s cubic-bezier(0.22,1,0.36,1) forwards;
-    transition: border-color 200ms, background 200ms, transform 150ms;
+    transition: border-color 200ms, background 200ms, transform 150ms, opacity 0.65s cubic-bezier(0.22,1,0.36,1), transform 0.65s cubic-bezier(0.22,1,0.36,1);
 }
 .wl-feat-card:hover {
     border-color: rgba(43,168,74,0.32);
     background: rgba(43,168,74,0.04);
-    transform: translateY(-3px);
+    transform: translateY(-3px) !important;
 }
-@keyframes wl-card-in { to { opacity: 1; transform: translateY(0); } }
 .wl-feat-icon {
     font-size: 1.8rem;
     display: block;
@@ -564,11 +564,8 @@
     .wl-mock-preview { height: 90px; }
 }
 @media (prefers-reduced-motion: reduce) {
-    .wl-orb, .wl-mockup, .wl-feat-card,
-    .wl-hero-title, .wl-hero-eyebrow, .wl-hero-sub, .wl-hero-ctas,
-    .wl-mock-playhead { animation: none; }
-    .wl-mockup, .wl-feat-card, .wl-hero-title,
-    .wl-hero-eyebrow, .wl-hero-sub, .wl-hero-ctas { opacity: 1; transform: none; }
-    .wl-hero-dot { animation: none; }
-    .wl-hero-accent { animation: none; }
+    .wl-orb, .wl-mock-playhead { animation: none; }
+    .wl-fadein { animation: none; opacity: 1; transform: none; }
+    .wl-fadein-scroll { transition: none; opacity: 1; transform: none; }
+    .wl-hero-dot, .wl-hero-accent { animation: none; }
 }
