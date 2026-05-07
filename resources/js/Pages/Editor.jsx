@@ -5,6 +5,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import '@/../css/Editor.css';
 import SaveStatusBadge from '@/Components/SaveStatusBadge';
 import UnsavedExitModal from '@/Components/UnsavedExitModal';
+import InvalidFormatModal from '@/Components/InvalidFormatModal';
 
 const DEFAULT_IMAGE_CLIP_DURATION = 5;
 
@@ -215,6 +216,7 @@ export default function Editor({ project }) {
   const [isDirty, setIsDirty] = useState(false);
   const [dropIndicatorIndex, setDropIndicatorIndex] = useState(null);
   const [showExitModal, setShowExitModal] = useState(false);
+  const [showInvalidFormatModal, setShowInvalidFormatModal] = useState(false);
   const exitNavRef = useRef(null);
   const dirtyMountRef = useRef(false);
   const suppressDirtyRef = useRef(0);
@@ -702,6 +704,15 @@ export default function Editor({ project }) {
     const uploads = Array.from(fileList || []);
     if (uploads.length === 0) {
       if (input?.target?.value !== undefined) input.target.value = '';
+      return;
+    }
+
+    const hasInvalidFormat = uploads.some(
+      (file) => file.name.split('.').pop().toLowerCase() !== 'mp4'
+    );
+    if (hasInvalidFormat) {
+      if (input?.target?.value !== undefined) input.target.value = '';
+      setShowInvalidFormatModal(true);
       return;
     }
 
@@ -2849,6 +2860,12 @@ export default function Editor({ project }) {
             await handleSave();
             exitNavRef.current?.();
           }}
+        />
+      )}
+      {showInvalidFormatModal && (
+        <InvalidFormatModal
+          onClose={() => setShowInvalidFormatModal(false)}
+          onGoToFormatChanger={() => router.get(route('format.changer'))}
         />
       )}
     </AuthenticatedLayout>
