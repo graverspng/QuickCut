@@ -7,20 +7,23 @@ const MAX_MB = 500;
 
 const AUDIO_EXTS = new Set(['mp3','wav','ogg','flac','aac','m4a','webm','opus','wma','aiff','alac']);
 const VIDEO_EXTS = new Set(['mp4','mov','avi','mkv','webm','flv','wmv','m4v','ts','3gp','mpeg','mpg']);
+const IMAGE_EXTS = new Set(['jpg','jpeg','gif','bmp','webp','tiff','tif','avif','heic','svg']);
 
 const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content ?? '';
 
 const detectCategory = (file) => {
     if (file.type.startsWith('video/')) return 'video';
     if (file.type.startsWith('audio/')) return 'audio';
+    if (file.type.startsWith('image/')) return 'image';
     const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
     if (VIDEO_EXTS.has(ext)) return 'video';
     if (AUDIO_EXTS.has(ext)) return 'audio';
+    if (IMAGE_EXTS.has(ext)) return 'image';
     return null;
 };
 
-const targetLabel = (cat) => cat === 'video' ? 'MP4 (H.264 + AAC)' : 'MP3 (192k)';
-const targetExt   = (cat) => cat === 'video' ? 'mp4' : 'mp3';
+const targetLabel = (cat) => cat === 'video' ? 'MP4 (H.264 + AAC)' : cat === 'audio' ? 'MP3 (192k)' : 'PNG';
+const targetExt   = (cat) => cat === 'video' ? 'mp4' : cat === 'audio' ? 'mp3' : 'png';
 
 export default function FormatChanger() {
     const [selectedFile, setSelectedFile] = useState(null);
@@ -176,7 +179,7 @@ export default function FormatChanger() {
                             </span>
                             <h2>Convert Your Media</h2>
                         </div>
-                        <p>Drop a file — QuickCut auto-detects the type and converts it to <strong>MP3</strong> or <strong>MP4</strong>.</p>
+                        <p>Drop a file — QuickCut auto-detects the type and converts it to <strong>MP3</strong>, <strong>MP4</strong>, or <strong>PNG</strong>.</p>
                     </div>
 
                     <div className="fc-divider" />
@@ -214,7 +217,7 @@ export default function FormatChanger() {
                                         <input
                                             id="fc-file-input"
                                             type="file"
-                                            accept="video/*,audio/*"
+                                            accept="video/*,audio/*,image/*"
                                             className="hidden"
                                             disabled={isActive}
                                             onChange={(e) => handleFileSelect(e.target.files?.[0])}
@@ -284,7 +287,7 @@ export default function FormatChanger() {
 
                                 {/* Action row */}
                                 <div className="fc-actions">
-                                    <p className="fc-tip">Audio → MP3 · Video → MP4</p>
+                                    <p className="fc-tip">Audio → MP3 · Video → MP4 · Image → PNG</p>
                                     {isActive ? (
                                         <button
                                             type="button"
@@ -316,7 +319,7 @@ export default function FormatChanger() {
                                 {history.map((item) => (
                                     <li key={item.id} className="fc-history-item fc-history-item--log">
                                         <div className="fc-history-icon">
-                                            {item.category === 'video' ? '🎬' : '🎵'}
+                                            {item.category === 'video' ? '🎬' : item.category === 'image' ? '🖼️' : '🎵'}
                                         </div>
                                         <div className="fc-history-main">
                                             <p className="fc-history-name">{item.converted}</p>

@@ -18,7 +18,7 @@ class FormatChangerController extends Controller
     {
         $request->validate([
             'file'   => ['required', 'file', 'max:512000'], // 500 MB in KB
-            'target' => ['required', 'in:mp3,mp4'],
+            'target' => ['required', 'in:mp3,mp4,png'],
         ]);
 
         if (function_exists('set_time_limit')) {
@@ -45,14 +45,22 @@ class FormatChangerController extends Controller
 
         $ffmpeg = $this->resolveFfmpeg();
 
-        $args = $target === 'mp3'
-            ? [
+        if ($target === 'mp3') {
+            $args = [
                 $ffmpeg, '-y', '-nostats', '-loglevel', 'error',
                 '-i', $inputPath,
                 '-vn', '-c:a', 'libmp3lame', '-b:a', '192k', '-ar', '44100', '-ac', '2',
                 $outputPath,
-            ]
-            : [
+            ];
+        } elseif ($target === 'png') {
+            $args = [
+                $ffmpeg, '-y', '-nostats', '-loglevel', 'error',
+                '-i', $inputPath,
+                '-vframes', '1',
+                $outputPath,
+            ];
+        } else {
+            $args = [
                 $ffmpeg, '-y', '-nostats', '-loglevel', 'error',
                 '-i', $inputPath,
                 '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
@@ -60,6 +68,7 @@ class FormatChangerController extends Controller
                 '-movflags', '+faststart',
                 $outputPath,
             ];
+        }
 
         $process = new Process($args);
         $process->setTimeout(null);
@@ -88,7 +97,11 @@ class FormatChangerController extends Controller
 
         $base         = pathinfo($originalName, PATHINFO_FILENAME);
         $downloadName = (Str::slug($base) ?: 'converted') . '.' . $target;
-        $mimeType     = $target === 'mp3' ? 'audio/mpeg' : 'video/mp4';
+        $mimeType     = match ($target) {
+            'mp3'   => 'audio/mpeg',
+            'png'   => 'image/png',
+            default => 'video/mp4',
+        };
         $fileSize     = filesize($outputPath);
 
         return response()->streamDownload(function () use ($outputPath) {

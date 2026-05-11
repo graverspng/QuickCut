@@ -707,7 +707,7 @@ export default function Editor({ project }) {
       return;
     }
 
-    const ALLOWED_FORMATS = ['mp4', 'mp3'];
+    const ALLOWED_FORMATS = ['mp4', 'mp3', 'png'];
     const hasInvalidFormat = uploads.some(
       (file) => !ALLOWED_FORMATS.includes(file.name.split('.').pop().toLowerCase())
     );
