@@ -526,6 +526,7 @@ export default function Editor({ project }) {
   const [resizeMusicState, setResizeMusicState] = useState(null);
   const [resizeTextState, setResizeTextState] = useState(null);
   const [dragEffectState, setDragEffectState] = useState(null);
+  const [dragMusicState, setDragMusicState] = useState(null);
   const [dragTextState, setDragTextState] = useState(null);
   const [dragTextStageState, setDragTextStageState] = useState(null);
   const timelineScrollRef = useRef(null);
@@ -1456,6 +1457,43 @@ export default function Editor({ project }) {
       window.removeEventListener('mouseup', onUp);
     };
   }, [resizeMusicState, totalDuration, currentTime]);
+
+  const startMusicDrag = (e, index) => {
+    if (e.target.closest('.clip-handle')) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const track = musicTracks[index];
+    if (!track) return;
+    setDragMusicState({
+      index,
+      startX: e.clientX,
+      origStart: track.startTime || 0,
+      duration: track.duration || 0,
+      pxPerSec,
+    });
+  };
+
+  useEffect(() => {
+    if (!dragMusicState) return;
+    const onMove = (e) => {
+      setMusicTracks((prev) => {
+        const arr = [...prev];
+        const track = { ...arr[dragMusicState.index] };
+        const deltaTime = (e.clientX - dragMusicState.startX) / dragMusicState.pxPerSec;
+        const raw = (dragMusicState.origStart || 0) + deltaTime;
+        track.startTime = Math.max(0, Math.min(raw, Math.max(0, totalDuration - (dragMusicState.duration || 0))));
+        arr[dragMusicState.index] = track;
+        return arr;
+      });
+    };
+    const onUp = () => setDragMusicState(null);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [dragMusicState, totalDuration]);
 
   useEffect(() => {
     if (!resizeState) return;
@@ -2842,10 +2880,7 @@ export default function Editor({ project }) {
                     return (
                       <div
                         key={index}
-                        draggable
-                        onDragStart={(e) => handleTrackDragStart(e, index)}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => handleTrackDrop(e, index)}
+                        onMouseDown={(e) => startMusicDrag(e, index)}
                         onClick={(e) => { e.stopPropagation(); selectMusic(index); }}
                         className={`track ${isSelected ? 'selected' : ''}`}
                         style={{ width: `${width}px`, left: `${left}px` }}
