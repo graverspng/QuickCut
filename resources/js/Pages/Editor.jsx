@@ -186,17 +186,29 @@ export default function Editor({ project }) {
   const [textOverlays, setTextOverlays] = useState(() => (Array.isArray(project.text_overlays) ? project.text_overlays : []));
   // Returns a start time that doesn't overlap any other item in the same lane.
   const noOverlapStart = (newStart, duration, items, selfIndex, maxTime) => {
-    let s = Math.max(0, Math.min(newStart, Math.max(0, maxTime - duration)));
     const others = items
       .map((item, i) => ({ i, s: item.startTime || 0, e: (item.startTime || 0) + (item.duration || 0) }))
       .filter(({ i }) => i !== selfIndex)
       .sort((a, b) => a.s - b.s);
+
+    const clamp = (v) => Math.max(0, Math.min(v, Math.max(0, maxTime - duration)));
+    const free = (v) => others.every((o) => v + duration <= o.s || v >= o.e);
+
+    const s = clamp(newStart);
+    if (free(s)) return s;
+
+    // Snap to right edge of each obstacle (nearest valid gap rightward)
     for (const o of others) {
-      if (s < o.e && s + duration > o.s) {
-        s = newStart < o.s ? o.s - duration : o.e;
-        s = Math.max(0, Math.min(s, Math.max(0, maxTime - duration)));
-      }
+      const c = clamp(o.e);
+      if (free(c)) return c;
     }
+
+    // Snap to left edge of each obstacle (nearest valid gap leftward)
+    for (const o of [...others].reverse()) {
+      const c = clamp(o.s - duration);
+      if (free(c)) return c;
+    }
+
     return s;
   };
 
