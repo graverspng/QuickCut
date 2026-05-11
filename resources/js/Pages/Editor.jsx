@@ -2161,8 +2161,8 @@ export default function Editor({ project }) {
 
     if (video.src !== source) {
       video.src = source;
+      video.currentTime = seg.startOffset || 0;
     }
-    video.currentTime = seg.startOffset || 0;
   }, [activeClipIndex, clips]);
 
   const addTextAtPlayhead = () => {
