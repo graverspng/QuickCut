@@ -1132,10 +1132,7 @@ export default function Editor({ project }) {
     if (selectedTransitionId === id) setSelectedTransitionId(null);
   };
 
-  const handleTrackDragStart = (e, index) => {
-    e.dataTransfer.setData('trackIndex', String(index));
-    e.dataTransfer.setData('trackindex', '');
-  };
+  const handleTrackDragStart = (e, index) => e.dataTransfer.setData('trackIndex', index);
   const handleTrackDrop = (e, dropIndex) => {
     e.preventDefault();
     const draggedIndex = parseInt(e.dataTransfer.getData('trackIndex'));
@@ -2837,34 +2834,7 @@ export default function Editor({ project }) {
                 onMouseDownCapture={handleSeekMouseDownCapture}
                 onClick={() => clearSelection()}
               >
-                <div
-                  className="lane"
-                  style={{ width: `${timelineWidth}px` }}
-                  onDragOver={(e) => {
-                    if (!e.dataTransfer.types.includes('trackindex')) return;
-                    e.preventDefault();
-                  }}
-                  onDrop={(e) => {
-                    if (!e.dataTransfer.types.includes('trackindex')) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const draggedIndex = parseInt(e.dataTransfer.getData('trackIndex'), 10);
-                    if (isNaN(draggedIndex)) return;
-                    const scroller = timelineScrollRef.current;
-                    const scrollerRect = scroller?.getBoundingClientRect();
-                    const rawX = scrollerRect
-                      ? Math.max(0, e.clientX - scrollerRect.left + (scroller.scrollLeft || 0))
-                      : 0;
-                    const clampedPps = Number.isFinite(pxPerSec) && pxPerSec > 0 ? pxPerSec : BASE_PX_PER_SEC;
-                    const dropTime = Math.max(0, rawX / clampedPps);
-                    setMusicTracks((prev) => {
-                      const arr = [...prev];
-                      arr[draggedIndex] = { ...arr[draggedIndex], startTime: dropTime };
-                      return arr;
-                    });
-                    selectMusic(draggedIndex);
-                  }}
-                >
+                <div className="lane" style={{ width: `${timelineWidth}px` }}>
                   {musicTracks.map((track, index) => {
                     const width = Math.max(2, (track.duration || 0) * pxPerSec);
                     const left = Math.max(0, (track.startTime || 0) * pxPerSec);
@@ -2874,6 +2844,8 @@ export default function Editor({ project }) {
                         key={index}
                         draggable
                         onDragStart={(e) => handleTrackDragStart(e, index)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => handleTrackDrop(e, index)}
                         onClick={(e) => { e.stopPropagation(); selectMusic(index); }}
                         className={`track ${isSelected ? 'selected' : ''}`}
                         style={{ width: `${width}px`, left: `${left}px` }}
