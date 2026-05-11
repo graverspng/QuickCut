@@ -840,7 +840,7 @@ export default function Editor({ project }) {
       const base = payload.effect;
       setEffects((prev) => {
         const duration = base.duration ?? 5;
-        const safeStart = noOverlapStart(dropTime, duration, prev, prev.length, Math.max(totalDuration, dropTime + duration));
+        const safeStart = noOverlapStart(dropTime, duration, prev, prev.length, Infinity);
         const next = {
           id: crypto.randomUUID(),
           name: base.name,
