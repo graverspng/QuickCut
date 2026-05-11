@@ -526,7 +526,6 @@ export default function Editor({ project }) {
   const [resizeMusicState, setResizeMusicState] = useState(null);
   const [resizeTextState, setResizeTextState] = useState(null);
   const [dragEffectState, setDragEffectState] = useState(null);
-  const [dragMusicState, setDragMusicState] = useState(null);
   const [dragTextState, setDragTextState] = useState(null);
   const [dragTextStageState, setDragTextStageState] = useState(null);
   const timelineScrollRef = useRef(null);
@@ -1133,7 +1132,10 @@ export default function Editor({ project }) {
     if (selectedTransitionId === id) setSelectedTransitionId(null);
   };
 
-  const handleTrackDragStart = (e, index) => e.dataTransfer.setData('trackIndex', index);
+  const handleTrackDragStart = (e, index) => {
+    e.dataTransfer.setData('trackIndex', String(index));
+    e.dataTransfer.setData('trackindex', '');
+  };
   const handleTrackDrop = (e, dropIndex) => {
     e.preventDefault();
     const draggedIndex = parseInt(e.dataTransfer.getData('trackIndex'));
@@ -1457,43 +1459,6 @@ export default function Editor({ project }) {
       window.removeEventListener('mouseup', onUp);
     };
   }, [resizeMusicState, totalDuration, currentTime]);
-
-  const startMusicDrag = (e, index) => {
-    if (e.target.closest('.clip-handle')) return;
-    e.stopPropagation();
-    e.preventDefault();
-    const track = musicTracks[index];
-    if (!track) return;
-    setDragMusicState({
-      index,
-      startX: e.clientX,
-      origStart: track.startTime || 0,
-      duration: track.duration || 0,
-      pxPerSec,
-    });
-  };
-
-  useEffect(() => {
-    if (!dragMusicState) return;
-    const onMove = (e) => {
-      setMusicTracks((prev) => {
-        const arr = [...prev];
-        const track = { ...arr[dragMusicState.index] };
-        const deltaTime = (e.clientX - dragMusicState.startX) / dragMusicState.pxPerSec;
-        const raw = (dragMusicState.origStart || 0) + deltaTime;
-        track.startTime = Math.max(0, Math.min(raw, Math.max(0, totalDuration - (dragMusicState.duration || 0))));
-        arr[dragMusicState.index] = track;
-        return arr;
-      });
-    };
-    const onUp = () => setDragMusicState(null);
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-  }, [dragMusicState, totalDuration]);
 
   useEffect(() => {
     if (!resizeState) return;
@@ -2872,7 +2837,34 @@ export default function Editor({ project }) {
                 onMouseDownCapture={handleSeekMouseDownCapture}
                 onClick={() => clearSelection()}
               >
-                <div className="lane" style={{ width: `${timelineWidth}px` }}>
+                <div
+                  className="lane"
+                  style={{ width: `${timelineWidth}px` }}
+                  onDragOver={(e) => {
+                    if (!e.dataTransfer.types.includes('trackindex')) return;
+                    e.preventDefault();
+                  }}
+                  onDrop={(e) => {
+                    if (!e.dataTransfer.types.includes('trackindex')) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const draggedIndex = parseInt(e.dataTransfer.getData('trackIndex'), 10);
+                    if (isNaN(draggedIndex)) return;
+                    const scroller = timelineScrollRef.current;
+                    const scrollerRect = scroller?.getBoundingClientRect();
+                    const rawX = scrollerRect
+                      ? Math.max(0, e.clientX - scrollerRect.left + (scroller.scrollLeft || 0))
+                      : 0;
+                    const clampedPps = Number.isFinite(pxPerSec) && pxPerSec > 0 ? pxPerSec : BASE_PX_PER_SEC;
+                    const dropTime = Math.max(0, rawX / clampedPps);
+                    setMusicTracks((prev) => {
+                      const arr = [...prev];
+                      arr[draggedIndex] = { ...arr[draggedIndex], startTime: dropTime };
+                      return arr;
+                    });
+                    selectMusic(draggedIndex);
+                  }}
+                >
                   {musicTracks.map((track, index) => {
                     const width = Math.max(2, (track.duration || 0) * pxPerSec);
                     const left = Math.max(0, (track.startTime || 0) * pxPerSec);
@@ -2880,7 +2872,8 @@ export default function Editor({ project }) {
                     return (
                       <div
                         key={index}
-                        onMouseDown={(e) => startMusicDrag(e, index)}
+                        draggable
+                        onDragStart={(e) => handleTrackDragStart(e, index)}
                         onClick={(e) => { e.stopPropagation(); selectMusic(index); }}
                         className={`track ${isSelected ? 'selected' : ''}`}
                         style={{ width: `${width}px`, left: `${left}px` }}
