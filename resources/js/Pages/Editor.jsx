@@ -827,13 +827,15 @@ export default function Editor({ project }) {
     } else if (payload.kind === 'effect') {
       const base = payload.effect;
       setEffects((prev) => {
+        const duration = base.duration ?? 5;
+        const safeStart = noOverlapStart(dropTime, duration, prev, prev.length, Math.max(totalDuration, dropTime + duration));
         const next = {
           id: crypto.randomUUID(),
           name: base.name,
           type: base.type,
           intensity: base.intensity ?? 0.5,
-          startTime: dropTime,
-          duration: base.duration ?? 5,
+          startTime: safeStart,
+          duration,
           fadeIn: base.fadeIn ?? 0,
           fadeOut: base.fadeOut ?? 0
         };
