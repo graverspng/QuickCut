@@ -244,6 +244,7 @@ export default function Editor({ project }) {
   const transitionOverlayRef = useRef(null);
   const manualPlaybackRef = useRef(null);
   const seekToRef = useRef(null);
+  const clipTransitionRef = useRef(false);
 
   const handleAudioMetadataLoaded = useCallback((track, index) => {
     const audio = audioRefs.current[index];
@@ -1982,6 +1983,8 @@ export default function Editor({ project }) {
     if (!video) return;
 
     const onTimeUpdate = () => {
+      if (clipTransitionRef.current) return;
+
       const seg = clips[activeClipIndex];
       if (seg?.type === 'image') return;
 
@@ -2002,6 +2005,7 @@ export default function Editor({ project }) {
           const videoEndTime = (seg.startOffset || 0) + clipDuration;
           if ((video.currentTime || 0) >= videoEndTime - 0.05) {
             if (activeClipIndex < clips.length - 1) {
+              clipTransitionRef.current = true;
               seekTo(clipEndTime, true);
               return;
             }
@@ -2038,7 +2042,10 @@ export default function Editor({ project }) {
     };
 
     video.addEventListener('timeupdate', onTimeUpdate);
-    return () => video.removeEventListener('timeupdate', onTimeUpdate);
+    return () => {
+      video.removeEventListener('timeupdate', onTimeUpdate);
+      clipTransitionRef.current = false;
+    };
   }, [clips, activeClipIndex, musicTracks, syncVisuals, syncAudio, seekTo]);
 
   seekToRef.current = seekTo;
